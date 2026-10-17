@@ -24,6 +24,10 @@ Defaults: official registry `config/sensors.battledim.json`, in-memory audit sin
 no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
+The shared API runs the mock detector: the script forwards only the registry, audit sink and
+log level to the container, not `SENTINEL_DETECTOR*`. Running the CUSUM detector is described in
+the [README](../README.md#running-with-the-cusum-detector); it is not part of this procedure.
+
 Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
 ≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).
 

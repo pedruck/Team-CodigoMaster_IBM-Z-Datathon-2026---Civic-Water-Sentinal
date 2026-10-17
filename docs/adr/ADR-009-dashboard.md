@@ -16,7 +16,7 @@ on P4's branch). State is in memory and lost on restart (ADR-003). The API runs 
 LinuxONE VM inside a container reached through an SSH tunnel (`docs/runbook-vm.md`).
 
 Numbering: ADR-007 (CUSUM detector) and ADR-008 (calibration and evaluation protocol) are
-used by the detection owner's unmerged branch `feat/be-012-cusum-detector`; this ADR takes
+used by the detection owner (BE-012, merged in PR #5); this ADR takes
 the next free number.
 
 ## Problem

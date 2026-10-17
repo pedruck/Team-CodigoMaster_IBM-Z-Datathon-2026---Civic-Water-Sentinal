@@ -1,7 +1,7 @@
 # 08: EV-001 — ADR-010: layer-2 evaluation protocol (frozen before any 2019 run)
 
 **What to build:** The detection owner's ADR-008 (calibration and evaluation, branch
-`feat/be-012-cusum-detector`, not yet on `main`) assigns the **layer-2** evaluation to P6: one
+merged into `main` in PR #5; layer-1 code `sentinel.detection.offline.layer1` with a PROVISIONAL `MatchRule`) assigns the **layer-2** evaluation to P6: one
 2019 run through the API per final calibration, from an identified commit, without restarting
 the server. Its pre-registration table (ADR-008 §G) leaves two rows to the evaluation owner
 (Q-UI-06): the matching rule with its tolerance per leak type, and the pipe → region table for

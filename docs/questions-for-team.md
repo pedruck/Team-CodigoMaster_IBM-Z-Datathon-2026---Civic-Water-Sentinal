@@ -16,6 +16,7 @@ implementation; the last column says what the dashboard does until the question 
 |---|---|---|---|---|
 | Q-TEAM-01 | P0 | all | Who owns each role (data & replay, ML forecasting, detection & localisation, audit & narrative, dashboard & evaluation, LinuxONE platform)? | none — fill `docs/dependencies.md` owners |
 | Q-TEAM-02 | P0 | all | Will the final submission be one repository? | Keep this repo for backend now; move it as `backend/` into the team repo with `git subtree` (keeps history) when it exists |
+| Q-TEAM-03 | P1 | all | What false-alarm budget (alerts per week) defines the detector's operating point? | detector owner proposes one point of the 2018 out-of-fold delay × false-alarms curve; the team approves it and it is recorded (ADR-008) before the single 2019 run |
 
 ## Data & replay
 
@@ -38,17 +39,19 @@ implementation; the last column says what the dashboard does until the question 
 | Q-ML-04 | P1 | Which runtime will run on the VM (zDLC vs PyTorch container)? Same process as FastAPI? | same process; out-of-process adapter only if needed | ADR-005 |
 | Q-ML-05 | P1 | Expected inference latency per window and warm-up needs | none assumed | p99 budget |
 | Q-ML-06 | P2 | `min_history_windows` per model (baseline 0? XGBoost 1? GRU 144/288?) | backend minimum 144 | when scoring starts |
+| Q-ML-07 | P1 | For each forecaster, which observed readings does the expected value depend on (the target sensor's own recent pressures, other sensors' current pressures, flows, tank level)? Can XGBoost ship in two variants, with and without the other sensors' current pressures (Q-ML-02)? | declared per model; both variants compared on the 2018 delay × false-alarm curve (ADR-008); the detector owner's prior is "without", the ML owner decides | CUSUM needs an expected value that does not follow the leak (ADR-007 §1); neighbours can mask a leak |
+| Q-ML-08 | P0 | Can the hour-of-week baseline (design doc Table 2, step 1) be the first forecaster delivered, with out-of-fold 2018 residuals (time-block folds, the month of each labelled leak held out)? | yes; file format in DEP-DET-05 | the detector's final σ, k, h, N cannot be calibrated without real out-of-fold residuals |
 
 ## Detection & localisation
 
 | ID | P | Question | Proposed default | Why |
 |---|---|---|---|---|
 | Q-DET-01 | P0 | Accept the `Detector` contract (§3), stateful single instance, atomic `evaluate`? | as implemented | CUSUM state correctness |
-| Q-DET-02 | P0 | Sign convention: design doc §3 says `z = (expected − observed)/σ`, but the §6 example has `deviation_m −0.9` with `z −4.1`. Which one? | **Decided (team-workflow):** `deviation_m = observed − expected` (< 0 on a drop), `z = (expected − observed)/σ` (> 0 on a drop) — implemented | alert evidence consistency |
-| Q-DET-03 | P1 | What should CUSUM do after a gap or a restart: reset or continue? | backend sends nothing special; detector sees non-consecutive timestamps | false alarms / missed leaks after gaps |
-| Q-DET-04 | P1 | Alert lifecycle: does an alert ever close (S falls below h)? Re-open as new alert? | only "opened" alerts are emitted; no closing (P4's branch confirms: no closing event, ADR-007). **P6 proposal (to P4 → P3):** if an "open alerts" view is wanted, add to `Alert` (contract 1.1, additive) `state ∈ {open, closed}`, `closed_at`, `last_seen_window_end`, with the closing rule owned by P4 (e.g. every deviating sensor released below `h_close`); see also P4's Q-UI-05. **Until answered:** the dashboard shows "Recent alerts", never "active" (ADR-009) | dashboard "open alerts" view |
-| Q-DET-05 | P1 | Region IDs and sensor → region mapping location | owned by detector; `region` null until then | `/v1/alerts?region=` |
-| Q-DET-07 | P2 | **To P4 (needs P1).** Can each alert carry a candidate pipe (L-Town link ID) so the official BattLeDIM score can be computed? The score also needs the distance along pipes on the L-Town graph (from P1) | additive optional `candidate_pipe: str \| null` on `Alert` (contract 1.1); P1 supplies a pipe-distance table or function; formula, Tmax, Xmax and costs taken verbatim from the official BattLeDIM rules before any score is claimed | **Until answered:** the evaluation report shows the BattLeDIM score as "not computed"; the dashboard shows no pipe |
+| Q-DET-02 | P0 | Sign convention: design doc §3 says `z = (expected − observed)/σ`, but the §6 example has `deviation_m −0.9` with `z −4.1`. Which one? | **Decided (team-workflow):** `deviation_m = observed − expected` (< 0 on a drop), `z = (expected − observed)/σ` (> 0 on a drop) — implemented; the CUSUM accumulates `z` as is (ADR-007 §2) | alert evidence consistency |
+| Q-DET-03 | P1 | What should CUSUM do after a gap or a restart: reset or continue? | backend sends nothing special; detector sees non-consecutive timestamps; each missing window counts as zero residual and `S` decays by `k` (ADR-007, implemented in `CusumDetector`) | false alarms / missed leaks after gaps |
+| Q-DET-04 | P1 | Alert lifecycle: does an alert ever close (S falls below h)? Re-open as new alert? | only "opened" alerts are emitted; no closing; per-sensor episodes with a cap and hysteresis, no reset (ADR-007, implemented in `CusumDetector`); dashboard visibility in Q-UI-05 | dashboard "open alerts" view |
+| Q-DET-05 | P1 | Region IDs and sensor → region mapping location | owned by detector; `region` null until then. Format fixed in ADR-007 §8: `{"regions": {"<region>": ["<sensor>", ...]}}`, file order breaks ties, startup fails unless it covers exactly `registry.pressure`; the L-Town content waits for BE-012g | `/v1/alerts?region=` |
+| Q-DET-06 | P1 | Onset of a new episode on a sensor whose `S` has not returned to 0: ADR-007 §6 takes `since` = last window with `S = 0`, so a new episode that starts before `S` falls to 0 **inherits the old onset** (`suspected_onset` can be days before the new leak). Keep that literal rule, or restart `since` when the episode is released (`S < h_close`)? | keep the literal rule (implemented, `test_new_episode_keeps_the_last_zero_when_cusum_did_not_return_to_zero`); revisit with the layer-1 delay numbers | wrong `hours_since_onset` on repeated leaks of the same sensor |
 
 ## Audit & narrative
 
