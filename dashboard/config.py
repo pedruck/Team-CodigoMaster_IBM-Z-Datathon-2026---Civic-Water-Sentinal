@@ -20,3 +20,19 @@ def source_from_env(env: Mapping[str, str] = os.environ) -> AlertSource:
         env.get("SENTINEL_DASHBOARD_API_URL", DEFAULT_API_URL),
         timeout_s=float(env.get("SENTINEL_DASHBOARD_TIMEOUT_S", "5")),
     )
+
+
+DEFAULT_REFRESH_S = 5.0
+
+
+def refresh_interval_s(env: Mapping[str, str] = os.environ) -> float:
+    """Seconds between refreshes of the alert list: ``SENTINEL_DASHBOARD_REFRESH_S``
+    (default 5). Also the first back-off step after a failure."""
+    raw = env.get("SENTINEL_DASHBOARD_REFRESH_S", str(DEFAULT_REFRESH_S))
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not value > 0:
+        raise ValueError(f"SENTINEL_DASHBOARD_REFRESH_S must be a positive number, got {raw!r}")
+    return value

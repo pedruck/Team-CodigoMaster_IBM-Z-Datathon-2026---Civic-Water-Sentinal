@@ -3,11 +3,12 @@
 import streamlit as st
 
 from dashboard.alert_detail import alert_detail
-from dashboard.alert_list import alert_row
-from dashboard.config import source_from_env
+from dashboard.config import refresh_interval_s, source_from_env
 from dashboard.header import build_header
+from dashboard.history import render_history
+from dashboard.live import STATE_KEY, render_recent_alerts
+from dashboard.refresh import PollState
 from dashboard.source import (
-    AlertQuery,
     ContractMismatchError,
     SourceError,
     SourceUnavailableError,
@@ -18,8 +19,9 @@ st.set_page_config(page_title="CivicWater Sentinel", layout="wide")
 
 try:
     source = source_from_env()
-except SourceError as exc:
-    st.error(f"Cannot open the data source: {exc}")
+    refresh_s = refresh_interval_s()
+except (SourceError, ValueError) as exc:
+    st.error(f"Cannot start the dashboard: {exc}")
     st.stop()
 status: StatusResponse | None = None
 online = False
@@ -61,29 +63,12 @@ st.subheader("Recent alerts")
 st.caption(
     "Newest first. Alerts are never closed by the detector yet: this is not an 'active' list."
 )
-if status is not None:
-    try:
-        with st.spinner("Loading alerts…"):
-            page = source.list_alerts(AlertQuery())
-    except ContractMismatchError as exc:
-        st.error(f"Contract mismatch: alerts do not match the contract. {exc}")
-    except SourceError as exc:
-        st.error(f"Could not load alerts ({source.name}): {exc}")
-    else:
-        if page.items:
-            now = status.last_timestamp
-            st.dataframe([alert_row(a, now) for a in page.items], hide_index=True, width="stretch")
-            st.caption(f"{len(page.items)} of {page.total} alerts.")
-        else:
-            st.info("No alerts in this period.")
+render_recent_alerts(source, refresh_s)
 
-# --- Alert detail (UI-004): evidence exactly as received; the list above owns its errors. ---
+# --- Alert detail (UI-004): evidence exactly as received; options = the alerts listed above. ---
 st.subheader("Alert detail")
 if status is not None:
-    try:
-        shown = source.list_alerts(AlertQuery()).items
-    except SourceError:
-        shown = ()
+    shown = st.session_state.get(STATE_KEY, PollState()).alerts  # what the list shows
     selected = (
         st.selectbox("Alert", [a.alert_id for a in shown], index=0, key="alert_detail_id")
         if shown
@@ -114,3 +99,6 @@ if status is not None:
                 st.caption("Forecast contributions: not provided.")
             st.markdown("**Explanation**")
             st.info(detail.explanation)
+
+if status is not None:
+    render_history(source, status.last_timestamp)
