@@ -1,13 +1,13 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f (out-of-fold baseline residuals, replay/sweep, layer-1 counts) exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`. Also on `main`: branch `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, served with Snap ML) and measured it on the VM; wiring into the API (BE-011) is next.
+**Last update:** 2026-10-17 — branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
 ## Summary
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
-real models or the real audit log yet. The real forecaster exists on `feat/p2-forecasting` (XGBoost, chosen by the ML owner; `docs/p2-forecasting.md`) and loads with `load_forecaster`, but the API still runs the mock until BE-011. The official sensor set is read from the data owner's
+real models or the real audit log yet. The real forecaster (XGBoost, chosen by the ML owner; `docs/p2-forecasting.md`) is selected with `SENTINEL_FORECASTER=xgboost` + `SENTINEL_FORECASTER_PATH` and loaded at startup (BE-011); the default is still the mock, and the detector is still the mock, which raises **no** alerts with XGBoost residuals (σ 1 m vs millimetre residuals, `docs/performance.md`). The official sensor set is read from the data owner's
 `config/sensors.battledim.json` (official registry, data owner), and the whole 2019 replay passes
 validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass (recorded before the detector work); mypy does not install there yet.
@@ -28,6 +28,7 @@ BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · 
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
 BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
 convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook ·
+BE-011 real forecaster wired (`SENTINEL_FORECASTER`) ·
 BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefact, `calibrate()`,
 `for_pipeline`, region ranking · BE-012 selection `SENTINEL_DETECTOR=cusum` in `build_pipeline`
 (startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
@@ -44,9 +45,9 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
   `provenance = dev-baseline-2018`, `is_mock = true`). Parts 1 and 2 (the tools) are done; the
   development run that produces the artefact, the sensitivity of σ and the delay × false-alarms
   numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
-- BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
-  waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012. The detector
-  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64, `tests/detection/test_determinism.py`) is **pending on s390x**.
+- BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
+  process (full 2019); full `just check` waits for Q-PLAT-02 (`gcc`). The detector
+  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check).
 
 ## Blocked
 
@@ -58,7 +59,7 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 
 ## Pending (independent, not started)
 
-BE-011 wire the real forecaster (`SENTINEL_FORECASTER=xgboost` + artefact path; unblocked by `feat/p2-forecasting`) · BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
+BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
 Small leftovers of the CUSUM selection, outside the scope of the documentation pass that
 recorded them: the comment above `SENTINEL_FORECASTER` in `.env.example` still says that only
@@ -128,12 +129,11 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Finish BE-012f (the development run on the 2018 baseline residuals), register the ADR-008 §G
-fields, then wire BE-011 (`load_forecaster("xgboost", <path>)` at startup, with an option to turn
-TreeSHAP off for long replays) and the real audit sink as they arrive (BE-011/013) on the shared
-API (`docs/runbook-vm.md`; the script currently starts the mock detector) and measure p50/p99
-with real models (BE-015, incl. the s390x run of the determinism test). Independent: BE-017
-(keep-alive load test).
+Merge PR #7, then restart the shared API with `SENTINEL_FORECASTER=xgboost` (announce first,
+`docs/runbook-vm.md`) and replay 2019 over HTTP. Finish BE-012f and the calibration on the
+XGBoost out-of-fold residuals (DEP-DET-05) so `SENTINEL_DETECTOR=cusum` can run with the real
+forecaster; then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
+s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-17)
 
@@ -174,7 +174,16 @@ with real models (BE-015, incl. the s390x run of the determinism test). Independ
 | same, x86 with numpy/xgboost/snapml/tensorflow/torch/onnx (`PYTHONPATH=src pytest`) | **161 passed, 8 skipped** (P1 data tests) |
 | LinuxONE `python -m pytest -q` in the ML owner's clone @ `1278294` (older commit of the branch) | **166 passed**; the latest commits are **NOT_RUN** on s390x |
 | LinuxONE notebooks 01–03 on the real `data/v1` (XGBoost: 600-tree run; GRU run mode not recorded), metrics v2 | val MAE on clean windows baseline 0.105 / XGBoost 0.006 / GRU 0.077 m · leak contrast 4.16 / 3.39 / 1.80 · p50 per window 0.025 / 134.5 (with TreeSHAP) / 10.2 ms |
-| real models in the API | **NOT_RUN** — BE-011 not wired |
+| branch `zanetti/be-011-forecaster-wiring` @ `4d8b8f0` — x86 `just check` (`.venv`, no ML libraries) | 75 files unchanged · ruff OK · mypy OK (75 files) · **159 passed, 18 skipped** (XGBoost wiring test skips without xgboost) |
+| same, LinuxONE container `python -m pytest -q` (with ML libraries and `SENTINEL_DATA_DIR`) | **177 passed**; `tests/test_forecaster_wiring.py` 8 passed |
+| LinuxONE `validate_replay_ingestion.py windows_2019.jsonl`, `SENTINEL_FORECASTER=xgboost` (`xgboost-33@0.1.0`), TreeSHAP off, `auto` / `compress_trees` | 105 120 windows each, 0 rejected, 0 processing issues, 0 mock alerts · forecast p50 1.371 / 0.651 ms · total p50 1.574 / 0.839 ms |
+| same, TreeSHAP on, first 600 windows | 0 rejected, 0 issues · forecast p50 135.98 / p99 175.37 ms |
+| x86 `just check` on PR #7 @ `94a1143` (`main` merged in, `uv sync --locked --group dashboard` as CI) | 114 files unchanged · ruff OK · mypy OK (114 files) · **615 passed, 19 skipped** |
+| x86 `just check` on a local merge of PR #7 + PR #10 + PR #11 (not pushed) | 123 files unchanged · ruff OK · mypy OK (123 files) · **645 passed, 19 skipped** |
+| LinuxONE container, same local merge: `python -m pytest -q` | **612 passed, 12 skipped** (streamlit tests skip: no s390x build); `test_determinism.py`, `test_forecaster_wiring.py`, `test_eval_run.py`, `test_dashboard_jupyter.py` 31 passed |
+| LinuxONE, same merge: API on a private port (XGBoost `compress_trees`, TreeSHAP off, mock detector) + `sentinel.eval.run.record_run` with `windows_2019.jsonl` over HTTP | 105 120 windows, 0 rejected, 0 alerts, 0 missing, 320.9 s (≈ 328 windows/s, client and server on the VM) |
+| same, XGBoost `auto` + TreeSHAP, mock detector σ 0.01 m (to get alerts), first 1000 windows; Jupyter dashboard (PR #11) live and on the recorded run | 1000 windows, 0 rejected, 9 alerts, all valid `Alert` with `forecast_contributions_m`; dashboard shows XGBoost `is_mock=false`, the SIMULATED banner and 9 alerts with contributions in both sources |
+| real models on the **shared** API (port 8000) | **NOT_RUN** — waits for the merge and an announced restart |
 | line coverage | **NOT_RUN** — no coverage tool configured |
 | branch `wip/be-012-docs-final`, base `56170f9` plus this documentation change — x86-64 (Intel Core Ultra 7 155H), Python 3.14.7: `just check` (ruff format, ruff check, mypy strict, pytest) | ruff format: 83 files left unchanged · ruff check: all checks passed · mypy: no issues found in 83 source files · **464 passed, 9 skipped** (8 P1 data tests and 1 offline-baseline real-data test, skipped without `SENTINEL_DATA_DIR`) |
 | same, `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run pytest tests/test_p1_data.py tests/detection/test_offline_baseline.py -q` | **48 passed** (the real-data tests ran; the offline one checks shape and finiteness only) |

@@ -9,7 +9,7 @@
 #
 # Variáveis (todas opcionais): PORT (8000), CONTAINER (notebook), APP_DIR (cópia de
 # integração, caminho dentro do container), SENTINEL_SENSOR_REGISTRY, SENTINEL_AUDIT_SINK,
-# SENTINEL_LOG_LEVEL.
+# SENTINEL_LOG_LEVEL e os modelos (SENTINEL_FORECASTER*, SENTINEL_DETECTOR*; ver MODEL_VARS).
 set -euo pipefail
 
 PORT="${PORT:-8000}"
@@ -20,6 +20,11 @@ SESSION="sentinel-api-${PORT}"
 REGISTRY="${SENTINEL_SENSOR_REGISTRY:-config/sensors.battledim.json}"
 AUDIT="${SENTINEL_AUDIT_SINK:-memory}"
 LOG_LEVEL="${SENTINEL_LOG_LEVEL:-INFO}"
+# Modelos: repassados ao container só quando definidos (caminho vazio é erro de configuração).
+MODEL_VARS=(SENTINEL_FORECASTER SENTINEL_FORECASTER_PATH SENTINEL_FORECASTER_CONTRIBUTIONS
+    SENTINEL_FORECASTER_ENGINE SENTINEL_FORECASTER_TREE_FORMAT
+    SENTINEL_DETECTOR SENTINEL_DETECTOR_CALIBRATION SENTINEL_DETECTOR_REGIONS)
+START_TIMEOUT="${START_TIMEOUT:-120}"   # o forecaster real carrega os artefatos antes de responder
 PATTERN="uvicorn sentinel.main:create_app --factory --host 0.0.0.0 --port ${PORT}"
 
 die() { echo "erro: $*" >&2; exit 1; }
@@ -60,16 +65,22 @@ start() {
     mkdir -p "$LOG_DIR"
     local log
     log="$LOG_DIR/api-${PORT}-$(date -u +%Y%m%dT%H%M%SZ).log"
+    local model_env="" var
+    for var in "${MODEL_VARS[@]}"; do
+        if [ -n "${!var:-}" ]; then model_env+="-e $var='${!var}' "; fi
+    done
     echo "commit: $(in_container git log --oneline -1)" | tee "$log"
+    echo "modelos: ${model_env:-padrão (mocks)}" | tee -a "$log"
     tmux new-session -d -s "$SESSION" \
         "docker exec -w '$APP_DIR' \
             -e SENTINEL_SENSOR_REGISTRY='$REGISTRY' \
             -e SENTINEL_AUDIT_SINK='$AUDIT' \
             -e SENTINEL_LOG_LEVEL='$LOG_LEVEL' \
+            $model_env \
             -e PYTHONPATH='$APP_DIR/src' \
             -e OMP_NUM_THREADS=1 -e MKL_NUM_THREADS=1 -e OPENBLAS_NUM_THREADS=1 \
             '$CONTAINER' python -m $PATTERN --no-access-log 2>&1 | tee -a '$log'"
-    for _ in $(seq 1 30); do
+    for _ in $(seq 1 "$START_TIMEOUT"); do
         if http_get /health > /dev/null 2>&1; then
             echo "API no ar: porta $PORT, sessão tmux '$SESSION', log $log"
             return 0
@@ -77,7 +88,7 @@ start() {
         sleep 1
     done
     tail -n 30 "$log" >&2
-    die "a API não respondeu em 30 s (log acima)"
+    die "a API não respondeu em ${START_TIMEOUT} s (log acima)"
 }
 
 stop() {
@@ -104,7 +115,7 @@ keep = ['version', 'uptime_s', 'last_timestamp', 'history', 'sensor_registry', '
         'throughput_windows_per_s', 'error_rate']
 for k in keep:
     print(f'  {k}: {d[k]}')
-print('  forecaster:', d['forecaster']['name'], '| detector:', d['detector']['name'])
+print('  forecaster:', d['forecaster'], '| detector:', d['detector'])
 print('  windows:', {k: v for k, v in d['counters'].items() if k.startswith('windows_')})"
 }
 

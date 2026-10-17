@@ -21,6 +21,13 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- BE-011: the API loads the real forecaster at startup. `SENTINEL_FORECASTER` accepts
+  `mock | baseline | xgboost | gru` with `SENTINEL_FORECASTER_PATH`; XGBoost options
+  `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP on/off), `_ENGINE`, `_TREE_FORMAT`
+  (`auto | compress_trees | zdnn_tensors`, checked at startup). A load error stops startup (no
+  fallback to the mock); the CUSUM detector is checked against the forecaster actually loaded.
+  `scripts/shared_api.sh` forwards the `SENTINEL_FORECASTER*` and `SENTINEL_DETECTOR*` variables
+  that are set; `scripts/validate_replay_ingestion.py` reads them and reports processing issues.
 - Operator dashboard tracer (UI-001, P6): Streamlit page (`just dashboard api_url=...`) with
   the header from `/health` + `/v1/status` (simulated time, models, SIMULATED badge). Reads the
   backend only through `dashboard.source.AlertSource` (HTTP adapter, stdlib); every answer is
