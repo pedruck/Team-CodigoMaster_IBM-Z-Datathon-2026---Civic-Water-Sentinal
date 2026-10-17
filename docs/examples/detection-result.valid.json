@@ -1,0 +1,52 @@
+{
+  "timestamp": "2019-03-14T12:30:00Z",
+  "model": {
+    "name": "cusum",
+    "version": "1.0.0",
+    "is_mock": false
+  },
+  "state": "alarm",
+  "anomaly_score": 7.9,
+  "residuals": {
+    "P01": {
+      "residual_m": -0.9,
+      "z": -4.1,
+      "cusum": 7.9
+    },
+    "P02": {
+      "residual_m": 0.05,
+      "z": 0.2,
+      "cusum": 0.0
+    }
+  },
+  "alerts": [
+    {
+      "classification": "leak_suspected",
+      "region": "R4",
+      "suspected_onset": "2019-03-14T08:10:00Z",
+      "cusum": {
+        "statistic": 7.9,
+        "threshold": 5.0
+      },
+      "deviating_sensors": [
+        {
+          "sensor": "P01",
+          "deviation_m": -0.9,
+          "z": -4.1,
+          "since": "2019-03-14T08:10:00Z"
+        }
+      ],
+      "summary": null
+    }
+  ],
+  "region_scores": {
+    "R4": 7.9,
+    "R1": 0.4
+  },
+  "diagnostics": {
+    "k": 0.5,
+    "h": 5.0
+  },
+  "complete": true,
+  "issues": []
+}

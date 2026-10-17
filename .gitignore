@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Data: BattLeDIM / SCADA files are never committed (see README, "Data")
+data/
+*.parquet
+*.csv
+*.xlsx
+*.inp
+*.jsonl
+!tests/fixtures/*.jsonl
+
+# Model artifacts belong to the ML module, not to this repository
+*.onnx
+*.ubj
+*.pkl
+*.joblib
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
