@@ -1,13 +1,14 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — foundation and CI merged into `main`; first s390x (LinuxONE) run recorded.
+**Last update:** 2026-10-17 — branch `zanetti/ingestion`: real sensor registry from `data/v1` (BE-010); full 2019 export validated on LinuxONE.
 
 ## Summary
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
-real models, real sensor IDs or the real audit log yet. On the LinuxONE VM (s390x) the
+real models or the real audit log yet. The official sensor set is read from the data owner's
+`data/v1/sensors.csv`, and the whole 2019 export passes validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
 `Proposed` until the other owners confirm them.
 
@@ -15,9 +16,12 @@ runtime installs from wheels and the 89 tests pass; mypy does not install there 
 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
-BE-009 metrics/logs/benchmark (x86, mocks) · BE-018 CI (GitHub Actions). Details: `docs/implementation-plan.md`.
+BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions). Details: `docs/implementation-plan.md`.
 
 ## In progress
+
+BE-014 real 2019 replay: in-process full year done; HTTP replay waits for the data owner's
+replay tool and Q-DATA-02 (timestamps without timezone in v1).
 
 BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
 waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
@@ -26,11 +30,9 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 | Task | Waiting for |
 |---|---|
-| BE-010 real sensor registry | DEP-DATA-01 (data owner) |
 | BE-011 real forecaster | DEP-ML-01..03 (ML owner) |
 | BE-012 real detector | DEP-DET-01..03 (detection owner) |
 | BE-013 real audit sink | DEP-AUD-01, Q-AUD-03 (audit owner) |
-| BE-014 real 2019 replay | BE-010, DEP-DATA-05 |
 
 ## Pending (independent, not started)
 
@@ -39,14 +41,14 @@ BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive 
 ## External dependencies
 
 22 open/partial items in `docs/dependencies.md`; P0 questions in
-`docs/questions-for-team.md` (Q-TEAM-01/02, Q-DATA-01/02/03/06, Q-ML-01/02, Q-DET-01/02,
+`docs/questions-for-team.md` (Q-TEAM-01/02, Q-DATA-02, Q-ML-01/02, Q-DET-01/02,
 Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
 - Separate repository may need to be merged into a team repository (Q-TEAM-02).
-- Sensor IDs are placeholders; real data will be rejected until BE-010.
-- Gap policy blinds scoring for 12 h after any missing window (ADR-004, Q-DATA-03).
+- v1 timestamps carry no timezone; the API requires one (Q-DATA-02).
+- Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
 - Fail-open audit can serve alerts missing from the log (ADR-006, Q-AUD-03).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
 - `mypy` not installable on s390x without `gcc` (Q-PLAT-02); model runtime wheels on s390x unverified.
@@ -65,10 +67,11 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Get answers to the P0 questions (start with Q-TEAM-01 owners and Q-DATA-06 sensor IDs), then
-BE-010. Independent meanwhile: BE-017 (load test).
+Confirm Q-DATA-02 with the data owner (UTC, end of interval, replay sends `Z`), then run the
+HTTP replay of 2019 (BE-014). Independent meanwhile: fail-closed audit decided in
+`docs/team-workflow.md` (Q-AUD-03) needs an ADR-006 update, and BE-017 (load test).
 
-## Verification (2026-10-17, x86_64, Python 3.12.13)
+## Verification (2026-10-17)
 
 | Command | Result |
 |---|---|
@@ -82,5 +85,8 @@ BE-010. Independent meanwhile: BE-017 (load test).
 | LinuxONE: `scripts/bench_pipeline.py --windows 5000` | total p50 0.1645 ms / p99 0.3514 ms (mocks) |
 | LinuxONE: uvicorn + `scripts/replay.py` (576 windows, localhost) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 1.419 / p99 17.988 ms |
 | x86 vs s390x `content_hash` of `window.valid.json` | identical (`7fc91e5a…9717fa`) |
-| real models / real data | **NOT_RUN** — blocked (see above) |
+| LinuxONE container (`/opt/venv`), branch `zanetti/ingestion` @ `c70f997`: `python -m pytest -q` | **96 passed** |
+| x86: `just check` @ `c70f997` | ruff OK · mypy OK (56 files) · **96 passed** |
+| LinuxONE: `scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` | 105 120 windows, 0 rejected, pipeline p50 0.1988 / p99 0.4044 ms |
+| real models | **NOT_RUN** — blocked (see above) |
 | line coverage | **NOT_RUN** — no coverage tool configured |

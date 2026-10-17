@@ -22,15 +22,17 @@ Common rules for every contract model:
 |---|---|---|
 | `schema_version` | `"1.0"` | required; other values rejected |
 | `timestamp` | datetime with TZ | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`) |
-| `pressures` | `{sensor_id: number}` | non-empty; metres (head) — unit to confirm (Q-DATA-01) |
-| `flows` | `{sensor_id: number}` | unit to confirm (Q-DATA-01) |
-| `tank_levels` | `{sensor_id: number}` | metres — to confirm |
+| `pressures` | `{sensor_id: number}` | non-empty; metres (data/v1) |
+| `flows` | `{sensor_id: number}` | m³/h (data/v1) |
+| `tank_levels` | `{sensor_id: number}` | metres (data/v1) |
 | `source` | string \| null | optional replay/run ID; not part of the content hash |
 
 Sensor set: every window must contain **exactly** the IDs of the sensor registry
-(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. The shipped
-registry `config/sensors.provisional.json` uses **placeholder IDs** (`P01..P33`, `F01..F03`,
-`T01`) — only the counts come from the design document. Real IDs: DEP-DATA-01.
+(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. For real
+data, point it at the data owner's table `data/vN/sensors.csv` (official BattLeDIM IDs:
+`Pressure_n1`…`Pressure_n769`, `Flow_p227`, `Flow_p235`, `Flow_PUMP_1`, `Level_T1`; registry
+order = file order). The default `config/sensors.provisional.json` keeps **placeholder IDs**
+(`P01..P33`, `F01..F03`, `T01`) for development and tests.
 
 Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
 (an unknown field such as `leak_label` is rejected anyway).

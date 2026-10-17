@@ -23,6 +23,7 @@ barriers.
 | `tests/test_schemas.py` | unit | window contract: valid payload, naive/offset timestamps, NaN/±Inf, strings/bools, unknown fields, bad IDs, schema version, content hash |
 | `tests/test_ingestion.py` | unit | sensor registry (missing/unexpected), timestamp grid |
 | `tests/test_history.py` | unit | order, repeated/older timestamps, gaps, capacity, past-only tail, restart, concurrent readers |
+| `tests/test_sensors.py` | unit + API | registry from the data owner's `sensors.csv` (order, units, unknown types, duplicates, mixed units), provisional JSON, real-shaped window accepted by the API |
 | `tests/test_config.py` | unit | env parsing, documented defaults, invalid config fails at startup, no silent non-mock models |
 | `tests/test_metrics.py` | unit | nearest-rank percentiles, counters |
 | `tests/test_pipeline.py` | integration (mocks, no HTTP) | insufficient history, past-only forecaster input, duplicate/conflict/out-of-order, gaps, capacity, forecaster/detector failures, contract violations, single stateful detector, audit events, audit failure, restart, concurrency |

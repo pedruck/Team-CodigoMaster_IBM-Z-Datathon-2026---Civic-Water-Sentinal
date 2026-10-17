@@ -82,6 +82,23 @@ VM); nothing in the backend uses it — it matters for the model runtimes (desig
 | server `http_post_windows` p50 / p99 | 0.8502 / 15.4848 ms |
 | server pipeline `total` p50 / p99 | 0.193 / 0.539 ms |
 
+### Real data shape: full 2019 v1 export, in process (2026-10-17)
+
+`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` in the shared
+Jupyter container on the LinuxONE VM (`/opt/venv`, Python 3.12.15, same pydantic/fastapi/
+starlette/uvicorn versions as `uv.lock`), commit `c70f997`, `nice -n 10`, VM otherwise idle
+(load ≈ 0.05). Mock forecaster/detector, in-memory audit, official 37-sensor registry.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 read · 0 rejected · 144 `insufficient_history` · 104 976 `scored` |
+| wall time (CSV read + parse + pipeline) | 30.27 s |
+| Pydantic window parsing, mean | 0.0228 ms |
+| pipeline `total` (last 10 000 windows) p50 / p99 / max | 0.1988 / 0.4044 / 3.5022 ms |
+
+An earlier identical run (pre-commit copy of the script) gave 29.39 s and p50/p99
+0.1961/0.2843 ms: single runs vary; treat these as orders of magnitude.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
