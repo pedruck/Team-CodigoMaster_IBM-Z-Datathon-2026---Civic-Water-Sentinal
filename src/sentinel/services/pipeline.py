@@ -25,11 +25,11 @@ from sentinel.schemas.api import (
 )
 from sentinel.schemas.detections import AlertCandidate, DetectionResult
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
-from sentinel.schemas.windows import SensorWindow
+from sentinel.schemas.windows import SensorWindow, SensorWindowIn
 from sentinel.sensors import SensorRegistry
 from sentinel.services.errors import SentinelError, TemporalConflictError
 from sentinel.services.history import HistoryBuffer
-from sentinel.services.ingestion import validate_window
+from sentinel.services.ingestion import normalize_window, validate_window
 from sentinel.services.stores import AlertStore, ResultStore
 
 log = logging.getLogger("sentinel.pipeline")
@@ -94,16 +94,17 @@ class Pipeline:
 
     # ------------------------------------------------------------------ ingest
 
-    def ingest(self, window: SensorWindow) -> IngestOutcome:
+    def ingest(self, window: SensorWindowIn) -> IngestOutcome:
         try:
             return self._ingest(window)
         except SentinelError as exc:
             self.metrics.inc(f"windows_rejected_{exc.code}")
             raise
 
-    def _ingest(self, window: SensorWindow) -> IngestOutcome:
+    def _ingest(self, received: SensorWindowIn) -> IngestOutcome:
         timer = StageTimer()
         t = time.perf_counter()
+        window, tz_assumed = normalize_window(received, self.settings.naive_timestamp_tz)
         validate_window(
             window,
             self.registry,
@@ -142,14 +143,19 @@ class Pipeline:
             self._last_ts = window.timestamp
             timer.measure("history", t)
 
-            result = self._process(window, content_hash, gap, timer)
+            result = self._process(window, content_hash, gap, timer, tz_assumed)
             self.results.put(window.timestamp, content_hash, result)
 
         self._record(result, timer)
         return IngestOutcome(result, True)
 
     def _process(
-        self, window: SensorWindow, content_hash: str, gap: int, timer: StageTimer
+        self,
+        window: SensorWindow,
+        content_hash: str,
+        gap: int,
+        timer: StageTimer,
+        tz_assumed: bool,
     ) -> WindowResult:
         issues: list[ProcessingIssue] = []
         status: ProcessingStatus
@@ -175,7 +181,7 @@ class Pipeline:
 
         t = time.perf_counter()
         audit_status, alerts = self._audit(
-            window, status, alerts, detection, gap, content_hash, issues
+            window, status, alerts, detection, gap, content_hash, issues, tz_assumed
         )
         timer.measure("audit", t)
         for alert in alerts:
@@ -184,6 +190,7 @@ class Pipeline:
         timer.finish()
         return WindowResult(
             timestamp=window.timestamp,
+            timestamp_tz_assumed=tz_assumed,
             status=status,
             gap_windows=gap,
             history=self.history_info(),
@@ -311,6 +318,7 @@ class Pipeline:
         gap: int,
         content_hash: str,
         issues: list[ProcessingIssue],
+        tz_assumed: bool,
     ) -> tuple[AuditStatus, list[Alert]]:
         """Alerts are kept even if auditing fails (fail-open, ADR-006 — Proposed)."""
         if not self.audit_sink.enabled:
@@ -332,6 +340,7 @@ class Pipeline:
         payload: dict[str, Any] = {
             "status": status,
             "content_hash": content_hash,
+            "timestamp_tz_assumed": tz_assumed,
             "gap_windows": gap,
             "detector_state": detection.state if detection else None,
             "anomaly_score": detection.anomaly_score if detection else None,

@@ -5,7 +5,8 @@ feeds every row as a contract v1.0 window to the pipeline with the MOCK forecast
 It checks the contract, the temporal policy and the backend cost on the real data shape; mock
 alerts are not detections. This is a backend check, not the official replay (data owner).
 
-Assumption to confirm (Q-DATA-02): CSV timestamps are UTC and mark the END of the interval.
+Timestamps are sent exactly as in the CSV (no timezone); the backend reads them as UTC
+(SENTINEL_NAIVE_TIMESTAMP_TZ, ADR-004). Data owner to confirm UTC / end of interval (Q-DATA-02).
 
 Usage: python scripts/validate_v1_ingestion.py <data_dir_vN> [--year 2019] [--limit N]
 """
@@ -23,7 +24,7 @@ from pydantic import ValidationError
 
 from sentinel.config import Settings
 from sentinel.main import build_pipeline
-from sentinel.schemas.windows import SensorWindow
+from sentinel.schemas.windows import SensorWindowIn
 from sentinel.sensors import SensorRegistry
 from sentinel.services.errors import SentinelError
 
@@ -42,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     pipeline = build_pipeline(Settings(audit_sink="memory"), registry=registry)
 
     statuses: Counter[str] = Counter()
+    tz_assumed = 0
     rejected: Counter[str] = Counter()
     alerts = 0
     parse_s = 0.0
@@ -62,10 +64,10 @@ def main(argv: list[str] | None = None) -> int:
                 readings[group[col]][col] = float(raw)
             tp = time.perf_counter()
             try:
-                window = SensorWindow.model_validate(
+                window = SensorWindowIn.model_validate(
                     {
                         "schema_version": "1.0",
-                        "timestamp": row[0].replace(" ", "T") + "Z",
+                        "timestamp": row[0],
                         "source": f"{args.data_dir.name}-scada-{args.year}",
                         **readings,
                     }
@@ -81,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
                 rejected[exc.code] += 1
                 continue
             statuses[result.status] += 1
+            tz_assumed += result.timestamp_tz_assumed
             alerts += len(result.alert_ids)
 
     read = sum(statuses.values()) + sum(rejected.values())
@@ -91,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         "windows_read": read,
         "accepted_by_status": dict(statuses),
         "rejected": dict(rejected),
+        "timestamp_tz_assumed": tz_assumed,
         "mock_alerts_not_detections": alerts,
         "history": pipeline.history_info().model_dump(),
         "elapsed_s": round(time.perf_counter() - t0, 2),

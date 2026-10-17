@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
@@ -18,15 +19,17 @@ SensorId = Annotated[
 Readings = Annotated[dict[SensorId, FiniteFloat], Field(min_length=1)]
 
 
-class SensorWindow(ContractModel):
-    """Readings of every sensor for one interval.
+class SensorWindowIn(ContractModel):
+    """Window as received by ``POST /v1/windows``.
 
     ``timestamp`` is the **end** of the aggregation interval: each value is the mean of the
-    previous ``interval_seconds`` (design document §2, Table 1).
+    previous ``interval_seconds`` (design document §2, Table 1). It may come without timezone
+    (as in the data owner's CSV export); ingestion then applies
+    ``SENTINEL_NAIVE_TIMESTAMP_TZ`` and produces a ``SensorWindow`` (ADR-004).
     """
 
     schema_version: Literal["1.0"]
-    timestamp: UtcDatetime
+    timestamp: datetime
     pressures: Readings
     flows: Annotated[dict[SensorId, FiniteFloat], Field(default_factory=dict)]
     tank_levels: Annotated[dict[SensorId, FiniteFloat], Field(default_factory=dict)]
@@ -34,6 +37,15 @@ class SensorWindow(ContractModel):
         default=None,
         description="Optional producer / replay-run identifier. Not part of the content hash.",
     )
+
+
+class SensorWindow(SensorWindowIn):
+    """Normalised window used inside the backend: timestamp always timezone-aware, in UTC.
+
+    This is what forecasters and detectors receive.
+    """
+
+    timestamp: UtcDatetime
 
     def content_hash(self) -> str:
         """SHA-256 of the measurements, used to tell an idempotent resend from a conflict."""

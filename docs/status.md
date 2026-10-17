@@ -21,7 +21,7 @@ BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-
 ## In progress
 
 BE-014 real 2019 replay: in-process full year done; HTTP replay waits for the data owner's
-replay tool and Q-DATA-02 (timestamps without timezone in v1).
+replay tool (the backend now accepts the CSV timestamps as they are, read as UTC).
 
 BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
 waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
@@ -41,13 +41,14 @@ BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive 
 ## External dependencies
 
 22 open/partial items in `docs/dependencies.md`; P0 questions in
-`docs/questions-for-team.md` (Q-TEAM-01/02, Q-DATA-02, Q-ML-01/02, Q-DET-01/02,
+`docs/questions-for-team.md` (Q-TEAM-01/02, Q-ML-01/02, Q-DET-01/02,
 Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
 - Separate repository may need to be merged into a team repository (Q-TEAM-02).
-- v1 timestamps carry no timezone; the API requires one (Q-DATA-02).
+- v1 timestamps carry no timezone; the backend assumes UTC (flagged per window) until the data
+  owner confirms (Q-DATA-02).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
 - Fail-open audit can serve alerts missing from the log (ADR-006, Q-AUD-03).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
@@ -67,8 +68,8 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Confirm Q-DATA-02 with the data owner (UTC, end of interval, replay sends `Z`), then run the
-HTTP replay of 2019 (BE-014). Independent meanwhile: fail-closed audit decided in
+Run the HTTP replay of 2019 with the data owner's replay tool (BE-014); confirm Q-DATA-02 (UTC,
+end of interval). Independent meanwhile: fail-closed audit decided in
 `docs/team-workflow.md` (Q-AUD-03) needs an ADR-006 update, and BE-017 (load test).
 
 ## Verification (2026-10-17)

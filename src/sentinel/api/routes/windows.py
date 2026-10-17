@@ -2,7 +2,7 @@ from fastapi import APIRouter, Response, status
 
 from sentinel.api.deps import PipelineDep
 from sentinel.schemas.api import ErrorResponse, WindowResult
-from sentinel.schemas.windows import SensorWindow
+from sentinel.schemas.windows import SensorWindowIn
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
@@ -17,8 +17,13 @@ router = APIRouter(prefix="/v1", tags=["ingestion"])
         422: {"model": ErrorResponse, "description": "Invalid payload or sensor set"},
     },
 )
-def ingest_window(window: SensorWindow, pipeline: PipelineDep, response: Response) -> WindowResult:
+def ingest_window(
+    window: SensorWindowIn, pipeline: PipelineDep, response: Response
+) -> WindowResult:
     """Accept one window and process it synchronously.
+
+    A timestamp without timezone is read as UTC unless ``SENTINEL_NAIVE_TIMESTAMP_TZ=reject``;
+    the response then has ``timestamp_tz_assumed=true``.
 
     201: accepted now (``status`` tells whether it was scored). 200: same window resent;
     the stored result is returned with ``duplicate=true`` and nothing is reprocessed.

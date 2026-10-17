@@ -57,6 +57,7 @@ Contracts: [`docs/integration-contracts.md`](docs/integration-contracts.md); Ope
 
 Environment variables `SENTINEL_*`, all with defaults — see [`.env.example`](.env.example).
 Main ones: `SENTINEL_HISTORY_CAPACITY` (288), `SENTINEL_MIN_HISTORY_WINDOWS` (144),
+`SENTINEL_NAIVE_TIMESTAMP_TZ` (`UTC`: timestamps without timezone are read as UTC; `reject`),
 `SENTINEL_SENSOR_REGISTRY` (placeholder JSON by default; the data owner's `data/vN/sensors.csv`
 for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`). Invalid values fail at
 startup. State is **in memory** and lost on restart (ADR-003).

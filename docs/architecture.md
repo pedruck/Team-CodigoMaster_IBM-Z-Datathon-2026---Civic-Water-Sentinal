@@ -46,8 +46,9 @@ Who owns what among the team members is still to be confirmed: see `docs/depende
 ## Data flow of one window
 
 1. `POST /v1/windows` — Pydantic validates the payload shape (types, finite values,
-   timezone, unknown fields).
-2. Ingestion validates it against the sensor registry (missing / unexpected sensors) and
+   unknown fields) into `SensorWindowIn`.
+2. Ingestion normalises the timestamp to UTC (naive → UTC unless
+   `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`) and validates it against the sensor registry (missing / unexpected sensors) and
    timestamp alignment (`services/ingestion.py`).
 3. Under the pipeline lock: temporal policy against the history (duplicate, conflict,
    out of order, gap) — ADR-004.

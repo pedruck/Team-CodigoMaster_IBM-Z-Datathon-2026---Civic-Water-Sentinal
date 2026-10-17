@@ -5,6 +5,11 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Changed
+- Timestamps without timezone are read as UTC (`SENTINEL_NAIVE_TIMESTAMP_TZ=UTC`, default) and
+  flagged with `timestamp_tz_assumed` in the result and audit event; `reject` restores the 422.
+  The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
+
 ### Added
 - Sensor registry loaded from the data owner's `data/vN/sensors.csv` (official IDs and units,
   shown in `/v1/status`); `scripts/validate_v1_ingestion.py` runs a full year of the export
