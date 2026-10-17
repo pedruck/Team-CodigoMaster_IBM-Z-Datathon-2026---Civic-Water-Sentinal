@@ -109,7 +109,8 @@ dependencies, risks, known bottlenecks, future optimisations, next step, verific
 
 - The data is **simulated** (BattLeDIM L-Town). Never describe results as validated on a
   real network.
-- Sensor IDs in `config/sensors.provisional.json` are **placeholders**.
+- Sensor IDs in `config/sensors.provisional.json` are **placeholders**; the real ones come from
+  the data owner's `data/vN/sensors.csv` (`SENTINEL_SENSOR_REGISTRY`).
 - History, results, alerts and metrics live **in memory** and are lost on restart (ADR-003).
 - The detector is stateful: one instance per process, called in order (contracts §3).
 - The window timestamp is the **end** of its 5-minute interval (contracts §1).

@@ -11,7 +11,9 @@ All contracts are `Proposed` until the owner listed in each section confirms the
 
 Common rules for every contract model:
 - unknown fields are rejected (`extra="forbid"`), models are immutable;
-- timestamps must carry a timezone and are normalised to UTC (serialised with `Z`);
+- timestamps are normalised to UTC (serialised with `Z`). Internal models (`SensorWindow`, what
+  forecasters and detectors receive) always carry a timezone. Only the HTTP input
+  (`SensorWindowIn`) may omit it — see §1;
 - numbers must be finite JSON numbers: `NaN`, `±Infinity`, strings (`"50.1"`) and booleans
   are rejected;
 - sensor IDs: 1–64 chars, `[A-Za-z0-9_.:-]`.
@@ -21,16 +23,18 @@ Common rules for every contract model:
 | Field | Type | Rule |
 |---|---|---|
 | `schema_version` | `"1.0"` | required; other values rejected |
-| `timestamp` | datetime with TZ | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`) |
-| `pressures` | `{sensor_id: number}` | non-empty; metres (head) — unit to confirm (Q-DATA-01) |
-| `flows` | `{sensor_id: number}` | unit to confirm (Q-DATA-01) |
-| `tank_levels` | `{sensor_id: number}` | metres — to confirm |
+| `timestamp` | ISO datetime, with or without TZ (`2019-03-14T12:30:00Z`, `2019-03-14 12:30:00`) | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`). Without TZ it is read as UTC and the result says `timestamp_tz_assumed: true`; `SENTINEL_NAIVE_TIMESTAMP_TZ=reject` turns this into 422 `timestamp_without_timezone` |
+| `pressures` | `{sensor_id: number}` | non-empty; metres (data/v1) |
+| `flows` | `{sensor_id: number}` | m³/h (data/v1) |
+| `tank_levels` | `{sensor_id: number}` | metres (data/v1) |
 | `source` | string \| null | optional replay/run ID; not part of the content hash |
 
 Sensor set: every window must contain **exactly** the IDs of the sensor registry
-(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. The shipped
-registry `config/sensors.provisional.json` uses **placeholder IDs** (`P01..P33`, `F01..F03`,
-`T01`) — only the counts come from the design document. Real IDs: DEP-DATA-01.
+(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. For real
+data, point it at the data owner's table `data/vN/sensors.csv` (official BattLeDIM IDs:
+`Pressure_n1`…`Pressure_n769`, `Flow_p227`, `Flow_p235`, `Flow_PUMP_1`, `Level_T1`; registry
+order = file order). The default `config/sensors.provisional.json` keeps **placeholder IDs**
+(`P01..P33`, `F01..F03`, `T01`) for development and tests.
 
 Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
 (an unknown field such as `leak_label` is rejected anyway).
@@ -59,11 +63,14 @@ Invalid examples (all 422):
 
 | File | Why | `error.code` |
 |---|---|---|
-| `window.invalid.naive-timestamp.json` | `"2019-03-14T00:00:00"` has no timezone | `validation_error` (`timezone_aware`) |
 | `window.invalid.string-value.json` | `"P01": "50.1"` | `validation_error` |
 | `window.invalid.unknown-field.json` | extra `leak_label` | `validation_error` (`extra_forbidden`) |
 | `window.invalid.missing-sensor.json` | `P33` absent | `sensor_set_mismatch` (`details.missing_pressures`) |
 | `window.invalid.misaligned.json` | `00:02:30Z` | `timestamp_misaligned` |
+
+Accepted with assumption: [`window.naive-timestamp.json`](examples/window.naive-timestamp.json)
+(`"2019-03-14T00:00:00"`) → 201 with `timestamp_tz_assumed: true` by default; 422
+`timestamp_without_timezone` with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`.
 
 Response: `WindowResult` — [`window-result.scored.json`](examples/window-result.scored.json).
 `status ∈ {scored, insufficient_history, forecast_failed, detection_failed}`,
@@ -196,6 +203,7 @@ contract and who may read it (DEP-AUD-02).
 
 Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
 `validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
+`timestamp_without_timezone` 422 (only with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`),
 `out_of_order` 409, `window_conflict` 409, `not_found` 404, `internal_error` 500.
 
 ## 6. Versioning and change process

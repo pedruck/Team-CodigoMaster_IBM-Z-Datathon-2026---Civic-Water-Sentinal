@@ -62,6 +62,8 @@ class Settings:
     history_capacity: int = 288
     min_history_windows: int = 144
     require_aligned_timestamps: bool = True
+    # Timestamps without timezone: "UTC" = interpret as UTC, "reject" = 422 (ADR-004).
+    naive_timestamp_tz: str = "UTC"
     result_capacity: int = 2016
     alert_capacity: int = 10_000
     sensor_registry_path: Path = DEFAULT_REGISTRY_PATH
@@ -92,6 +94,7 @@ class Settings:
             history_capacity=_int(e, "SENTINEL_HISTORY_CAPACITY", 288),
             min_history_windows=_int(e, "SENTINEL_MIN_HISTORY_WINDOWS", 144),
             require_aligned_timestamps=_bool(e, "SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS", True),
+            naive_timestamp_tz=_choice(e, "SENTINEL_NAIVE_TIMESTAMP_TZ", "UTC", {"UTC", "reject"}),
             result_capacity=_int(e, "SENTINEL_RESULT_CAPACITY", 2016),
             alert_capacity=_int(e, "SENTINEL_ALERT_CAPACITY", 10_000),
             sensor_registry_path=Path(

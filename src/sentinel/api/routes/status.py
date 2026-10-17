@@ -25,7 +25,12 @@ def get_status(pipeline: PipelineDep, request: Request) -> StatusResponse:
         interval_seconds=pipeline.settings.interval_seconds,
         last_timestamp=pipeline.last_timestamp,
         history=pipeline.history_info(),
-        sensor_registry={"provisional": reg.provisional, "source": reg.source, **reg.counts},
+        sensor_registry={
+            "provisional": reg.provisional,
+            "source": reg.source,
+            "units": reg.units,
+            **reg.counts,
+        },
         forecaster=pipeline.forecaster.info,
         detector=pipeline.detector.info,
         audit_sink=pipeline.audit_sink.name,

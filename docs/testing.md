@@ -23,6 +23,8 @@ barriers.
 | `tests/test_schemas.py` | unit | window contract: valid payload, naive/offset timestamps, NaN/±Inf, strings/bools, unknown fields, bad IDs, schema version, content hash |
 | `tests/test_ingestion.py` | unit | sensor registry (missing/unexpected), timestamp grid |
 | `tests/test_history.py` | unit | order, repeated/older timestamps, gaps, capacity, past-only tail, restart, concurrent readers |
+| `tests/test_sensors.py` | unit + API | registry from the data owner's `sensors.csv` (order, units, unknown types, duplicates, mixed units), provisional JSON, real-shaped window accepted by the API |
+| `tests/test_timezone_policy.py` | unit + API | naive / offset timestamps, UTC assumption flag, `reject` policy, naive ≡ `Z` duplicate, setting validation |
 | `tests/test_config.py` | unit | env parsing, documented defaults, invalid config fails at startup, no silent non-mock models |
 | `tests/test_metrics.py` | unit | nearest-rank percentiles, counters |
 | `tests/test_pipeline.py` | integration (mocks, no HTTP) | insufficient history, past-only forecaster input, duplicate/conflict/out-of-order, gaps, capacity, forecaster/detector failures, contract violations, single stateful detector, audit events, audit failure, restart, concurrency |
@@ -36,7 +38,7 @@ barriers.
 | # | Scenario | Test(s) |
 |---|---|---|
 | 1 | valid payload | `test_valid_payload_is_accepted_and_ints_become_floats`, `test_valid_window_returns_201_with_result` |
-| 2 | timestamp without timezone | `test_naive_timestamp_is_rejected`, `test_naive_timestamp_returns_422_envelope` |
+| 2 | timestamp without timezone | `tests/test_timezone_policy.py` (read as UTC by default, 422 with `reject`), `test_naive_timestamp_is_rejected` (internal model), `test_unparseable_timestamp_returns_422_envelope` |
 | 3 | non-finite values | `test_non_finite_values_are_rejected`, `test_nan_in_raw_json_is_rejected` |
 | 4 | unknown fields | `test_unknown_top_level_field_is_rejected`, `test_unknown_field_is_rejected` |
 | 5 | missing sensor | `test_missing_sensor_is_rejected_with_details`, `test_missing_sensor_returns_sensor_set_mismatch` |

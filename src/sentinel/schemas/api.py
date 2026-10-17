@@ -30,6 +30,10 @@ class WindowResult(ContractModel):
     """Outcome of ingesting one window. Stored and returned again for idempotent resends."""
 
     timestamp: UtcDatetime
+    timestamp_tz_assumed: bool = Field(
+        default=False,
+        description="True if the window came without timezone and UTC was assumed (ADR-004).",
+    )
     status: ProcessingStatus
     duplicate: bool = False
     gap_windows: int = Field(ge=0, description="Missing intervals right before this window.")
