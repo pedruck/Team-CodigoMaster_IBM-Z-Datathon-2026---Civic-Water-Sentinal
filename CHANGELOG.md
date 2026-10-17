@@ -6,6 +6,7 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- GitHub Actions CI running `just ci` on pull requests and pushes to `main`.
 - Contracts v1.0 (`Proposed`): window, forecast request/result, detection result, alert,
   audit event/ref; examples in `docs/examples/` validated by tests.
 - Provisional sensor registry with placeholder IDs (33 pressure, 3 flow, 1 tank level).

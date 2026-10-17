@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `feat/backend-foundation` (PR to `main`).
+**Last update:** 2026-10-17 — PR #1 (foundation) merged into `main`; PR #2 adds CI (BE-018).
 
 ## Summary
 
@@ -14,7 +14,7 @@ real models, real sensor IDs, the real audit log or LinuxONE yet. All contracts 
 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
-BE-009 metrics/logs/benchmark (x86, mocks). Details: `docs/implementation-plan.md`.
+BE-009 metrics/logs/benchmark (x86, mocks) · BE-018 CI (GitHub Actions). Details: `docs/implementation-plan.md`.
 
 ## In progress
 
@@ -33,8 +33,7 @@ None.
 
 ## Pending (independent, not started)
 
-BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client ·
-BE-018 CI workflow.
+BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
 ## External dependencies
 
@@ -66,7 +65,7 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 ## Next recommended step
 
 Get answers to the P0 questions (start with Q-TEAM-01 owners and Q-DATA-06 sensor IDs), then
-BE-010. Independent meanwhile: BE-018 (CI).
+BE-010. Independent meanwhile: BE-017 (load test).
 
 ## Verification (2026-10-17, x86_64, Python 3.12.13)
 
@@ -76,5 +75,6 @@ BE-010. Independent meanwhile: BE-018 (CI).
 | `just bench 5000` | 5000 windows, total p50 0.3707 ms / p99 0.7358 ms (mocks) |
 | uvicorn + `scripts/replay.py` (576 synthetic windows) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 6.797 / p99 14.837 ms |
 | `just dev` + README curl + `just replay` (fresh server) | example → 201 `insufficient_history`; 288 × 201; 1 mock alert |
+| GitHub Actions run 39040317019 (`just ci`, ubuntu-latest, Python 3.12) | success · 52 files already formatted · ruff OK · mypy OK · **89 passed** |
 | s390x / real models / real data | **NOT_RUN** — blocked (see above) |
 | line coverage | **NOT_RUN** — no coverage tool configured |
