@@ -11,10 +11,22 @@ It renders a report that always carries the "simulated data (BattLeDIM L-Town); 
 
 **Blocked by:** 08 (ADR-010)
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Tests with hand-made tables: alert before start, inside the window, after Tmax; two alerts for one leak; alert with no leak; a leak active at year start; `suspected_onset` null
-- [ ] Tests: the header is always present; the watermark appears for mock or provisional runs
-- [ ] `just check` green
+- [x] Tests with hand-made tables: alert before start, inside the window, after Tmax; two alerts for one leak; alert with no leak; a leak active at year start; `suspected_onset` null
+- [x] Tests: the header is always present; the watermark appears for mock or provisional runs
+- [x] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Done (TDD, 14 tests on a hand-made worked example checked independently by a
+  reviewer). Reuses P4's `layer1.evaluate`; no second matching implementation.
+- Review fixes: delay from peak and max; guard for label windows longer than 731 days; inherited
+  leaks and false-alarm times listed; "time-only hits" caveat; manifest gains registry and
+  `uv.lock` hashes and the protocol version; the new-in-year view no longer prints false alarms;
+  dirty tree watermark added to ADR-010 §9.
+- Debt: `_nearest_rank` duplicates `observability.metrics._percentile`; `Manifest` lives in the
+  report module; the onset error takes the first alert with an onset among those sharing the
+  detection `window_end`.

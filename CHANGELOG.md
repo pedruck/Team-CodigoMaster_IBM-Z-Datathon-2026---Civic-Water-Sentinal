@@ -67,6 +67,17 @@ contract versions are tracked separately (`schema_version`).
   `layer1.evaluate` reused, secondary views "within 7 days" and "new in 2019"; false alarms only
   from the 7-day view (0 by construction under the official window without the pipe rule);
   region accuracy and euro score "not computed" until regions/pipes exist.
+- Layer-2 run (EV-003, P6): `python -m sentinel.eval --windows … --api … --labels … --out …`
+  checks the labels against the official BattLeDIM 2019 list before posting (`sentinel.eval.labels`),
+  replays through the API recording every response (`sentinel.eval.run`: fresh-instance check,
+  restart detection with 1 s tolerance, rejections by HTTP code), fetches the alerts, and writes
+  playback-compatible artefacts, `report.md` and `manifest.json` (calibration hash required and
+  checked for the CUSUM; missing alerts watermark the report).
+- Layer-2 evaluation core (EV-002, P6): `sentinel.eval.metrics.evaluate_run` (ADR-010 views over
+  `layer1.evaluate`: primary official window with `max_delay` 731 days and a guard against longer
+  label windows, 7-day operator view as the only false-alarm source, leaks new in the year;
+  delays from start and peak, onset error) and `sentinel.eval.report.render_report` (wording
+  header, NOT A RESULT for mocks / provisional IDs / dirty tree, per-leak table, manifest).
 - Demo runbook (UI-007, P6): `docs/demo-runbook.md` — setup with a free local tunnel port,
   timed script, banner meanings, contingency; history empty state now reads "No alerts match the
   history filters" (it repeated the list's text).

@@ -23,14 +23,28 @@ only from the evaluation data area.
 
 **Blocked by:** 09, 02
 
-**Status:** ready-for-agent
+**Status:** in progress (code done; the run is blocked)
 
 - [ ] A run over the 2019 windows completes through the API; counts of windows (105,120 or every
       rejection explained) and alerts reported
-- [ ] Restart detection invalidates the run (tested with a stub)
-- [ ] Manifest has every listed field; a run with mocks gets the watermark
-- [ ] Output alerts and status load in the playback adapter
-- [ ] The ground-truth path is not referenced by any non-evaluation code (guard test)
+- [x] Restart detection invalidates the run (tested with a stub)
+- [x] Manifest has every listed field; a run with mocks gets the watermark
+- [x] Output alerts and status load in the playback adapter
+- [x] The ground-truth path is not referenced by any non-evaluation code (guard test)
 - [ ] `just check` green; run commands and results recorded in `docs/status.md`
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Recorder, official-label check and CLI done (TDD; real uvicorn on a pre-bound
+  socket, no sleeps). Review fixes: fresh-instance check, rejections by HTTP code (non-JSON bodies
+  kept), calibration hash required and matched to the CUSUM version suffix, missing alerts
+  watermark the report, year from the first window, period over accepted windows.
+- Found while testing the absences: the real `eval/v1/leaks_2019.csv` (VM) differs from the
+  official list for p257, p427, p654, p810 (start/peak clipped to 2019-01-01) → Q-DATA-07 (P1).
+  `/v1/status.started_at` jitters by µs → 1 s tolerance, Q-DOC-03 (P3).
+- Debt: `_request` duplicates `scripts/replay.py`; the manifest's architecture is the evaluator's
+  (the API does not expose the server's); the registry hash is of the local file passed with
+  `--registry`, not what the server loaded.
+- Blocked: the 2019 run itself (final calibration DEP-DET-05; Q-DATA-07).
