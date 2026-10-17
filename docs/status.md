@@ -37,6 +37,9 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
+P6 dashboard & evaluation: UI-001..007 and EV-001..003 planned (TODO), spec and tickets in
+`.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
+
 ## External dependencies
 
 22 open/partial items in `docs/dependencies.md`; P0 questions in
