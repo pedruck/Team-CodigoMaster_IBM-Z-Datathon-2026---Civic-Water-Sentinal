@@ -19,6 +19,7 @@ packages = ["src/sentinel"]
 
 [dependency-groups]
 dashboard = [
+    "ipywidgets>=8.1.9",
     "streamlit>=1.66.0",
 ]
 dev = [
@@ -55,3 +56,7 @@ strict = true
 mypy_path = "src"
 files = ["src", "tests", "scripts", "dashboard"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["ipywidgets", "ipywidgets.*"]  # no type information shipped
+ignore_missing_imports = true

@@ -61,6 +61,13 @@ coupling the dashboard to backend internals.
     Q-AUD-06, narrative Q-AUD-07, BattLeDIM score Q-DET-07): they are requested from their
     owners, not worked around.
 
+**Addendum (2026-10-17) — Jupyter view.** Streamlit cannot run in the VM's JupyterLab
+container: `pyarrow` has no s390x wheel on PyPI (sdist only), `jupyter-server-proxy` is absent and
+only the Jupyter port is published. A second renderer, `dashboard/jupyter.py` (ipywidgets, already
+in the container), reuses the same seam, poll, formatting and banners; the notebook
+`notebooks/p6_eval/dashboard.ipynb` mounts it. The Streamlit page stays the primary view (laptop +
+SSH tunnel); the Jupyter view has no history filters.
+
 ## Alternatives considered
 - **React SPA with types generated from OpenAPI:** better UX, but a second toolchain, CORS
   or a proxy, and generated types that still do not validate responses at runtime; too much

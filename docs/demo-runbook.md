@@ -58,6 +58,14 @@ banners say it on screen; say it out loud too.
 | Contract mismatch | the API answer does not match the contract models | do not show data; switch to tab 2 |
 | explanation unavailable | no narrative endpoint yet (Q-AUD-07) | "the structured evidence is the source of truth" |
 
+## 3b. Inside JupyterLab on the VM
+
+Streamlit does not run in the VM's Jupyter container (no `pyarrow` for s390x). The Jupyter view
+does: in your clone (`~/shared/civicwater/users/<name>/repo`) check out the branch with
+`dashboard/jupyter.py`, open `notebooks/p6_eval/dashboard.ipynb`, set `EU`, pick the source
+(shared API `http://127.0.0.1:8000`, your personal port, or a recording) and run all cells.
+Same banners and rules as above; call `dash.stop()` before closing the kernel.
+
 ## 4. Contingency
 
 | Failure on the day | Fallback | Screen / speech |
