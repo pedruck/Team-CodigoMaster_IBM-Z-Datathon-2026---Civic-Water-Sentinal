@@ -4,6 +4,7 @@ The calibration numbers below are invented for the tests; they are not results.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from sentinel.detection.cusum import CusumDetector
-from tests.conftest import ts
+from tests.conftest import INTERVAL, ts
 
 ARTEFACT: dict[str, Any] = {
     "provenance": "synthetic",
@@ -31,7 +32,7 @@ def write(tmp_path: Path, artefact: dict[str, Any]) -> Path:
 
 
 def test_detector_uses_the_numbers_of_the_artefact_file(tmp_path: Path) -> None:
-    detector = CusumDetector.from_file(write(tmp_path, ARTEFACT))
+    detector = CusumDetector.from_file(write(tmp_path, ARTEFACT), interval=INTERVAL)
 
     result = detector.evaluate({"P1": 49.5, "P2": 49.5}, {"P1": 50.0, "P2": 50.0}, ts(0))
 
@@ -73,4 +74,10 @@ def without(key: str) -> dict[str, Any]:
 )
 def test_invalid_artefact_is_rejected_at_load(tmp_path: Path, artefact: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
-        CusumDetector.from_file(write(tmp_path, artefact))
+        CusumDetector.from_file(write(tmp_path, artefact), interval=INTERVAL)
+
+
+@pytest.mark.parametrize("interval", [timedelta(0), -INTERVAL], ids=["zero", "negative"])
+def test_window_length_must_be_positive(tmp_path: Path, interval: timedelta) -> None:
+    with pytest.raises(ValueError, match="interval"):
+        CusumDetector.from_file(write(tmp_path, ARTEFACT), interval=interval)
