@@ -1,4 +1,207 @@
-# Integration contracts
+# Integration contracts (v1.0 — Proposed)
 
-Initial placeholder. Contracts v1 (window, forecaster, detector, alert, audit) are written in
-the next commit, together with their Pydantic schemas.
+Code is the source of truth: `src/sentinel/schemas/` (Pydantic) and the ports in
+`src/sentinel/forecasting/interface.py`, `src/sentinel/detection/interface.py`,
+`src/sentinel/audit/sinks.py`. HTTP schemas: `GET /openapi.json` or `/docs` on a running
+server. Examples in [`docs/examples/`](examples/) are validated by
+`tests/test_contract_examples.py`.
+
+All contracts are `Proposed` until the owner listed in each section confirms them
+(`docs/questions-for-team.md`). Changes follow [§6](#6-versioning-and-change-process).
+
+Common rules for every contract model:
+- unknown fields are rejected (`extra="forbid"`), models are immutable;
+- timestamps must carry a timezone and are normalised to UTC (serialised with `Z`);
+- numbers must be finite JSON numbers: `NaN`, `±Infinity`, strings (`"50.1"`) and booleans
+  are rejected;
+- sensor IDs: 1–64 chars, `[A-Za-z0-9_.:-]`.
+
+## 1. Window — `POST /v1/windows` (owner to confirm: data/replay)
+
+| Field | Type | Rule |
+|---|---|---|
+| `schema_version` | `"1.0"` | required; other values rejected |
+| `timestamp` | datetime with TZ | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`) |
+| `pressures` | `{sensor_id: number}` | non-empty; metres (head) — unit to confirm (Q-DATA-01) |
+| `flows` | `{sensor_id: number}` | unit to confirm (Q-DATA-01) |
+| `tank_levels` | `{sensor_id: number}` | metres — to confirm |
+| `source` | string \| null | optional replay/run ID; not part of the content hash |
+
+Sensor set: every window must contain **exactly** the IDs of the sensor registry
+(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. The shipped
+registry `config/sensors.provisional.json` uses **placeholder IDs** (`P01..P33`, `F01..F03`,
+`T01`) — only the counts come from the design document. Real IDs: DEP-DATA-01.
+
+Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
+(an unknown field such as `leak_label` is rejected anyway).
+
+Time-series rules (ADR-004): duplicate → 200 idempotent; same timestamp with different data
+→ 409 `window_conflict`; older than last accepted → 409 `out_of_order`; gap → accepted with
+`gap_windows`, contiguity resets; fewer contiguous past windows than required → accepted,
+`insufficient_history`. A resend is recognised as a duplicate only while its result is
+retained (`SENTINEL_RESULT_CAPACITY`, default 2016 windows = 7 days); older resends get
+409 `out_of_order`.
+
+Valid: [`window.valid.json`](examples/window.valid.json) (abridged):
+
+```json
+{
+  "schema_version": "1.0",
+  "timestamp": "2019-03-14T12:30:00Z",
+  "pressures": {"P01": 44.8754, "P02": 44.9302, "…": "P03..P32 omitted here", "P33": 49.8362},
+  "flows": {"F01": 19.9344, "F02": 19.8424, "F03": 19.847},
+  "tank_levels": {"T01": 2.8739},
+  "source": "replay-2019-example"
+}
+```
+
+Invalid examples (all 422):
+
+| File | Why | `error.code` |
+|---|---|---|
+| `window.invalid.naive-timestamp.json` | `"2019-03-14T00:00:00"` has no timezone | `validation_error` (`timezone_aware`) |
+| `window.invalid.string-value.json` | `"P01": "50.1"` | `validation_error` |
+| `window.invalid.unknown-field.json` | extra `leak_label` | `validation_error` (`extra_forbidden`) |
+| `window.invalid.missing-sensor.json` | `P33` absent | `sensor_set_mismatch` (`details.missing_pressures`) |
+| `window.invalid.misaligned.json` | `00:02:30Z` | `timestamp_misaligned` |
+
+Response: `WindowResult` — [`window-result.scored.json`](examples/window-result.scored.json).
+`status ∈ {scored, insufficient_history, forecast_failed, detection_failed}`,
+`audit ∈ {recorded, disabled, failed}`, `issues[]`, `latency_ms` per stage.
+
+## 2. Forecaster (owner to confirm: ML)
+
+```python
+class Forecaster(Protocol):
+    info: ModelInfo                 # name, version, is_mock
+    min_history_windows: int        # e.g. 144 for 12 h
+    def predict(self, request: ForecastRequest) -> ForecastResult: ...
+```
+
+`ForecastRequest` — guarantees given by the backend:
+- `target_timestamp`: timestamp of the window being scored.
+- `history`: tuple of `SensorWindow`, **ascending, contiguous, strictly before** the target;
+  last element = target − 300 s; length ≥ `max(SENTINEL_MIN_HISTORY_WINDOWS,
+  min_history_windows)` and ≤ `SENTINEL_HISTORY_CAPACITY` (default 288).
+- `current`: the window being scored (flows, tank level, other sensors, calendar from
+  `timestamp`). **No-leakage rule:** to predict sensor `s` the model must not read
+  `current.pressures[s]`. Whether it may read the *other* sensors' current pressures is a
+  modelling choice the design document makes for XGBoost (§3, Table 2) — declare it (Q-ML-02).
+- `pressure_sensor_ids`: sensors to predict, in registry order — use it as the array order
+  if the model works with arrays (ONNX fixed shapes).
+
+`ForecastResult` — [`forecast-result.valid.json`](examples/forecast-result.valid.json):
+- `timestamp` must equal `target_timestamp`;
+- `expected_pressures` must contain **exactly** `pressure_sensor_ids`, same unit as input;
+- `model`: `ModelInfo`; `contributions` (optional): `{sensor: {feature: metres}}`
+  (TreeSHAP for XGBoost, design doc §6).
+
+Errors: raise `ForecastError` for expected failures (model not loaded, bad shape). Any
+exception → window `forecast_failed` (not retried, ADR-004). A result violating the rules
+above → `forecast_failed` with `issues[0].code = "invalid_forecast"`. Insufficient history
+never reaches the forecaster. Observed and expected values are never mixed: the forecaster
+only returns expected values; residuals are the detector's job.
+
+Mock: `PersistenceMockForecaster` (expected = previous window). `is_mock=true`. It is not a
+model and its output is not evidence of anything.
+
+## 3. Detector (owner to confirm: detection/localisation)
+
+```python
+class Detector(Protocol):
+    info: ModelInfo
+    def evaluate(self, observed: Mapping[str, float],      # current pressures, registry sensors
+                 expected: Mapping[str, float],            # ForecastResult.expected_pressures
+                 timestamp: datetime) -> DetectionResult: ...
+```
+
+- **Stateful:** CUSUM accumulates across windows. The backend creates **one instance per
+  process** and calls it strictly in timestamp order, never concurrently, never twice for
+  the same window. After a restart the state starts empty (ADR-003).
+- **Atomic:** either update state and return, or raise (`DetectionError`) without having
+  changed state.
+- Gaps: the detector is not told explicitly; it receives non-consecutive timestamps. Expected
+  behaviour (reset or continue) to define (Q-DET-03).
+
+`DetectionResult` — [`detection-result.valid.json`](examples/detection-result.valid.json):
+
+| Field | Meaning |
+|---|---|
+| `timestamp` | must equal the evaluated window (else `invalid_detection`) |
+| `model` | `ModelInfo` |
+| `state` | `normal` \| `suspect` \| `alarm` |
+| `anomaly_score` | optional scalar (e.g. max CUSUM) — unit to define |
+| `residuals` | `{sensor: {residual_m, z?, cusum?}}` |
+| `alerts[]` | alerts **opened at this window** (not ongoing ones): `region?`, `suspected_onset?`, `cusum{statistic, threshold}?`, `deviating_sensors[] {sensor, deviation_m, z?, since?}` (≥1), `summary?` |
+| `region_scores` | optional `{region: score}` |
+| `diagnostics` | free `{key: number|string|bool}` (e.g. `k`, `h`) |
+| `complete`, `issues[]` | `complete=false` → result kept, issue `incomplete_detection` |
+
+**Sign convention (proposed):** `residual_m = observed − expected` (negative when pressure is
+low). The design document writes `z = (expected − observed)/σ` (§3) but its example alert
+shows `deviation_m: -0.9, z: -4.1` (§6), i.e. the opposite sign. To confirm (Q-DET-02).
+
+Mock: `ThresholdMockDetector` — opens one alert when ≥ N sensors are ≥ 3σ below expected.
+Not CUSUM, no region.
+
+## 4. Alert and audit (owners to confirm: audit; dashboard)
+
+`Alert` v1.0 — [`alert.mock.json`](examples/alert.mock.json). Built by the backend from an
+`AlertCandidate` plus context:
+
+| Field | Source |
+|---|---|
+| `schema_version`, `alert_id` | backend; `A-<window_end yyyymmddThhmm>Z-<n>`, deterministic |
+| `window_end`, `created_at` | window timestamp; server clock |
+| `classification` | detector (`leak_suspected`) |
+| `region`, `suspected_onset`, `cusum`, `deviating_sensors`, `summary` | detector |
+| `hours_since_onset` | backend: `window_end − suspected_onset` |
+| `forecast_contributions_m` | forecaster contributions restricted to deviating sensors |
+| `models`, `is_mock` | forecaster/detector `ModelInfo`; true if any is a mock |
+| `audit` | `{seq, hash}` from the sink, `null` if disabled/failed |
+
+Differences from the design document example (§6), to confirm: `alert_id` format, `audit`
+object instead of `audit_seq`, `models` object instead of `model` string,
+`forecast_contributions_m` per sensor instead of `xgboost_contributions_m` for one sensor.
+The generated narrative is not part of this payload (narrative module).
+
+Audit port:
+
+```python
+class AuditSink(Protocol):
+    name: str
+    enabled: bool
+    def append(self, event: AuditEvent) -> AuditRef: ...   # raise AuditError on failure
+```
+
+`AuditEvent {type, window_end, alert_id?, payload}` with `type ∈ {alert.raised,
+window.scored, window.not_scored}`; one `window.*` event per accepted window (design doc:
+"every scored window and every alert"). `alert.raised.payload` = the alert serialised
+**without** its `audit` field. `AuditRef {seq, hash?}`.
+
+Requirements for the real sink (audit owner): append-only, sequence assigned by the sink,
+`hash = SHA-256(prev_hash ‖ canonical JSON)` (design doc §6), thread-safe, durable before
+returning. Shipped sinks: `NullAuditSink` (disabled) and `InMemoryAuditSink` (dev only, no
+hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
+contract and who may read it (DEP-AUD-02).
+
+## 5. Read API for the dashboard
+
+| Endpoint | Response | Notes |
+|---|---|---|
+| `GET /health` | `{status, version}` | liveness only |
+| `GET /v1/status` | `StatusResponse` | history, registry (provisional flag), models (`mocks_active`), counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
+| `GET /v1/alerts` | `AlertPage {items, total, limit, offset}` | newest first; `limit` 1–500 (50), `offset`, `since`/`until` (TZ required, on `window_end`, inclusive), `region` |
+| `GET /v1/alerts/{id}` | `Alert` | 404 `not_found` |
+
+Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
+`validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
+`out_of_order` 409, `window_conflict` 409, `not_found` 404, `internal_error` 500.
+
+## 6. Versioning and change process
+
+- Additive, optional fields: bump minor (`1.1`) and keep accepting `1.0`.
+- Removing/renaming fields, changing units or semantics: new major (`2.0`), new ADR,
+  announced in `docs/questions-for-team.md` before merging.
+- Every contract change updates: the Pydantic model, this file, `docs/examples/`, tests and
+  `CHANGELOG.md` in the same PR.

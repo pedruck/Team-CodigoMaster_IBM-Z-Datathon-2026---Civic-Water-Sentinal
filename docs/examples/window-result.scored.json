@@ -1,0 +1,37 @@
+{
+  "timestamp": "2019-03-14T12:30:00Z",
+  "status": "scored",
+  "duplicate": false,
+  "gap_windows": 0,
+  "history": {
+    "size": 151,
+    "contiguous": 151,
+    "required": 144,
+    "capacity": 288
+  },
+  "detector_state": "alarm",
+  "alert_ids": [
+    "A-20190314T1230Z-1"
+  ],
+  "forecaster": {
+    "name": "mock-persistence",
+    "version": "0.1.0",
+    "is_mock": true
+  },
+  "detector": {
+    "name": "mock-threshold",
+    "version": "0.1.0",
+    "is_mock": true
+  },
+  "issues": [],
+  "audit": "recorded",
+  "latency_ms": {
+    "validation": 0.0789,
+    "temporal_policy": 0.1372,
+    "history": 0.0118,
+    "forecast": 0.1878,
+    "detection": 0.3764,
+    "audit": 0.2026,
+    "total": 1.2419
+  }
+}

@@ -30,15 +30,15 @@ flowchart LR
 
 | Component | Package | Owner | State |
 |---|---|---|---|
-| HTTP API (FastAPI) | `sentinel.api` | Backend & Ingestion | planned |
-| Contracts (Pydantic) | `sentinel.schemas` | Backend & Ingestion, agreed with each owner | planned |
-| Window validation + sensor registry | `sentinel.services.ingestion`, `sentinel.sensors` | Backend & Ingestion | planned |
-| History buffer | `sentinel.services.history` | Backend & Ingestion | planned |
-| Pipeline / orchestration | `sentinel.services.pipeline` | Backend & Ingestion | planned |
-| Forecaster interface + mock | `sentinel.forecasting` | interface: Backend; real models: ML owner | planned (mock) |
-| Detector interface + mock | `sentinel.detection` | interface: Backend; CUSUM/localization: detection owner | planned (mock) |
-| Audit sink interface | `sentinel.audit` | interface: Backend; hash chain: audit owner | planned (null sink) |
-| Metrics | `sentinel.observability` | Backend & Ingestion | planned |
+| HTTP API (FastAPI) | `sentinel.api` | Backend & Ingestion | implemented, tested |
+| Contracts (Pydantic) | `sentinel.schemas` | Backend & Ingestion, agreed with each owner | implemented; v1.0 `Proposed` |
+| Window validation + sensor registry | `sentinel.services.ingestion`, `sentinel.sensors` | Backend & Ingestion | implemented; sensor IDs **provisional** |
+| History buffer | `sentinel.services.history` | Backend & Ingestion | implemented (in memory) |
+| Pipeline / orchestration | `sentinel.services.pipeline` | Backend & Ingestion | implemented, tested with mocks |
+| Forecaster interface + mock | `sentinel.forecasting` | interface: Backend; real models: ML owner | port + mock only |
+| Detector interface + mock | `sentinel.detection` | interface: Backend; CUSUM/localization: detection owner | port + mock only |
+| Audit sink interface | `sentinel.audit` | interface: Backend; hash chain: audit owner | port + null/in-memory dev sinks |
+| Metrics + JSON logs | `sentinel.observability` | Backend & Ingestion | implemented (in process) |
 | Narrative model, dashboard, replay of real data | other repos/owners | other members | out of scope here |
 
 Who owns what among the team members is still to be confirmed: see `docs/dependencies.md`.
@@ -48,7 +48,7 @@ Who owns what among the team members is still to be confirmed: see `docs/depende
 1. `POST /v1/windows` — Pydantic validates the payload shape (types, finite values,
    timezone, unknown fields).
 2. Ingestion validates it against the sensor registry (missing / unexpected sensors) and
-   timestamp alignment.
+   timestamp alignment (`services/ingestion.py`).
 3. Under the pipeline lock: temporal policy against the history (duplicate, conflict,
    out of order, gap) — ADR-004.
 4. Window appended to the history buffer (accepted from here on).
@@ -70,3 +70,10 @@ Failure handling, idempotency and the status vocabulary: ADR-006 and
 - Durable persistence (history, alerts and results are lost on restart — ADR-003).
 - Asynchronous queues or distributed processing (ADR-002).
 - Real forecasting, CUSUM, localization, hash chain or narrative (other owners).
+
+## Concurrency model
+
+Single process, single uvicorn worker. FastAPI runs the sync route in its thread pool;
+`Pipeline` serialises steps 3–10 with one lock, so the detector sees windows strictly in
+order and never concurrently. Throughput is therefore bounded by the per-window latency of
+forecaster + detector (measurements: `docs/performance.md`).
