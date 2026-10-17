@@ -40,7 +40,9 @@ M (½–2 days), L (> 2 days).
 Owner: P6. Spec and tickets: `.scratch/p6-dashboard-evaluation/` (spec + one file per
 ticket). Deadline 2026-10-18 10:00. UI-* are Tier 1 (mandatory); EV-* are Tier 2 and run
 only if the real detector is plugged into the VM API by 2026-10-17 22:00 (EV-003 gate).
-Details and acceptance criteria are in each ticket file.
+Details and acceptance criteria are in each ticket file. ADR-007/008 and Q-UI-05/06,
+Q-DET-06 are used by the detection owner's branch `feat/be-012-cusum-detector`; P6 uses ADR-009
+(dashboard), ADR-010 (layer-2 evaluation), Q-UI-07, Q-DET-07.
 
 | ID | Ticket | Task | Prio | Status | Depends on | Owner | Effort |
 |---|---|---|---|---|---|---|---|
@@ -49,11 +51,11 @@ Details and acceptance criteria are in each ticket file.
 | UI-003 | 03 | "Recent alerts" list (null-safe, simulated clock, SIMULATED badge) | P0 | DONE | UI-002 | P6 | S |
 | UI-004 | 04 | Alert detail with structured evidence | P0 | TODO | UI-003 | P6 | S |
 | UI-005 | 05 | Polling, dedup, failure states, paginated history with filters | P1 | TODO | UI-003 | P6 | M |
-| UI-006 | 06 | Cross-team proposals (Q-UI-05, Q-AUD-06/07, Q-DET-04/06) + ADR-007 | P1 | TODO | — | P6 | S |
+| UI-006 | 06 | Cross-team proposals (Q-UI-07, Q-AUD-06/07, Q-DET-07, Q-UI-03/04) + ADR-009 | P1 | TODO | — | P6 | S |
 | UI-007 | 07 | Demo runbook and contingency rehearsal (C5) | P0 | TODO | UI-004, UI-005 | P6 | S |
-| EV-001 | 08 | ADR-008 evaluation protocol, accepted before any 2019 run | P1 | TODO | — | P6 (+P4 review) | S |
+| EV-001 | 08 | ADR-010 layer-2 evaluation protocol (answers Q-UI-06 of P4's ADR-008), accepted before any 2019 run | P1 | TODO | — | P6 (+P4 review) | S |
 | EV-002 | 09 | Evaluation metrics core and report (header, watermark) | P1 | TODO | EV-001 | P6 | S |
-| EV-003 | 10 | In-process 2019 run with manifest, playback-compatible output | P1 | TODO (gated 22:00) | EV-002, UI-002 | P6 | M |
+| EV-003 | 10 | Layer-2 2019 run through the API (ADR-008), recorder + manifest, playback-compatible output | P1 | TODO (gated 22:00) | EV-002, UI-002 | P6 | M |
 
 ## Order of execution
 
