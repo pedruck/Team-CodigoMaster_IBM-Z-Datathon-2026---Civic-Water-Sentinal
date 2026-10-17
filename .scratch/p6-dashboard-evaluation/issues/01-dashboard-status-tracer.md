@@ -30,9 +30,9 @@ Spec: `.scratch/p6-dashboard-evaluation/spec.md`
 ## Comments
 
 - 2026-10-17 — Streamlit 1.66.0 (pyarrow 26.0.0) installs on x86 in ~8 s. SSH works with
-  `linux1@148.100.99.103` (host `ibmdatathon`, s390x); the runbook's `linuxone` is a local
-  ssh-config alias. Tunnel `ssh -f -N -o ControlMaster=no -o ControlPath=none
-  -o ExitOnForwardFailure=yes -L 8000:172.17.0.2:8000 linux1@148.100.99.103` works; real
+  the VM (`linux1@<vm-host>`, host `ibmdatathon`, s390x; address in the team channel); the
+  runbook's `linuxone` is a local ssh-config alias. Tunnel `ssh -f -N -o ControlMaster=no -o ControlPath=none
+  -o ExitOnForwardFailure=yes -L 8000:172.17.0.2:8000 linuxone` works; real
   `/health`, `/v1/status`, `/v1/alerts` parse with the contract models. The shared API had
   replayed all of 2019 with mocks: 0 alerts.
 - Runbook issue for P3: `docker inspect -f '{{.NetworkSettings.IPAddress}}' notebook` fails on

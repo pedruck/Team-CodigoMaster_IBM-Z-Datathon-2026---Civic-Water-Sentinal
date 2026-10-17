@@ -85,8 +85,10 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
   `leo/local-version` (hash chain, verifier CLI, narrative; no HTTP endpoint, records fail-open,
   Q-DOC-01). P6 renumbered to ADR-009/010, Q-UI-07, Q-DET-07.
 
-- The shared API on port 8000 holds 2019 in memory; any restart wipes it (re-run the replay,
-  `docs/runbook-vm.md`).
+- The shared API on port 8000 runs `main` @ `333b1bd` with the **real XGBoost forecaster**
+  (`xgboost-33@0.1.0`, TreeSHAP off, `compress_trees`) and the **mock detector**, and holds 2019
+  in memory (0 alerts: the mock's σ = 1 m against millimetre residuals). Any restart wipes it
+  (re-run the replay, `docs/runbook-vm.md`).
 - Separate repository may need to be merged into a team repository (Q-TEAM-02).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
 - Fail-closed audit: during an audit outage no new alerts are served; the pending queue is in
@@ -129,11 +131,10 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Merge PR #7, then restart the shared API with `SENTINEL_FORECASTER=xgboost` (announce first,
-`docs/runbook-vm.md`) and replay 2019 over HTTP. Finish BE-012f and the calibration on the
+Finish BE-012f and the calibration on the
 XGBoost out-of-fold residuals (DEP-DET-05) so `SENTINEL_DETECTOR=cusum` can run with the real
 forecaster; then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
-s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
+already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-17)
 
@@ -147,7 +148,7 @@ s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 | UI-003 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 74 files · **169 passed, 8 skipped** (P1 data tests) |
 | UI-002 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 72 files · **160 passed, 8 skipped** (P1 data tests) |
 | UI-001 gates (x86, Python 3.12, `uv sync --locked --group dashboard`): `ruff format`, `ruff check`, `mypy`, `pytest` over src tests scripts dashboard | ruff OK · mypy: no issues in 70 files · **133 passed, 8 skipped** (P1 data tests, no `$SENTINEL_DATA_DIR`) |
-| UI-001 smoke: SSH tunnel `-L 8000:172.17.0.2:8000 linux1@148.100.99.103`, dashboard `AppTest` + `streamlit run --server.headless` | header: API online, simulated time 2019-12-31 23:55 UTC, mock-persistence/mock-threshold, SIMULATED badge; `/_stcore/health` ok |
+| UI-001 smoke: SSH tunnel `-L 8000:172.17.0.2:8000 linuxone` (ssh-config alias; address in the team channel), dashboard `AppTest` + `streamlit run --server.headless` | header: API online, simulated time 2019-12-31 23:55 UTC, mock-persistence/mock-threshold, SIMULATED badge; `/_stcore/health` ok |
 | `just check` (ruff format, ruff check, mypy strict, pytest) | 52 files unchanged · ruff: all checks passed · mypy: no issues in 52 files · **89 passed** |
 | `just bench 5000` | 5000 windows, total p50 0.3707 ms / p99 0.7358 ms (mocks) |
 | uvicorn + `scripts/replay.py` (576 synthetic windows) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 6.797 / p99 14.837 ms |
@@ -184,7 +185,7 @@ s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 | LinuxONE container, same local merge: `python -m pytest -q` | **612 passed, 12 skipped** (streamlit tests skip: no s390x build); `test_determinism.py`, `test_forecaster_wiring.py`, `test_eval_run.py`, `test_dashboard_jupyter.py` 31 passed |
 | LinuxONE, same merge: API on a private port (XGBoost `compress_trees`, TreeSHAP off, mock detector) + `sentinel.eval.run.record_run` with `windows_2019.jsonl` over HTTP | 105 120 windows, 0 rejected, 0 alerts, 0 missing, 320.9 s (≈ 328 windows/s, client and server on the VM) |
 | same, XGBoost `auto` + TreeSHAP, mock detector σ 0.01 m (to get alerts), first 1000 windows; Jupyter dashboard (PR #11) live and on the recorded run | 1000 windows, 0 rejected, 9 alerts, all valid `Alert` with `forecast_contributions_m`; dashboard shows XGBoost `is_mock=false`, the SIMULATED banner and 9 alerts with contributions in both sources |
-| real models on the **shared** API (port 8000) | **NOT_RUN** — waits for the merge and an announced restart |
+| shared API (port 8000) on `main` @ `333b1bd` (PRs #7, #10, #11 merged), `shared_api.sh restart` with `SENTINEL_FORECASTER=xgboost` (TreeSHAP off, `compress_trees`) + `scripts/replay.py windows_2019.jsonl` | `status`: forecaster `xgboost-33 0.1.0 is_mock=false`, detector mock · 105 120 × 201, 0 errors, 247.0 s, 425.6 windows/s, client p50 1.96 / p99 11.17 / max 204.5 ms · 0 alerts |
 | line coverage | **NOT_RUN** — no coverage tool configured |
 | branch `wip/be-012-docs-final`, base `56170f9` plus this documentation change — x86-64 (Intel Core Ultra 7 155H), Python 3.14.7: `just check` (ruff format, ruff check, mypy strict, pytest) | ruff format: 83 files left unchanged · ruff check: all checks passed · mypy: no issues found in 83 source files · **464 passed, 9 skipped** (8 P1 data tests and 1 offline-baseline real-data test, skipped without `SENTINEL_DATA_DIR`) |
 | same, `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run pytest tests/test_p1_data.py tests/detection/test_offline_baseline.py -q` | **48 passed** (the real-data tests ran; the offline one checks shape and finiteness only) |

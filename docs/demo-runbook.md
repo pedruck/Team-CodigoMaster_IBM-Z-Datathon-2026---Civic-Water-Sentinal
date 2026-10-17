@@ -38,7 +38,7 @@ banners say it on screen; say it out loud too.
 |---|---|---|
 | 0:00 | Header of tab 1 | "CivicWater Sentinel watches 33 pressure sensors of L-Town, the BattLeDIM **simulated** network, in 5-minute windows, running on IBM LinuxONE." Point at *Simulated time*: "this is the replay's clock, not today's." |
 | 0:45 | SIMULATED banner, Forecaster / Detector metrics | "Every model shown here is flagged: SIMULATED means a mock or a calibration that is not final. Nothing on this screen is leak detection yet." |
-| 1:30 | Tab 1 list ("Recent alerts") | If empty **and** `/v1/status` shows `last_timestamp` 2019-12-31 23:55 and `counters.alerts_stored` 0 (step 3): "All of 2019 was replayed through this API with **mock** models: no alert was opened." An empty list can also mean a restart or alerts held by the audit; otherwise say only "no alert stored right now". Never present it as a result. |
+| 1:30 | Tab 1 list ("Recent alerts") | If empty **and** `/v1/status` shows `last_timestamp` 2019-12-31 23:55 and `counters.alerts_stored` 0 (step 3): "All of 2019 was replayed through this API with the real XGBoost forecaster and the **mock** detector: no alert was opened." (check `forecaster` / `detector` in `/v1/status` first; with both mocks say "**mock** models") An empty list can also mean a restart or alerts held by the audit; otherwise say only "no alert stored right now". Never present it as a result. |
 | 2:00 | Tab 2, RECORDED REPLAY banner | "This is a recording of the real CUSUM detector code with an **invented** calibration and regions, a **mock** forecaster and a **synthetic** day (the 2019-03-14 date is only the replay clock), to show the evidence an operator gets." |
 | 2:30 | Alert row → detail | Region, sensors with deviation and z, CUSUM statistic vs threshold, estimated onset and hours since onset as computed by the backend, audit reference raw, "explanation unavailable". |
 | 3:30 | History: region filter `R-SYN-A`, page size | "History is paginated and filtered by time and region; the list refreshes every 5 s." |
@@ -71,7 +71,7 @@ Same banners and rules as above; call `dash.stop()` before closing the kernel.
 | Failure on the day | Fallback | Screen / speech |
 |---|---|---|
 | VM or tunnel down | tab 2 (recorded run); optionally the API on the laptop (`just dev`, same commit) | RECORDED REPLAY banner; s390x numbers quoted from `docs/performance.md` with their date |
-| Real forecaster (XGBoost/GRU) fails to load | the API keeps the mock; say so | `Forecaster` metric shows the mock, SIMULATED on |
+| Real forecaster (XGBoost/GRU) fails to load | the API does **not** start (no fallback to the mock, ADR-005); `scripts/shared_api.sh start` prints the log. Restart it with the mock (`docs/runbook-vm.md`) or switch to a recording, and say so | dashboard shows "API unavailable" until restarted; then the `Forecaster` metric shows the mock, SIMULATED on |
 | No real model at all | tab 2 | RECORDED REPLAY |
 | LLM / narrative down | nothing changes (structured evidence only) | "explanation unavailable" |
 | Audit down | fail-closed backend: an alert is published only after its audit record (ADR-006) | the alert does not appear until audited; `/v1/status` `audit_pending_alerts` shows how many wait ("audit unavailable" means the sink is disabled) |
