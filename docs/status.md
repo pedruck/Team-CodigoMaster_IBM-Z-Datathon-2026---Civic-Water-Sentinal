@@ -86,8 +86,8 @@ end of interval). Independent meanwhile: fail-closed audit decided in
 | LinuxONE: `scripts/bench_pipeline.py --windows 5000` | total p50 0.1645 ms / p99 0.3514 ms (mocks) |
 | LinuxONE: uvicorn + `scripts/replay.py` (576 windows, localhost) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 1.419 / p99 17.988 ms |
 | x86 vs s390x `content_hash` of `window.valid.json` | identical (`7fc91e5a…9717fa`) |
-| LinuxONE container (`/opt/venv`), branch `zanetti/ingestion` @ `c70f997`: `python -m pytest -q` | **96 passed** |
-| x86: `just check` @ `c70f997` | ruff OK · mypy OK (56 files) · **96 passed** |
-| LinuxONE: `scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` | 105 120 windows, 0 rejected, pipeline p50 0.1988 / p99 0.4044 ms |
+| LinuxONE container (`/opt/venv`), branch `zanetti/ingestion` @ `073c605`: `python -m pytest -q` | **107 passed** |
+| x86: `just check` @ `073c605` | ruff OK · mypy OK (57 files) · **107 passed** |
+| LinuxONE: `scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` @ `073c605` (CSV timestamps sent as is) | 105 120 windows, 0 rejected, 105 120 with `timestamp_tz_assumed`, pipeline p50 0.2231 / p99 0.4074 ms |
 | real models | **NOT_RUN** — blocked (see above) |
 | line coverage | **NOT_RUN** — no coverage tool configured |

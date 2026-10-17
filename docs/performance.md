@@ -97,7 +97,9 @@ starlette/uvicorn versions as `uv.lock`), commit `c70f997`, `nice -n 10`, VM oth
 | pipeline `total` (last 10 000 windows) p50 / p99 / max | 0.1988 / 0.4044 / 3.5022 ms |
 
 An earlier identical run (pre-commit copy of the script) gave 29.39 s and p50/p99
-0.1961/0.2843 ms: single runs vary; treat these as orders of magnitude.
+0.1961/0.2843 ms. At `073c605` (naive CSV timestamps normalised to UTC in ingestion): 32.99 s,
+p50/p99 0.2231/0.4074 ms, max 13.6681 ms. Single runs on a shared VM vary; treat these as
+orders of magnitude, not as the cost of the timezone normalisation.
 
 ### x86 vs s390x parity (design doc §7, byte order)
 
