@@ -149,9 +149,10 @@ forecaster = load_forecaster(
 app = create_app(settings, build_pipeline(settings, forecaster=forecaster))
 ```
 
-`SENTINEL_FORECASTER` currently accepts only `mock` (`config.py`, P3). Proposal: accept
-`baseline | xgboost | gru` plus `SENTINEL_FORECASTER_PATH` (and a switch for the
-contributions), and call `load_forecaster` at startup (fail fast). The API process must use the VM image's Python (`/opt/venv`), where
+Wired by P3 in BE-011: `SENTINEL_FORECASTER=baseline | xgboost | gru` plus
+`SENTINEL_FORECASTER_PATH`, `SENTINEL_FORECASTER_CONTRIBUTIONS`, `SENTINEL_FORECASTER_ENGINE`
+and `SENTINEL_FORECASTER_TREE_FORMAT`; `build_pipeline` calls `load_forecaster` at startup
+(fail fast, `.env.example`, `docs/runbook-vm.md`). The API process must use the VM image's Python (`/opt/venv`), where
 numpy, xgboost, snapml and tensorflow are installed.
 
 ## Answers to the ML questions (`docs/questions-for-team.md`)

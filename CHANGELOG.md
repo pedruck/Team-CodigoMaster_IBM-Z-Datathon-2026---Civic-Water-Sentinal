@@ -20,6 +20,11 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- BE-011: the API loads the real forecaster at startup. `SENTINEL_FORECASTER` accepts
+  `mock | baseline | xgboost | gru` with `SENTINEL_FORECASTER_PATH`; XGBoost options
+  `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP on/off), `_ENGINE`, `_TREE_FORMAT`. A load
+  error stops startup (no fallback to the mock). `scripts/shared_api.sh` forwards these
+  variables; `scripts/validate_replay_ingestion.py` reads them and reports processing issues.
 - Forecasting (ML owner): hour-of-week baseline, per-sensor XGBoost served with Snap ML (with
   TreeSHAP contributions) and a 33-sensor GRU (TensorFlow, ONNX export with a fused `GRU` node);
   shared feature definitions, `load_forecaster` registry, training helpers

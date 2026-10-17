@@ -173,6 +173,30 @@ Caveats: single runs, shared VM, no warm-up control; x86 numbers come from a lap
 other processes running. The two baselines are **not** a fair platform comparison and must
 not be used as one.
 
+### Real forecaster in the pipeline: full 2019, in process (BE-011, 2026-10-17)
+
+`scripts/validate_replay_ingestion.py windows_2019.jsonl` on the VM (container `/opt/venv`,
+`nice -n 10`, `SENTINEL_LOG_LEVEL=WARNING`), branch `zanetti/be-011-forecaster-wiring` @
+`4d8b8f0`, `SENTINEL_FORECASTER=xgboost`, artefact `xgboost-33@0.1.0`, official registry,
+in-memory audit, **mock detector**. Latency: last 10 000 samples (`total` includes the 144
+`insufficient_history` windows, which skip the forecast).
+
+| Run | Windows | Elapsed | `forecast` p50 / p99 ms | `total` p50 / p99 ms |
+|---|---|---|---|---|
+| Snap ML `auto` (→ NNPA), TreeSHAP off | 105 120 | 177.1 s | 1.371 / 2.042 | 1.574 / 2.387 |
+| Snap ML `compress_trees`, TreeSHAP off | 105 120 | 98.8 s | **0.651** / 1.324 | **0.839** / 1.782 |
+| Snap ML `auto`, TreeSHAP on (API default) | first 600 | 63.1 s | 135.98 / 175.37 | 134.39 / 168.71 |
+
+All runs: 0 rejected, 0 processing issues (no `ForecastError`), 104 976 `scored`. The
+forecast stage matches the ML owner's standalone numbers above (0.64 / 1.35 / 134 ms), so the
+backend adds ≈ 0.2 ms per window around it.
+
+**0 mock alerts over the whole year.** The mock detector uses σ = 1 m
+(`SENTINEL_MOCK_DETECTOR_SIGMA_M`) and z ≥ 3 on ≥ 2 sensors; XGBoost residuals are millimetres
+(σ < 0.02 m on 32 of 33 sensors, `docs/p2-forecasting.md`), so nothing reaches 3 m. This says
+nothing about leak detection: the real detector with per-sensor σ from `meta.json` (BE-012,
+P4) decides. Until then the shared API with XGBoost shows no alerts.
+
 ## Observed bottlenecks / optimisation log
 
 | # | Observation | Measurement | Hypothesis | Proposed change | Result |
@@ -183,8 +207,8 @@ not be used as one.
 
 | 4 | Over HTTP, `validation` p50 0.0422 ms vs 0.0093 ms in process | full-year HTTP vs in-process runs above | `normalize_window` re-validates the whole window when turning `SensorWindowIn` into `SensorWindow` — **not profiled** | build the internal model without re-validating the readings (`model_construct` with the already validated fields) if it ever matters | not applied (0.03 ms vs a 300 s interval) |
 | 5 | One spike: `detection` max 141.6 ms, client max 144 ms, during the full-year replay | full-year HTTP run | GC pause or contention with other members' kernels on 3 shared vCPUs — **not investigated** | none; watch p99 on real-model runs | — |
-| 6 | TreeSHAP dominates the real forecaster: p50 134 ms per window vs 0.64 ms without it | `xgboost-33@0.1.0` on the VM, above | 33 `pred_contribs` calls on the native booster, one row each | `load_forecaster(..., with_contributions=False)` for long replays; keep contributions for the live demo (BE-011 decides how to expose it) | option added on `feat/p2-forecasting`; not wired |
-| 7 | Snap ML on the NNPA is slower than on CPU for this model (1.35 vs 0.64 ms per window; 5.4 vs 1.2 ms per 1000 rows) | same | transfer/setup cost dominates for small trees and few rows — **not profiled** | serve with `tree_format="compress_trees"`, or keep `auto` to show the accelerator; test larger batches before deciding for bulk replays | open (ML owner) |
+| 6 | TreeSHAP dominates the real forecaster: p50 134 ms per window vs 0.64 ms without it | `xgboost-33@0.1.0` on the VM, above | 33 `pred_contribs` calls on the native booster, one row each | `SENTINEL_FORECASTER_CONTRIBUTIONS=false` for long replays; keep contributions for the live demo | wired (BE-011); confirmed in the pipeline: 0.65 vs 136 ms per window |
+| 7 | Snap ML on the NNPA is slower than on CPU for this model (1.35 vs 0.64 ms per window; 5.4 vs 1.2 ms per 1000 rows) | same | transfer/setup cost dominates for small trees and few rows — **not profiled** | serve with `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees` (full-year replay 98.8 s vs 177.1 s with `auto`), or keep `auto` to show the accelerator; test larger batches before deciding for bulk replays | option wired (BE-011); default still `auto` (ML owner's choice) |
 
 No Rust/C++ optimisation is justified: there is no measured backend bottleneck relative to
 the 300 s interval. Revisit only with LinuxONE measurements of the real models.

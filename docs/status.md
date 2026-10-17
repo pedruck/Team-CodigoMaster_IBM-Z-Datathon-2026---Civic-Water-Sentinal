@@ -1,13 +1,13 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `feat/p2-forecasting`: real forecaster delivered (XGBoost per sensor, served with Snap ML) and measured on the VM; wiring into the API (BE-011) is next. Before: branch `zanetti/shared-api` (one sensor-ID scheme, shared API script + runbook, full 2019 HTTP replay).
+**Last update:** 2026-10-17 — branch `zanetti/be-011-forecaster-wiring` (stacked on `feat/p2-forecasting`): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before: branch `feat/p2-forecasting`: real forecaster delivered (XGBoost per sensor, served with Snap ML) and measured on the VM. Before that: branch `zanetti/shared-api` (one sensor-ID scheme, shared API script + runbook, full 2019 HTTP replay).
 
 ## Summary
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
-real models or the real audit log yet. The real forecaster exists on `feat/p2-forecasting` (XGBoost, chosen by the ML owner; `docs/p2-forecasting.md`) and loads with `load_forecaster`, but the API still runs the mock until BE-011. The official sensor set is read from the data owner's
+real models or the real audit log yet. The real forecaster (XGBoost, chosen by the ML owner; `docs/p2-forecasting.md`) is selected with `SENTINEL_FORECASTER=xgboost` + `SENTINEL_FORECASTER_PATH` and loaded at startup (BE-011); the default is still the mock, and the detector is still the mock, which raises **no** alerts with XGBoost residuals (σ 1 m vs millimetre residuals, `docs/performance.md`). The official sensor set is read from the data owner's
 `config/sensors.battledim.json` (official registry, data owner), and the whole 2019 replay passes
 validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
@@ -18,12 +18,12 @@ runtime installs from wheels and the 89 tests pass; mypy does not install there 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
 BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
-convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook. Details: `docs/implementation-plan.md`.
+convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook · BE-011 real forecaster wired. Details: `docs/implementation-plan.md`.
 
 ## In progress
 
 BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
-waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
+waits for Q-PLAT-02 (`gcc`); real forecaster measured in process (full 2019), real detector waits for BE-012.
 
 ## Blocked
 
@@ -34,7 +34,7 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 ## Pending (independent, not started)
 
-BE-011 wire the real forecaster (`SENTINEL_FORECASTER=xgboost` + artefact path; unblocked by `feat/p2-forecasting`) · BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
+BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
 ## External dependencies
 
@@ -66,8 +66,9 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-BE-011: wire `load_forecaster("xgboost", <path>)` at startup (with an option to turn TreeSHAP off for long replays), then the real detector/audit as they arrive (BE-012/013) on the shared API
-(`docs/runbook-vm.md`), then measure p50/p99 with real models (BE-015). Independent: BE-017.
+After PRs #6 and this one merge: restart the shared API with `SENTINEL_FORECASTER=xgboost`
+(announce first, `docs/runbook-vm.md`) and replay 2019 over HTTP; then the real detector/audit
+as they arrive (BE-012/013), then p50/p99 with real models end to end (BE-015). Independent: BE-017.
 
 ## Verification (2026-10-17)
 
@@ -96,5 +97,9 @@ BE-011: wire `load_forecaster("xgboost", <path>)` at startup (with an option to 
 | same, x86 with numpy/xgboost/snapml/tensorflow/torch/onnx (`PYTHONPATH=src pytest`) | **161 passed, 8 skipped** (P1 data tests) |
 | LinuxONE `python -m pytest -q` in the ML owner's clone @ `1278294` (older commit of the branch) | **166 passed**; the latest commits are **NOT_RUN** on s390x |
 | LinuxONE notebooks 01–03 on the real `data/v1` (XGBoost: 600-tree run; GRU run mode not recorded), metrics v2 | val MAE on clean windows baseline 0.105 / XGBoost 0.006 / GRU 0.077 m · leak contrast 4.16 / 3.39 / 1.80 · p50 per window 0.025 / 134.5 (with TreeSHAP) / 10.2 ms |
-| real models in the API | **NOT_RUN** — BE-011 not wired |
+| branch `zanetti/be-011-forecaster-wiring` @ `4d8b8f0` — x86 `just check` (`.venv`, no ML libraries) | 75 files unchanged · ruff OK · mypy OK (75 files) · **159 passed, 18 skipped** (XGBoost wiring test skips without xgboost) |
+| same, LinuxONE container `python -m pytest -q` (with ML libraries and `SENTINEL_DATA_DIR`) | **177 passed**; `tests/test_forecaster_wiring.py` 8 passed |
+| LinuxONE `validate_replay_ingestion.py windows_2019.jsonl`, `SENTINEL_FORECASTER=xgboost` (`xgboost-33@0.1.0`), TreeSHAP off, `auto` / `compress_trees` | 105 120 windows each, 0 rejected, 0 processing issues, 0 mock alerts · forecast p50 1.371 / 0.651 ms · total p50 1.574 / 0.839 ms |
+| same, TreeSHAP on, first 600 windows | 0 rejected, 0 issues · forecast p50 135.98 / p99 175.37 ms |
+| real models in the API over HTTP (shared API) | **NOT_RUN** — waits for the merge and an announced restart |
 | line coverage | **NOT_RUN** — no coverage tool configured |
