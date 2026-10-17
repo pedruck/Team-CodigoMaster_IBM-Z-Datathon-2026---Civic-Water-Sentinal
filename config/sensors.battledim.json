@@ -1,0 +1,47 @@
+{
+  "provisional": false,
+  "note": "IDs oficiais do BattLeDIM L-Town (elemento da rede), gerados de data/v1/sensors.csv. Unidades: pressão m, vazão m3/h, nível m.",
+  "pressure": [
+    "n1",
+    "n4",
+    "n31",
+    "n54",
+    "n105",
+    "n114",
+    "n163",
+    "n188",
+    "n215",
+    "n229",
+    "n288",
+    "n296",
+    "n332",
+    "n342",
+    "n410",
+    "n415",
+    "n429",
+    "n458",
+    "n469",
+    "n495",
+    "n506",
+    "n516",
+    "n519",
+    "n549",
+    "n613",
+    "n636",
+    "n644",
+    "n679",
+    "n722",
+    "n726",
+    "n740",
+    "n752",
+    "n769"
+  ],
+  "flow": [
+    "p227",
+    "p235",
+    "PUMP_1"
+  ],
+  "tank_level": [
+    "T1"
+  ]
+}
