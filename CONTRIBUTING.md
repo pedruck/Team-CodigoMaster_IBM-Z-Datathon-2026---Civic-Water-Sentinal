@@ -47,3 +47,7 @@ optional fields → minor version; anything else → major version + ADR + annou
 
 Secrets, `.env`, BattLeDIM/SCADA data, model artefacts (`.onnx`, `.ubj`, `.pkl`), generated
 JSONL replays. The pre-commit hook runs `gitleaks`; do not bypass it.
+
+Exception: the dashboard playback fixtures in `dashboard/playback/*/` (a few KB, mock backend
+on a synthetic day, regenerated with `just playback-fixtures`) are committed because the tests
+and the demo fallback read them. They are not BattLeDIM data and every alert is `is_mock`.

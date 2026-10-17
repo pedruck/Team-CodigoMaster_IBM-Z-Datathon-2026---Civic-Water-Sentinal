@@ -24,7 +24,8 @@ Defaults: official registry `config/sensors.battledim.json`, in-memory audit sin
 no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
-The forecaster is the mock unless set (ADR-005, BE-011). Real XGBoost (ML owner's artefact):
+The forecaster and the detector are the mocks unless set (ADR-005). Real XGBoost (ML owner's
+artefact):
 
 ```bash
 SENTINEL_FORECASTER=xgboost \
@@ -32,12 +33,18 @@ SENTINEL_FORECASTER_PATH=/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.
 scripts/shared_api.sh restart
 ```
 
-The path is the one **inside the container**. Add `SENTINEL_FORECASTER_CONTRIBUTIONS=false`
+Paths are the ones **inside the container**. Add `SENTINEL_FORECASTER_CONTRIBUTIONS=false`
 for long replays (TreeSHAP dominates the latency, `docs/performance.md`) and
 `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees` to keep Snap ML on the CPU. If the model does
 not load (missing artefact, `snapml` absent after the container was recreated), `start` fails
 and prints the log: the API never falls back to the mock. `status` shows `forecaster` with
-`is_mock: false`; the detector stays the mock until BE-012, so alerts are still mock alerts.
+`is_mock: false`.
+
+The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION` and
+`SENTINEL_DETECTOR_REGIONS` (only the variables that are set). The CUSUM detector refuses to start
+with a calibration made for another forecaster ([README](../README.md#running-with-the-cusum-detector),
+ADR-008); no calibration for `xgboost-33@0.1.0` exists yet (DEP-DET-05), so with XGBoost keep
+the mock detector, which raises no alerts with millimetre residuals (`docs/performance.md`).
 
 Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
 ≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).

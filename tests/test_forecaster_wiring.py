@@ -45,6 +45,8 @@ def test_real_forecaster_needs_an_artefact_path() -> None:
         {"SENTINEL_FORECASTER": "lstm", "SENTINEL_FORECASTER_PATH": "/m"},
         {"SENTINEL_FORECASTER_ENGINE": "onnx"},
         {"SENTINEL_FORECASTER_CONTRIBUTIONS": "sometimes"},
+        {"SENTINEL_FORECASTER_TREE_FORMAT": "compressed_trees"},  # typo: fails before Snap ML
+        {"SENTINEL_FORECASTER": "xgboost", "SENTINEL_FORECASTER_PATH": ""},
     ],
 )
 def test_invalid_forecaster_settings_fail_at_startup(env: dict[str, str]) -> None:

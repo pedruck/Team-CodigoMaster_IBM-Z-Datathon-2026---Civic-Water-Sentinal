@@ -3,6 +3,7 @@
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 
 from fastapi import FastAPI, Request, Response
 
@@ -11,6 +12,7 @@ from sentinel.api.errors import install_error_handlers
 from sentinel.api.routes import alerts, health, status, windows
 from sentinel.audit.sinks import AuditSink, InMemoryAuditSink, NullAuditSink
 from sentinel.config import ConfigError, Settings
+from sentinel.detection.cusum import CusumDetector
 from sentinel.detection.interface import Detector
 from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import Forecaster
@@ -38,10 +40,14 @@ def build_pipeline(
     if forecaster is None:
         forecaster = _configured_forecaster(settings)
     if detector is None:
-        detector = ThresholdMockDetector(
-            sigma_m=settings.mock_detector_sigma_m,
-            z_threshold=settings.mock_detector_z_threshold,
-            min_sensors=settings.mock_detector_min_sensors,
+        detector = (
+            _cusum_detector(settings, registry, forecaster)
+            if settings.detector == "cusum"
+            else ThresholdMockDetector(
+                sigma_m=settings.mock_detector_sigma_m,
+                z_threshold=settings.mock_detector_z_threshold,
+                min_sensors=settings.mock_detector_min_sensors,
+            )
         )
     if audit_sink is None:
         audit_sink = InMemoryAuditSink() if settings.audit_sink == "memory" else NullAuditSink()
@@ -87,6 +93,30 @@ def _configured_forecaster(settings: Settings) -> Forecaster:
         },
     )
     return forecaster
+
+
+def _cusum_detector(
+    settings: Settings, registry: SensorRegistry, forecaster: Forecaster
+) -> CusumDetector:
+    """``SENTINEL_DETECTOR=cusum``: the detector as ``for_pipeline`` checks it against the
+    registry and the forecaster actually served. Anything wrong with the files is a
+    ``ConfigError`` at startup, never a failure at request time (ADR-005)."""
+    calibration = settings.detector_calibration_path
+    regions = settings.detector_regions_path
+    assert calibration is not None  # Settings refuses cusum without it
+    try:
+        return CusumDetector.for_pipeline(
+            calibration,
+            interval=timedelta(seconds=settings.interval_seconds),
+            pressure_sensors=registry.pressure,
+            forecaster=forecaster.info,
+            regions=regions,
+        )
+    except ConfigError:
+        raise
+    except (OSError, ValueError) as exc:  # unreadable file, bad JSON, invalid artefact/mapping
+        files = f"calibration {calibration}" + (f" and regions {regions}" if regions else "")
+        raise ConfigError(f"cannot start the CUSUM detector from {files}: {exc}") from exc
 
 
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:

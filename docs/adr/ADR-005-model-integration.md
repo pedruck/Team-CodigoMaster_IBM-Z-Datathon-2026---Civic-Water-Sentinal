@@ -22,8 +22,8 @@ being used silently.
   replace a requested real model. Forecaster (BE-011, 2026-10-17): `mock | baseline |
   xgboost | gru`, artefact in `SENTINEL_FORECASTER_PATH`, loaded with the ML owner's
   `load_forecaster`; a load error stops the process. XGBoost options:
-  `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP), `_ENGINE`, `_TREE_FORMAT`. Detector: `mock`
-  only until BE-012.
+  `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP), `_ENGINE`, `_TREE_FORMAT`
+  (`auto | compress_trees | zdnn_tensors`). Detector: `mock` and `cusum` (ADR-007, ADR-008).
 - One detector instance per process; called in order under the pipeline lock.
 - Mock usage is visible in every result (`is_mock`) and in `/v1/status.mocks_active`.
 

@@ -1,0 +1,5 @@
+{
+  "run_id": "fixture-malformed",
+  "recorded_at": "2026-10-17",
+  "note": "Fixture: second record lacks `models` on purpose (contract mismatch test). Not a model run."
+}

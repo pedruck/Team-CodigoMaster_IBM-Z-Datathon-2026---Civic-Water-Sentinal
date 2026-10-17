@@ -1,0 +1,113 @@
+{
+  "service": "civicwater-sentinel-backend",
+  "version": "0.1.0",
+  "started_at": "2026-10-17T22:16:31.226082Z",
+  "uptime_s": 1.716,
+  "interval_seconds": 300,
+  "last_timestamp": "2019-03-14T23:55:00Z",
+  "history": {
+    "size": 288,
+    "contiguous": 288,
+    "required": 144,
+    "capacity": 288
+  },
+  "sensor_registry": {
+    "provisional": false,
+    "source": "config/sensors.battledim.json",
+    "units": null,
+    "pressure": 33,
+    "flow": 3,
+    "tank_level": 1
+  },
+  "forecaster": {
+    "name": "mock-persistence",
+    "version": "0.1.0",
+    "is_mock": true
+  },
+  "detector": {
+    "name": "cusum",
+    "version": "0.1.0+036e55e6",
+    "is_mock": true
+  },
+  "audit_sink": "memory",
+  "audit_pending_events": 0,
+  "audit_pending_alerts": 0,
+  "mocks_active": true,
+  "counters": {
+    "windows_accepted": 288,
+    "windows_status_insufficient_history": 144,
+    "http_windows_requests": 288,
+    "windows_status_scored": 144,
+    "alerts_raised": 1,
+    "alerts_stored": 1
+  },
+  "latency": {
+    "validation": {
+      "count": 288,
+      "mean_ms": 0.1501,
+      "p50_ms": 0.1266,
+      "p95_ms": 0.2426,
+      "p99_ms": 0.5768,
+      "max_ms": 0.6775
+    },
+    "temporal_policy": {
+      "count": 288,
+      "mean_ms": 0.1095,
+      "p50_ms": 0.0963,
+      "p95_ms": 0.1654,
+      "p99_ms": 0.4559,
+      "max_ms": 0.5519
+    },
+    "history": {
+      "count": 288,
+      "mean_ms": 0.0104,
+      "p50_ms": 0.0073,
+      "p95_ms": 0.012,
+      "p99_ms": 0.0316,
+      "max_ms": 0.3629
+    },
+    "forecast": {
+      "count": 144,
+      "mean_ms": 0.1143,
+      "p50_ms": 0.0882,
+      "p95_ms": 0.2123,
+      "p99_ms": 0.5137,
+      "max_ms": 0.5291
+    },
+    "detection": {
+      "count": 144,
+      "mean_ms": 0.4339,
+      "p50_ms": 0.3624,
+      "p95_ms": 0.755,
+      "p99_ms": 1.4048,
+      "max_ms": 1.5025
+    },
+    "audit": {
+      "count": 288,
+      "mean_ms": 0.0637,
+      "p50_ms": 0.0557,
+      "p95_ms": 0.0914,
+      "p99_ms": 0.4073,
+      "max_ms": 0.4218
+    },
+    "total": {
+      "count": 288,
+      "mean_ms": 0.6803,
+      "p50_ms": 0.6538,
+      "p95_ms": 1.3873,
+      "p99_ms": 2.1538,
+      "max_ms": 2.3625
+    },
+    "http_post_windows": {
+      "count": 288,
+      "mean_ms": 3.1364,
+      "p50_ms": 3.0298,
+      "p95_ms": 4.6942,
+      "p99_ms": 5.3389,
+      "max_ms": 5.726
+    }
+  },
+  "throughput_windows_per_s": 167.7994,
+  "error_rate": 0.0,
+  "persistence": "memory"
+}

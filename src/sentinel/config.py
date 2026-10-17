@@ -7,6 +7,8 @@ from pathlib import Path
 
 DEFAULT_REGISTRY_PATH = Path("config/sensors.provisional.json")
 FORECASTERS = {"mock", "baseline", "xgboost", "gru"}
+# Snap ML ``import_model(tree_format=...)``; "auto" picks the NNPA (zdnn_tensors) on LinuxONE.
+TREE_FORMATS = {"auto", "compress_trees", "zdnn_tensors"}
 
 
 class ConfigError(ValueError):
@@ -57,6 +59,15 @@ def _choice(env: Mapping[str, str], key: str, default: str, allowed: set[str]) -
     return value
 
 
+def _optional_path(env: Mapping[str, str], key: str) -> Path | None:
+    raw = env.get(key)
+    if raw is None:
+        return None
+    if not raw.strip():  # Path("") would silently mean the current directory
+        raise ConfigError(f"{key} must not be empty; unset it instead")
+    return Path(raw)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     interval_seconds: int = 300
@@ -69,14 +80,18 @@ class Settings:
     alert_capacity: int = 10_000
     sensor_registry_path: Path = DEFAULT_REGISTRY_PATH
     # Real forecasters need their artefact and are loaded at startup; a load failure stops the
-    # process, so a mock is never substituted silently (ADR-005). The detector only has "mock".
+    # process, so a mock is never substituted silently (ADR-005).
     forecaster: str = "mock"
     forecaster_path: Path | None = None
     # XGBoost only: TreeSHAP costs ~127 of ~134 ms per window on the VM (docs/performance.md).
     forecaster_contributions: bool = True
     forecaster_engine: str = "snapml"
     forecaster_tree_format: str = "auto"
+    # "mock" or "cusum" (ADR-007). The CUSUM detector has no numeric default: every number comes
+    # from the calibration file, which has no default path either.
     detector: str = "mock"
+    detector_calibration_path: Path | None = None
+    detector_regions_path: Path | None = None  # optional sensor -> region mapping (ADR-007 §8)
     audit_sink: str = "null"
     # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
     audit_pending_capacity: int = 2016
@@ -101,6 +116,27 @@ class Settings:
             raise ConfigError(
                 f"SENTINEL_FORECASTER={self.forecaster} needs SENTINEL_FORECASTER_PATH"
             )
+        if self.forecaster_tree_format not in TREE_FORMATS:
+            raise ConfigError(
+                "SENTINEL_FORECASTER_TREE_FORMAT must be one of "
+                f"{sorted(TREE_FORMATS)}, got {self.forecaster_tree_format!r}"
+            )
+        if self.detector == "cusum":
+            if self.detector_calibration_path is None:
+                raise ConfigError(
+                    "SENTINEL_DETECTOR=cusum requires SENTINEL_DETECTOR_CALIBRATION "
+                    "(the calibration artefact, ADR-008)"
+                )
+        else:
+            for key, path in (
+                ("SENTINEL_DETECTOR_CALIBRATION", self.detector_calibration_path),
+                ("SENTINEL_DETECTOR_REGIONS", self.detector_regions_path),
+            ):
+                if path is not None:
+                    raise ConfigError(
+                        f"{key} is set but SENTINEL_DETECTOR={self.detector}; "
+                        "it only applies to SENTINEL_DETECTOR=cusum"
+                    )
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -117,15 +153,17 @@ class Settings:
                 e.get("SENTINEL_SENSOR_REGISTRY", str(DEFAULT_REGISTRY_PATH))
             ),
             forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", FORECASTERS),
-            forecaster_path=Path(e["SENTINEL_FORECASTER_PATH"])
-            if e.get("SENTINEL_FORECASTER_PATH")
-            else None,
+            forecaster_path=_optional_path(e, "SENTINEL_FORECASTER_PATH"),
             forecaster_contributions=_bool(e, "SENTINEL_FORECASTER_CONTRIBUTIONS", True),
             forecaster_engine=_choice(
                 e, "SENTINEL_FORECASTER_ENGINE", "snapml", {"snapml", "xgboost"}
             ),
-            forecaster_tree_format=e.get("SENTINEL_FORECASTER_TREE_FORMAT", "auto"),
-            detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock"}),
+            forecaster_tree_format=_choice(
+                e, "SENTINEL_FORECASTER_TREE_FORMAT", "auto", TREE_FORMATS
+            ),
+            detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock", "cusum"}),
+            detector_calibration_path=_optional_path(e, "SENTINEL_DETECTOR_CALIBRATION"),
+            detector_regions_path=_optional_path(e, "SENTINEL_DETECTOR_REGIONS"),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
             audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),

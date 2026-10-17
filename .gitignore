@@ -25,6 +25,7 @@ htmlcov/
 *.inp
 *.jsonl
 !tests/fixtures/*.jsonl
+!dashboard/playback/*/alerts.jsonl
 
 # Model artifacts belong to the ML module, not to this repository
 *.onnx
