@@ -34,16 +34,25 @@ class Manifest:
     data_sha256: dict[str, str]
     architecture: str
     python: str
+    windows: int = 0
+    rejected_by_code: dict[int, int] | None = None
+    missing_alerts: int = 0  # announced by a WindowResult but not served (e.g. audit pending)
+
+    @property
+    def is_mock(self) -> bool:
+        return self.forecaster.is_mock or self.detector.is_mock
 
     @property
     def watermark_reasons(self) -> list[str]:
         reasons = []
-        if self.forecaster.is_mock or self.detector.is_mock:
+        if self.is_mock:
             reasons.append("a mock model or a non-final calibration (is_mock)")
         if self.registry_provisional:
             reasons.append("provisional sensor IDs")
         if self.dirty:  # ADR-008 §G: the run comes from an identified commit
             reasons.append("uncommitted code")
+        if self.missing_alerts:
+            reasons.append(f"{self.missing_alerts} alerts announced but not fetched")
         return reasons
 
 
@@ -64,6 +73,15 @@ def render_report(evaluation: Evaluation, manifest: Manifest) -> str:
     if manifest.watermark_reasons:
         lines += [f"**NOT A RESULT** — {'; '.join(manifest.watermark_reasons)}. Do not cite.", ""]
     lines += [WORDING, ""]
+    rejected = manifest.rejected_by_code or {}
+    by_code = ", ".join(f"HTTP {c}: {n}" for c, n in sorted(rejected.items()))
+    detail = f" ({by_code}; details in responses.jsonl)" if by_code else ""
+    lines += [
+        f"Windows: {manifest.windows - sum(rejected.values())} accepted, "
+        f"{sum(rejected.values())} rejected{detail}. "
+        f"Alerts announced but not fetched: {manifest.missing_alerts}.",
+        "",
+    ]
 
     primary, operator, new = evaluation.primary, evaluation.operator, evaluation.new_in_year
     lines += [

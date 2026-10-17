@@ -63,7 +63,7 @@ Q-DET-06 belong to the detection owner (BE-012, merged in PR #5); P6 uses ADR-00
 | UI-007 | 07 | Demo runbook and contingency rehearsal (C5) | P0 | IN_PROGRESS (runbook + 2 technical rehearsals done; presenter rehearsal pending) | UI-004, UI-005 | P6 | S |
 | EV-001 | 08 | ADR-010 layer-2 evaluation protocol (answers Q-UI-06 of P4's ADR-008), accepted before any 2019 run | P1 | IN_PROGRESS (ADR-010 written; P4 review + Accepted pending) | — | P6 (+P4 review) | S |
 | EV-002 | 09 | Evaluation metrics core and report (header, watermark) | P1 | DONE | EV-001 | P6 | S |
-| EV-003 | 10 | Layer-2 2019 run through the API (ADR-008), recorder + manifest, playback-compatible output | P1 | TODO (gated 22:00) | EV-002, UI-002 | P6 | M |
+| EV-003 | 10 | Layer-2 2019 run through the API (ADR-008), recorder + manifest, playback-compatible output | P1 | IN_PROGRESS (recorder + CLI done; the 2019 run waits for the final calibration, DEP-DET-05, and Q-DATA-07) | EV-002, UI-002 | P6 | M |
 
 ## Order of execution
 

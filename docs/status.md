@@ -67,7 +67,7 @@ builds its `Settings` without the environment, so `just bench` cannot measure th
 `scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`; a refused startup prints a Python
 traceback whose last line is the `ConfigError` (for pydantic errors, a documentation URL).
 
-P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 IN_PROGRESS (runbook `docs/demo-runbook.md`, two technical rehearsals OK on 2026-10-17: live via tunnel and forced fallback to `fixture-cusum`; presenter rehearsal pending); EV-001 IN_PROGRESS (ADR-010 `Proposed`, awaiting P4 review); EV-002 DONE (metrics + report, `src/sentinel/eval/`); EV-003 TODO (gated: no final calibration, every CUSUM output is still `is_mock`), spec and tickets in
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 IN_PROGRESS (runbook `docs/demo-runbook.md`, two technical rehearsals OK on 2026-10-17: live via tunnel and forced fallback to `fixture-cusum`; presenter rehearsal pending); EV-001 IN_PROGRESS (ADR-010 `Proposed`, awaiting P4 review); EV-002 DONE (metrics + report, `src/sentinel/eval/`); EV-003 IN_PROGRESS (recorder + CLI `python -m sentinel.eval` done and tested; the 2019 run waits for the final calibration and for Q-DATA-07: the real `leaks_2019.csv` clips the 4 inherited leaks to 2019-01-01, found by the official-list check), spec and tickets in
 `.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
 
 ## External dependencies

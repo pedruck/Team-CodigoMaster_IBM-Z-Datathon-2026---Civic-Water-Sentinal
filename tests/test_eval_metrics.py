@@ -221,3 +221,10 @@ def test_a_label_window_longer_than_the_primary_max_delay_is_refused() -> None:
 
     with pytest.raises(ValueError, match="p2"):
         evaluate_run(ALERTS, long, period=timedelta(days=365), year_start=YEAR)
+
+
+def test_alerts_that_could_not_be_fetched_watermark_the_report(evaluation: Evaluation) -> None:
+    text = render_report(evaluation, manifest(missing_alerts=2, windows=10))
+
+    assert "2 alerts announced but not fetched" in text.splitlines()[2]
+    assert "Alerts announced but not fetched: 2." in text
