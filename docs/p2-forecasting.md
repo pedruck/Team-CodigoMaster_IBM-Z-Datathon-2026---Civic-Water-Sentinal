@@ -61,9 +61,18 @@ pick one** so alerts, the dashboard and P4's sensor → region map use the same 
 - **Low-variance sensors**: `n215` and `n740` barely move (`docs/data.md` §11), so a tiny σ
   inflates z. The notebooks list sensors with σ < 0.02 m (`training.low_variance_sensors`) so P4
   can floor σ for them.
-- **Leak contrast** (in every model's metadata): mean |z| in windows the mask marks as
-  leak-affected divided by mean |z| in clean windows, on validation. Higher means leaks stand out more. It is reported next to MAE
-  because a lower MAE alone can mean the model *follows* the leak (see risks).
+- **Validation MAE** is computed on clean windows only (normal operation). Including leak
+  windows would reward a model that follows the leak, because it errs less exactly there.
+- **Leak contrast** (in every model's metadata): the pressure-drop score `max(z, 0)`, with
+  `z = (expected − observed) / σ` as P4 uses it, averaged over sensors, in windows the mask marks
+  as leak-affected, divided by the same in clean windows, on validation. Only drops count, as in
+  the detector: a residual pushed the wrong way during a leak (pressure above expected) adds
+  nothing. Above 1, leaks show as drops; about 1, they do not stand out; below 1, the model moves
+  the residual the wrong way. It is reported next to MAE because a lower MAE alone can mean the
+  model *follows* the leak (see risks).
+- Metadata written with these two definitions has `validation.metrics_version = 2`. Notebook 02
+  warns when the baseline it compares with is older, and the ladder table at the end of
+  notebook 03 marks such models `old: re-run`.
 
 ## Artefacts (outside git)
 

@@ -165,7 +165,24 @@ def test_metrics() -> None:
     sigma = training.robust_sigma(resid)
     assert sigma["a"] < 0.3  # the outlier does not inflate sigma
     clean = pd.Series([True, True, True, False])
-    contrast = training.leak_contrast(resid, sigma, clean)
-    assert contrast is not None and contrast > 1
     assert training.leak_contrast(resid, sigma, pd.Series([True] * 4)) is None
     assert training.low_variance_sensors(pd.Series({"x": 0.005, "y": 0.5})) == {"x": 0.005}
+    # MAE on clean windows ignores the leak window
+    assert training.mae_by_sensor(resid, clean)["a"] == pytest.approx(0.2 / 3)
+    assert training.mae_by_sensor(resid)["a"] == pytest.approx(3.2 / 4)
+
+
+def test_leak_contrast_counts_only_pressure_drops() -> None:
+    sigma = pd.Series({"a": 0.1, "b": 0.1})
+    clean = pd.Series([True, True, True, True, False, False])
+    normal = [0.1, -0.1, 0.1, -0.1]  # residual = observed - expected
+    drop = pd.DataFrame({"a": [*normal, -0.5, -0.5], "b": [*normal, -0.3, -0.3]})
+    rise = drop.copy()
+    rise.iloc[4:] = -drop.iloc[4:]  # same size, wrong direction during the leak
+
+    to_drop = training.leak_contrast(drop, sigma, clean)
+    to_rise = training.leak_contrast(rise, sigma, clean)
+    assert to_drop is not None and to_drop > 1  # leak shows as a pressure drop
+    assert to_rise == 0.0  # pressure above expected during the leak is no evidence
+    # the old |z| version would have scored both the same
+    assert (drop.abs() == rise.abs()).all().all()

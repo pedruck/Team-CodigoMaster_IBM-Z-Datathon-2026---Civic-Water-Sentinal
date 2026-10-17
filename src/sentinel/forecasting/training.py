@@ -286,19 +286,30 @@ def robust_sigma(resid: pd.DataFrame) -> pd.Series[float]:
     return 1.4826 * centred.abs().median()
 
 
-def mae_by_sensor(resid: pd.DataFrame) -> pd.Series[float]:
+def mae_by_sensor(resid: pd.DataFrame, clean: pd.Series[bool] | None = None) -> pd.Series[float]:
+    """Mean |observed - expected| per sensor. With ``clean``, only the windows the training mask
+    keeps: the error in normal operation, not lowered by a model that follows a leak."""
+    if clean is not None:
+        resid = resid[clean.reindex(resid.index, fill_value=True).to_numpy()]
     return resid.abs().mean()
 
 
 def leak_contrast(
     resid: pd.DataFrame, sigma: pd.Series[float], clean: pd.Series[bool]
 ) -> float | None:
-    """Mean |z| in windows the training mask marks as leak-affected, divided by mean |z| in
-    clean windows (higher = leaks stand out more). ``None`` if either set is empty."""
-    z = (resid / sigma).abs().mean(axis=1)
-    affected = ~clean.reindex(z.index, fill_value=True)
-    inside, outside = z[affected], z[~affected]
-    if inside.empty or outside.empty:
+    """How much the pressure-drop signal grows in leak-affected windows.
+
+    ``resid`` is observed - expected, so ``z = -resid / sigma`` follows P4's convention
+    (positive when pressure is below expected). Only the drop side counts, as in the detector:
+    a residual pushed the wrong way during a leak (pressure above expected) adds nothing.
+    Returns mean drop score in leak-affected windows / mean in clean windows: > 1 leaks show as
+    drops, about 1 they do not stand out, < 1 the model moves the residual the wrong way.
+    ``None`` if either set is empty or the clean windows have no drop signal.
+    """
+    drop = (-resid / sigma).clip(lower=0).mean(axis=1)
+    affected = ~clean.reindex(drop.index, fill_value=True)
+    inside, outside = drop[affected], drop[~affected]
+    if inside.empty or outside.empty or not outside.mean() > 0:
         return None
     return float(inside.mean() / outside.mean())
 
