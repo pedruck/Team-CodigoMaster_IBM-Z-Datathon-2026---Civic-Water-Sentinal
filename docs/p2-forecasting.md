@@ -33,19 +33,13 @@ type-checked and tested in CI (`tests/test_forecasting_training.py`); inference 
 - **GRU** (per timestep): all pressures, flows, tank level, cyclic calendar (sin/cos of hour and
   of week). Reads `request.history` only, never the window being scored.
 
-## Sensor IDs: two spellings, one model
+## Sensor IDs
 
-The project currently has two valid registries for the same 37 sensors:
-
-| Registry | IDs | Who points to it |
-|---|---|---|
-| `config/sensors.battledim.json` | `n1`, `p227`, `PUMP_1`, `T1` | P1, `docs/data.md` §4 (official, DEP-DATA-01) |
-| `$SENTINEL_DATA_DIR/v1/sensors.csv` | `Pressure_n1`, `Flow_p227`, `Level_T1` | backend `.env.example` |
-
-Training reads the same variable as the API (`SENTINEL_SENSOR_REGISTRY`, default the official
-JSON) and stores those IDs in the model. At inference `IdTranslator` maps the request's spelling
-onto the model's, so a model works whichever registry the API uses. **The team should still
-pick one** so alerts, the dashboard and P4's sensor → region map use the same names.
+The team uses one registry (PR #4): `config/sensors.battledim.json`, with network-element IDs
+(`n1`, `p227`, `PUMP_1`, `T1`). Training reads the same variable as the API
+(`SENTINEL_SENSOR_REGISTRY`, default that file) and stores those IDs in the model. The SCADA
+CSV columns use another spelling (`Pressure_n1`, `Flow_p227`, `Level_T1`); `IdTranslator` maps
+either spelling onto the model's IDs, so notebooks and CSV-based tools still work.
 
 ## Training choices
 
@@ -77,6 +71,31 @@ pick one** so alerts, the dashboard and P4's sensor → region map use the same 
   warns when the baseline it compares with is older, and the ladder table at the end of
   notebook 03 marks such models `old: re-run`.
 
+## Results on the real data and the choice (2026-10-17)
+
+Notebooks 01–03 on the real `data/v1` 2018 export, run on the LinuxONE VM, metrics v2
+(validation Nov–Dec 2018; latency = one window, 33 sensors, p50):
+
+| Model | MAE on clean windows | Leak contrast | Latency p50 |
+|---|---|---|---|
+| Hour-of-week baseline | 0.105 m | 4.16 | 0.025 ms |
+| **XGBoost (Snap ML)** | **0.006 m** | 3.39 | 0.64 ms (134 ms with TreeSHAP) |
+| GRU (run mode not recorded) | 0.077 m | 1.80 | 10.2 ms |
+
+**Chosen model: XGBoost** (`xgboost-33@0.1.0`, 600-tree run, trained on s390x). It forecasts
+normal operation 17× better than the baseline, leaks still stand out clearly as pressure drops
+(contrast 3.39) and each forecast comes with TreeSHAP contributions for the operator. The
+baseline has the higher contrast because it reads no sensor, so it cannot follow a leak;
+XGBoost absorbs part of the drop through the neighbouring sensors. The GRU (horizon 1) follows
+leaks the most and stays optional.
+
+The contrast compares means: it does not measure false alarms or detection delay. The final
+check is P4's detector on these residuals (P6 on 2019); before that, a CUSUM on the 2018
+validation residuals of each model would compare detected leaks, delay and false alarms.
+
+σ: XGBoost has σ < 0.02 m on 32 of 33 sensors (3–12 mm) and the baseline σ = 0 on `n215`;
+P4 needs a σ floor for every sensor (see Training choices).
+
 ## Artefacts (outside git)
 
 Under `shared/civicwater/models/` on the VM (`SENTINEL_MODELS_DIR`):
@@ -103,20 +122,36 @@ the notebooks runs on the VM, the measured latency and the x86 ↔ s390x parity 
   evaluator) with Keras.
 - **Eager Keras is slow per call**: one GRU forecast took ~300 ms eagerly on x86 and ~5 ms in
   graph mode; `GRUForecaster` uses `tf.function`.
-- TreeSHAP contributions use the native XGBoost booster (Snap ML has no `pred_contribs`); they
-  dominate XGBoost latency per window and can be turned off (`with_contributions=False`).
+- TreeSHAP contributions use the native XGBoost booster (Snap ML has no `pred_contribs`). On
+  the VM they take ~127 of the ~134 ms per window; `load_forecaster("xgboost", path,
+  with_contributions=False)` turns them off (≈ 67 s instead of ≈ 3.9 h of forecasting for a
+  full-year replay, estimated).
+- **Snap ML on the NNPA was slower than on CPU for this model**: 1.35 vs 0.64 ms per window,
+  5.4 vs 1.2 ms per 1000 rows (`docs/performance.md`). `tree_format="auto"` picks the NNPA
+  (`zdnn_tensors`) on the VM; `tree_format="compress_trees"` is the fastest measured option.
+- **snapml lives in the container's `/opt/venv`**: it disappeared once when the container was
+  recreated. Check with `python -c "import snapml"`; reinstall with
+  `pip install --prefer-binary snapml`.
 
 ## Backend wiring (for P3)
 
 ```python
+from sentinel.config import Settings
 from sentinel.forecasting.registry import load_forecaster
-forecaster = load_forecaster("xgboost", "/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0")
-app = create_app(forecaster=forecaster)
+from sentinel.main import build_pipeline, create_app
+
+settings = Settings.from_env()
+forecaster = load_forecaster(
+    "xgboost",
+    "/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0",
+    with_contributions=True,  # False for long replays (TreeSHAP ~127 ms per window)
+)
+app = create_app(settings, build_pipeline(settings, forecaster=forecaster))
 ```
 
 `SENTINEL_FORECASTER` currently accepts only `mock` (`config.py`, P3). Proposal: accept
-`baseline | xgboost | gru` plus `SENTINEL_FORECASTER_PATH`, and call `load_forecaster` at
-startup (fail fast). The API process must use the VM image's Python (`/opt/venv`), where
+`baseline | xgboost | gru` plus `SENTINEL_FORECASTER_PATH` (and a switch for the
+contributions), and call `load_forecaster` at startup (fail fast). The API process must use the VM image's Python (`/opt/venv`), where
 numpy, xgboost, snapml and tensorflow are installed.
 
 ## Answers to the ML questions (`docs/questions-for-team.md`)
@@ -127,7 +162,7 @@ numpy, xgboost, snapml and tensorflow are installed.
 | Q-ML-02 | Yes, XGBoost uses the other sensors' current pressures (design doc), never the target's own. The masking risk is real and is measured by the leak contrast; see risks. |
 | Q-ML-03 | XGBoost JSON → Snap ML; GRU Keras weights → TensorFlow (+ zDNN plugin), ONNX kept for zDLC. Loaded once at startup via `load_forecaster`; errors at load time are fatal. |
 | Q-ML-04 | Same process as FastAPI, VM image Python. No onnxruntime wheel exists for s390x; TensorFlow is in the organisers' image. |
-| Q-ML-05 | Measured by Part B of notebooks 02/03 and stored in `meta.json` per machine; all far below the 300 s window. |
+| Q-ML-05 | Measured on the VM (`docs/performance.md`): XGBoost p50 0.64 ms per window with Snap ML, 134 ms with TreeSHAP; no warm-up needed beyond loading at startup (cold-start cost not measured). All far below the 300 s window. |
 | Q-ML-06 | baseline 1, XGBoost 1, GRU `window + horizon − 1` (143 + horizon with the 12 h default; ≤ 288). |
 | DEP-ML (data) | Mask, registry and v1 files consumed exactly as documented by P1 (`docs/data.md`). |
 
@@ -140,5 +175,6 @@ numpy, xgboost, snapml and tensorflow are installed.
 - The data is simulated (BattLeDIM); none of this is validated on a real network.
 - The NNPA computes in reduced precision; the parity check reports the difference instead of
   asserting bit equality on s390x.
-- Verified so far on x86 with synthetic data in the v1 format (code paths, parity, export).
-  Real numbers come from running the notebooks on the real `data/v1` and Part B on the VM.
+- Measured on the real `data/v1` on the VM (2026-10-17). The x86 → s390x prediction parity is
+  not measured yet: the chosen model was trained on the VM, so its parity sample compares s390x
+  with itself. Train Part A off-platform (Colab) to measure it.

@@ -28,6 +28,8 @@ contract versions are tracked separately (`schema_version`).
   (`portable_booster_json`). ML tests skip where numpy/xgboost/tensorflow are absent.
   Validation reports MAE on clean windows and a one-sided (pressure-drop) leak contrast
   (`metrics_version` 2); sensors with σ = 0 are left out of the contrast.
+  XGBoost chosen and measured on the LinuxONE VM (`docs/performance.md`); `load_forecaster`
+  takes `engine`, `tree_format` and `with_contributions` for it.
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM

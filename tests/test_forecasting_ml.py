@@ -10,6 +10,7 @@ import pytest
 from sentinel.forecasting.features import canonical_id, gru_feature_names, xgb_feature_names
 from sentinel.forecasting.gru import WEIGHTS_FILE, GRUForecaster, build_gru_model, export_onnx
 from sentinel.forecasting.interface import Forecaster, ForecastError
+from sentinel.forecasting.registry import load_forecaster
 from sentinel.forecasting.xgb import XGBoostForecaster
 from tests.forecasting_helpers import LAYOUT, T0, request, short_ids, window
 
@@ -51,6 +52,17 @@ def test_xgboost_native_engine(tmp_path: Path) -> None:
     for sensor, groups in result.contributions.items():
         # TreeSHAP additivity: base + groups == forecast
         assert sum(groups.values()) == pytest.approx(result.expected_pressures[sensor], abs=1e-3)
+
+
+def test_load_forecaster_passes_the_xgboost_options(tmp_path: Path) -> None:
+    model_dir = _train_xgb(tmp_path)
+    without = load_forecaster("xgboost", model_dir, engine="xgboost", with_contributions=False)
+    with_shap = load_forecaster("xgboost", model_dir, engine="xgboost")
+    assert without.predict(request(T0)).contributions is None
+    assert with_shap.predict(request(T0)).contributions is not None
+    assert without.predict(request(T0)).expected_pressures == pytest.approx(
+        with_shap.predict(request(T0)).expected_pressures
+    )
 
 
 def test_snapml_engine_matches_xgboost(tmp_path: Path) -> None:

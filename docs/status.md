@@ -1,13 +1,13 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `zanetti/shared-api`: one sensor-ID scheme (official registry of the data owner), shared API script + runbook, full 2019 HTTP replay.
+**Last update:** 2026-10-17 — branch `feat/p2-forecasting`: real forecaster delivered (XGBoost per sensor, served with Snap ML) and measured on the VM; wiring into the API (BE-011) is next. Before: branch `zanetti/shared-api` (one sensor-ID scheme, shared API script + runbook, full 2019 HTTP replay).
 
 ## Summary
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
-real models or the real audit log yet. The official sensor set is read from the data owner's
+real models or the real audit log yet. The real forecaster exists on `feat/p2-forecasting` (XGBoost, chosen by the ML owner; `docs/p2-forecasting.md`) and loads with `load_forecaster`, but the API still runs the mock until BE-011. The official sensor set is read from the data owner's
 `config/sensors.battledim.json` (official registry, data owner), and the whole 2019 replay passes
 validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
@@ -29,13 +29,12 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 | Task | Waiting for |
 |---|---|
-| BE-011 real forecaster | DEP-ML-01..03 (ML owner) |
 | BE-012 real detector | DEP-DET-01..03 (detection owner) |
 | BE-013 real audit sink | DEP-AUD-01 (audit owner) |
 
 ## Pending (independent, not started)
 
-BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
+BE-011 wire the real forecaster (`SENTINEL_FORECASTER=xgboost` + artefact path; unblocked by `feat/p2-forecasting`) · BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
 ## External dependencies
 
@@ -52,7 +51,8 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 - Fail-closed audit: during an audit outage no new alerts are served; the pending queue is in
   memory and lost on restart (ADR-006).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
-- `mypy` not installable on s390x without `gcc` (Q-PLAT-02); model runtime wheels on s390x unverified.
+- `mypy` not installable on s390x without `gcc` (Q-PLAT-02). Model runtime (numpy, xgboost, snapml) comes from the VM image's `/opt/venv`, not `uv`; it is lost when the container is recreated (DEP-ML-03).
+- With TreeSHAP contributions the forecaster takes ~134 ms per window: ≈ 3.9 h for a full-year replay (estimate; ≈ 67 s without contributions, `docs/performance.md`).
 
 ## Known bottlenecks
 
@@ -66,7 +66,7 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on the shared API
+BE-011: wire `load_forecaster("xgboost", <path>)` at startup (with an option to turn TreeSHAP off for long replays), then the real detector/audit as they arrive (BE-012/013) on the shared API
 (`docs/runbook-vm.md`), then measure p50/p99 with real models (BE-015). Independent: BE-017.
 
 ## Verification (2026-10-17)
@@ -92,5 +92,9 @@ Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on 
 | LinuxONE: `shared_api.sh start / start (dup) / stop / status / start` | started; duplicate refused (exit 1); stopped, process gone; restarted |
 | LinuxONE: `scripts/replay.py windows_2019.jsonl` → shared API :8000 | 105 120 × 201, 723.78 windows/s, client p50 1.284 / p99 2.861 ms |
 | local tunnel `-L 18000:172.17.0.2:8000` | `/health` ok, `/docs` 200 |
-| real models | **NOT_RUN** — blocked (see above) |
+| branch `feat/p2-forecasting` @ `17e71af`+ — x86 `ruff format --check`, `ruff check`, `mypy`, `pytest` (`.venv`, no ML libraries) | 74 files formatted · ruff OK · mypy OK (74 files) · **152 passed, 17 skipped** (ML tests skip) |
+| same, x86 with numpy/xgboost/snapml/tensorflow/torch/onnx (`PYTHONPATH=src pytest`) | **161 passed, 8 skipped** (P1 data tests) |
+| LinuxONE `python -m pytest -q` in the ML owner's clone @ `1278294` (older commit of the branch) | **166 passed**; the latest commits are **NOT_RUN** on s390x |
+| LinuxONE notebooks 01–03 on the real `data/v1` (XGBoost: 600-tree run; GRU run mode not recorded), metrics v2 | val MAE on clean windows baseline 0.105 / XGBoost 0.006 / GRU 0.077 m · leak contrast 4.16 / 3.39 / 1.80 · p50 per window 0.025 / 134.5 (with TreeSHAP) / 10.2 ms |
+| real models in the API | **NOT_RUN** — BE-011 not wired |
 | line coverage | **NOT_RUN** — no coverage tool configured |
