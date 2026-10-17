@@ -9,7 +9,8 @@
 #
 # Variáveis (todas opcionais): PORT (8000), CONTAINER (notebook), APP_DIR (cópia de
 # integração, caminho dentro do container), SENTINEL_SENSOR_REGISTRY, SENTINEL_AUDIT_SINK,
-# SENTINEL_LOG_LEVEL.
+# SENTINEL_LOG_LEVEL e o forecaster (SENTINEL_FORECASTER, SENTINEL_FORECASTER_PATH,
+# SENTINEL_FORECASTER_CONTRIBUTIONS, SENTINEL_FORECASTER_ENGINE, SENTINEL_FORECASTER_TREE_FORMAT).
 set -euo pipefail
 
 PORT="${PORT:-8000}"
@@ -20,6 +21,12 @@ SESSION="sentinel-api-${PORT}"
 REGISTRY="${SENTINEL_SENSOR_REGISTRY:-config/sensors.battledim.json}"
 AUDIT="${SENTINEL_AUDIT_SINK:-memory}"
 LOG_LEVEL="${SENTINEL_LOG_LEVEL:-INFO}"
+FORECASTER="${SENTINEL_FORECASTER:-mock}"
+FORECASTER_PATH="${SENTINEL_FORECASTER_PATH:-}"
+CONTRIBUTIONS="${SENTINEL_FORECASTER_CONTRIBUTIONS:-true}"
+ENGINE="${SENTINEL_FORECASTER_ENGINE:-snapml}"
+TREE_FORMAT="${SENTINEL_FORECASTER_TREE_FORMAT:-auto}"
+START_TIMEOUT="${START_TIMEOUT:-120}"   # o forecaster real carrega os artefatos antes de responder
 PATTERN="uvicorn sentinel.main:create_app --factory --host 0.0.0.0 --port ${PORT}"
 
 die() { echo "erro: $*" >&2; exit 1; }
@@ -66,10 +73,15 @@ start() {
             -e SENTINEL_SENSOR_REGISTRY='$REGISTRY' \
             -e SENTINEL_AUDIT_SINK='$AUDIT' \
             -e SENTINEL_LOG_LEVEL='$LOG_LEVEL' \
+            -e SENTINEL_FORECASTER='$FORECASTER' \
+            -e SENTINEL_FORECASTER_PATH='$FORECASTER_PATH' \
+            -e SENTINEL_FORECASTER_CONTRIBUTIONS='$CONTRIBUTIONS' \
+            -e SENTINEL_FORECASTER_ENGINE='$ENGINE' \
+            -e SENTINEL_FORECASTER_TREE_FORMAT='$TREE_FORMAT' \
             -e PYTHONPATH='$APP_DIR/src' \
             -e OMP_NUM_THREADS=1 -e MKL_NUM_THREADS=1 -e OPENBLAS_NUM_THREADS=1 \
             '$CONTAINER' python -m $PATTERN --no-access-log 2>&1 | tee -a '$log'"
-    for _ in $(seq 1 30); do
+    for _ in $(seq 1 "$START_TIMEOUT"); do
         if http_get /health > /dev/null 2>&1; then
             echo "API no ar: porta $PORT, sessão tmux '$SESSION', log $log"
             return 0
@@ -77,7 +89,7 @@ start() {
         sleep 1
     done
     tail -n 30 "$log" >&2
-    die "a API não respondeu em 30 s (log acima)"
+    die "a API não respondeu em ${START_TIMEOUT} s (log acima)"
 }
 
 stop() {
@@ -104,7 +116,7 @@ keep = ['version', 'uptime_s', 'last_timestamp', 'history', 'sensor_registry', '
         'throughput_windows_per_s', 'error_rate']
 for k in keep:
     print(f'  {k}: {d[k]}')
-print('  forecaster:', d['forecaster']['name'], '| detector:', d['detector']['name'])
+print('  forecaster:', d['forecaster'], '| detector:', d['detector'])
 print('  windows:', {k: v for k, v in d['counters'].items() if k.startswith('windows_')})"
 }
 

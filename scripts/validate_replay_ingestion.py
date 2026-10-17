@@ -2,15 +2,17 @@
 
 Input: the data owner's replay file, e.g. ``$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl``
 (``python -m sentinel.data.replay_windows``). Every line is parsed as the HTTP input model and
-fed to the pipeline with the MOCK forecaster/detector and in-memory audit. It checks the
-contract, the temporal policy and the backend cost without HTTP; mock alerts are not
-detections. For the HTTP path use ``scripts/replay.py`` against a running API.
+fed to the pipeline with in-memory audit and the forecaster chosen by ``SENTINEL_FORECASTER*``
+(default: the mock; the detector is still the mock). It checks the contract, the temporal
+policy and the backend cost without HTTP; mock alerts are not detections. For the HTTP path
+use ``scripts/replay.py`` against a running API.
 
 Usage: python scripts/validate_replay_ingestion.py <file.jsonl>
        [--registry config/sensors.battledim.json] [--limit N]
 """
 
 import argparse
+import dataclasses
 import json
 import platform
 import time
@@ -34,10 +36,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     registry = SensorRegistry.load(args.registry)
-    pipeline = build_pipeline(Settings(audit_sink="memory"), registry=registry)
+    settings = dataclasses.replace(Settings.from_env(), audit_sink="memory")
+    pipeline = build_pipeline(settings, registry=registry)
 
     statuses: Counter[str] = Counter()
     rejected: Counter[str] = Counter()
+    issues: Counter[str] = Counter()
     tz_assumed = alerts = 0
     parse_s = 0.0
     t0 = time.perf_counter()
@@ -61,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             statuses[result.status] += 1
             tz_assumed += result.timestamp_tz_assumed
             alerts += len(result.alert_ids)
+            issues.update(f"{i.stage}:{i.code}" for i in result.issues)
 
     read = sum(statuses.values()) + sum(rejected.values())
     report = {
@@ -68,9 +73,12 @@ def main(argv: list[str] | None = None) -> int:
         "python": platform.python_version(),
         "file": str(args.file),
         "registry": str(args.registry),
+        "forecaster": pipeline.forecaster.info.model_dump(),
+        "forecaster_contributions": settings.forecaster_contributions,
         "windows_read": read,
         "accepted_by_status": dict(statuses),
         "rejected": dict(rejected),
+        "processing_issues": dict(issues),
         "timestamp_tz_assumed": tz_assumed,
         "mock_alerts_not_detections": alerts,
         "audit_pending": pipeline.audit_pending,

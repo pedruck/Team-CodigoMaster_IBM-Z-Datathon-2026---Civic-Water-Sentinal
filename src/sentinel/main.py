@@ -10,11 +10,12 @@ from sentinel import __version__
 from sentinel.api.errors import install_error_handlers
 from sentinel.api.routes import alerts, health, status, windows
 from sentinel.audit.sinks import AuditSink, InMemoryAuditSink, NullAuditSink
-from sentinel.config import Settings
+from sentinel.config import ConfigError, Settings
 from sentinel.detection.interface import Detector
 from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import Forecaster
 from sentinel.forecasting.mock import PersistenceMockForecaster
+from sentinel.forecasting.registry import load_forecaster
 from sentinel.observability.logging import configure_logging
 from sentinel.observability.metrics import Metrics
 from sentinel.sensors import SensorRegistry
@@ -35,7 +36,7 @@ def build_pipeline(
     real modules once delivered)."""
     registry = registry or SensorRegistry.load(settings.sensor_registry_path)
     if forecaster is None:
-        forecaster = PersistenceMockForecaster()
+        forecaster = _configured_forecaster(settings)
     if detector is None:
         detector = ThresholdMockDetector(
             sigma_m=settings.mock_detector_sigma_m,
@@ -52,6 +53,40 @@ def build_pipeline(
         audit_sink=audit_sink,
         metrics=Metrics(settings.metrics_sample_size),
     )
+
+
+def _configured_forecaster(settings: Settings) -> Forecaster:
+    """Loads the forecaster named in the settings once, at startup (ADR-005).
+
+    Any load error (missing artefact, ML library absent, feature drift) propagates and stops
+    the process: falling back to the mock would hide that the real model is not running.
+    """
+    if settings.forecaster == "mock":
+        return PersistenceMockForecaster()
+    if settings.forecaster_path is None:  # Settings enforces it; kept for the type checker
+        raise ConfigError(
+            f"SENTINEL_FORECASTER={settings.forecaster} needs SENTINEL_FORECASTER_PATH"
+        )
+    forecaster = load_forecaster(
+        settings.forecaster,
+        settings.forecaster_path,
+        engine=settings.forecaster_engine,
+        tree_format=settings.forecaster_tree_format,
+        with_contributions=settings.forecaster_contributions,
+    )
+    log.info(
+        "forecaster loaded",
+        extra={
+            "fields": {
+                "kind": settings.forecaster,
+                "path": str(settings.forecaster_path),
+                "model": forecaster.info.model_dump(),
+                "contributions": settings.forecaster_contributions,
+                "tree_format_used": getattr(forecaster, "tree_format_used", None),
+            }
+        },
+    )
+    return forecaster
 
 
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_REGISTRY_PATH = Path("config/sensors.provisional.json")
+FORECASTERS = {"mock", "baseline", "xgboost", "gru"}
 
 
 class ConfigError(ValueError):
@@ -67,9 +68,14 @@ class Settings:
     result_capacity: int = 2016
     alert_capacity: int = 10_000
     sensor_registry_path: Path = DEFAULT_REGISTRY_PATH
-    # Only "mock" exists until the owning modules deliver; any other value fails at startup
-    # so a mock is never substituted silently (ADR-005).
+    # Real forecasters need their artefact and are loaded at startup; a load failure stops the
+    # process, so a mock is never substituted silently (ADR-005). The detector only has "mock".
     forecaster: str = "mock"
+    forecaster_path: Path | None = None
+    # XGBoost only: TreeSHAP costs ~127 of ~134 ms per window on the VM (docs/performance.md).
+    forecaster_contributions: bool = True
+    forecaster_engine: str = "snapml"
+    forecaster_tree_format: str = "auto"
     detector: str = "mock"
     audit_sink: str = "null"
     # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
@@ -87,6 +93,14 @@ class Settings:
                 f"({self.min_history_windows}) exceeds SENTINEL_HISTORY_CAPACITY "
                 f"({self.history_capacity})"
             )
+        if self.forecaster not in FORECASTERS:
+            raise ConfigError(
+                f"SENTINEL_FORECASTER must be one of {sorted(FORECASTERS)}, got {self.forecaster!r}"
+            )
+        if self.forecaster != "mock" and self.forecaster_path is None:
+            raise ConfigError(
+                f"SENTINEL_FORECASTER={self.forecaster} needs SENTINEL_FORECASTER_PATH"
+            )
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -102,7 +116,15 @@ class Settings:
             sensor_registry_path=Path(
                 e.get("SENTINEL_SENSOR_REGISTRY", str(DEFAULT_REGISTRY_PATH))
             ),
-            forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", {"mock"}),
+            forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", FORECASTERS),
+            forecaster_path=Path(e["SENTINEL_FORECASTER_PATH"])
+            if e.get("SENTINEL_FORECASTER_PATH")
+            else None,
+            forecaster_contributions=_bool(e, "SENTINEL_FORECASTER_CONTRIBUTIONS", True),
+            forecaster_engine=_choice(
+                e, "SENTINEL_FORECASTER_ENGINE", "snapml", {"snapml", "xgboost"}
+            ),
+            forecaster_tree_format=e.get("SENTINEL_FORECASTER_TREE_FORMAT", "auto"),
             detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock"}),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
             audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
