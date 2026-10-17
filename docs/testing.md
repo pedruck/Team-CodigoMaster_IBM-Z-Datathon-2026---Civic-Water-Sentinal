@@ -50,10 +50,25 @@ barriers.
 | 13 | integrated run with mocks | `test_synthetic_day_replay_with_injected_step` |
 | 14 | concurrent requests | `test_concurrent_resend_of_same_window_creates_it_once`, `test_concurrent_distinct_windows_never_corrupt_order`, `test_concurrent_requests_are_serialised`, `test_concurrent_readers_and_writer_keep_invariants` |
 
+## Running on the LinuxONE VM (s390x)
+
+`mypy` cannot be installed there yet: its dependency `librt` 0.16.0 has no s390x wheel on
+PyPI and the VM has no C compiler (`gcc`), so `uv sync --locked` (which includes the dev
+group) fails while building it. The runtime dependencies install from wheels. Until Q-PLAT-02
+is answered, run the gates that work, with the versions pinned in `uv.lock`:
+
+```bash
+uv sync --locked --no-dev
+uv run --no-sync --with pytest==9.1.1 --with httpx2==2.13.1 --with ruff==0.17.1 pytest
+```
+
+Type checking is platform-independent and runs in CI on x86.
+
 ## Not covered (yet)
 
 - Line/branch coverage is **not measured** (no coverage tool added; NOT_RUN).
-- Real models, real sensor IDs, real data, s390x: blocked (`docs/dependencies.md`).
+- Real models, real sensor IDs, real data: blocked (`docs/dependencies.md`).
+- `mypy` on s390x (see above); no CI runner on s390x.
 - Load test at saturation: BE-017.
 - CI: `.github/workflows/ci.yml` runs `just ci` (format check, lint, mypy, pytest) on every PR and push to `main`, Python 3.12 on `ubuntu-latest` (x86_64 only).
 

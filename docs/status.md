@@ -1,13 +1,14 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — PR #1 (foundation) merged into `main`; PR #2 adds CI (BE-018).
+**Last update:** 2026-10-17 — foundation and CI merged into `main`; first s390x (LinuxONE) run recorded.
 
 ## Summary
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
-real models, real sensor IDs, the real audit log or LinuxONE yet. All contracts are v1.0
+real models, real sensor IDs or the real audit log yet. On the LinuxONE VM (s390x) the
+runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
 `Proposed` until the other owners confirm them.
 
 ## Done (tests green)
@@ -18,7 +19,8 @@ BE-009 metrics/logs/benchmark (x86, mocks) · BE-018 CI (GitHub Actions). Detail
 
 ## In progress
 
-None.
+BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
+waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 ## Blocked
 
@@ -29,7 +31,6 @@ None.
 | BE-012 real detector | DEP-DET-01..03 (detection owner) |
 | BE-013 real audit sink | DEP-AUD-01, Q-AUD-03 (audit owner) |
 | BE-014 real 2019 replay | BE-010, DEP-DATA-05 |
-| BE-015 LinuxONE run | DEP-PLAT-01 |
 
 ## Pending (independent, not started)
 
@@ -39,7 +40,7 @@ BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive 
 
 22 open/partial items in `docs/dependencies.md`; P0 questions in
 `docs/questions-for-team.md` (Q-TEAM-01/02, Q-DATA-01/02/03/06, Q-ML-01/02, Q-DET-01/02,
-Q-AUD-01/03, Q-PLAT-01).
+Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
@@ -48,7 +49,7 @@ Q-AUD-01/03, Q-PLAT-01).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004, Q-DATA-03).
 - Fail-open audit can serve alerts missing from the log (ADR-006, Q-AUD-03).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
-- s390x wheels unverified (ADR-001).
+- `mypy` not installable on s390x without `gcc` (Q-PLAT-02); model runtime wheels on s390x unverified.
 - Design-doc inconsistencies flagged: residual/z sign (Q-DET-02), alert↔audit hash
   circularity (Q-AUD-05).
 
@@ -76,5 +77,10 @@ BE-010. Independent meanwhile: BE-017 (load test).
 | uvicorn + `scripts/replay.py` (576 synthetic windows) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 6.797 / p99 14.837 ms |
 | `just dev` + README curl + `just replay` (fresh server) | example → 201 `insufficient_history`; 288 × 201; 1 mock alert |
 | GitHub Actions run 39040317019 (`just ci`, ubuntu-latest, Python 3.12) | success · 52 files already formatted · ruff OK · mypy OK · **89 passed** |
-| s390x / real models / real data | **NOT_RUN** — blocked (see above) |
+| LinuxONE VM (s390x, Python 3.12.3): `uv sync --locked --no-dev` + pinned `ruff format --check`, `ruff check`, `pytest` | runtime deps installed from wheels · 52 files formatted · ruff OK · **89 passed** |
+| LinuxONE: `uv sync --locked` (with dev group) | **FAILED** — `librt` 0.16.0 (mypy dep) needs `gcc`, absent on the VM |
+| LinuxONE: `scripts/bench_pipeline.py --windows 5000` | total p50 0.1645 ms / p99 0.3514 ms (mocks) |
+| LinuxONE: uvicorn + `scripts/replay.py` (576 windows, localhost) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 1.419 / p99 17.988 ms |
+| x86 vs s390x `content_hash` of `window.valid.json` | identical (`7fc91e5a…9717fa`) |
+| real models / real data | **NOT_RUN** — blocked (see above) |
 | line coverage | **NOT_RUN** — no coverage tool configured |

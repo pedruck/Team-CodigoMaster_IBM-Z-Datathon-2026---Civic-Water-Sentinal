@@ -33,6 +33,8 @@ Contracts live in `sentinel.schemas`; OpenAPI at `/docs` is the HTTP contract re
 ## Risks
 `pydantic-core` / `uvicorn` / model runtimes without s390x wheels (design doc Table 5).
 Mitigation: verify on the LinuxONE VM early (DEP-PLAT-01).
+Observed 2026-10-17: all runtime dependencies install from s390x wheels and the test suite
+passes; only the dev tool `mypy` fails (its dependency `librt` needs a C compiler).
 
 ## Dependencies
 LinuxONE VM image (platform owner).
