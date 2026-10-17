@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from sentinel.forecasting.features import SensorLayout
+from sentinel.forecasting.features import SensorLayout, canonical_id
 from sentinel.schemas.forecasts import ForecastRequest
 from sentinel.schemas.windows import SensorWindow
 
@@ -35,4 +35,24 @@ def request(
         pressure_sensor_ids=sensors,
         history=past,
         current=window(ts),
+    )
+
+
+def short_ids(req: ForecastRequest) -> ForecastRequest:
+    """Same request spelled with the official registry IDs (``n1``) instead of CSV columns."""
+
+    def strip(window: SensorWindow) -> SensorWindow:
+        return SensorWindow(
+            schema_version="1.0",
+            timestamp=window.timestamp,
+            pressures={canonical_id(k): v for k, v in window.pressures.items()},
+            flows={canonical_id(k): v for k, v in window.flows.items()},
+            tank_levels={canonical_id(k): v for k, v in window.tank_levels.items()},
+        )
+
+    return ForecastRequest(
+        target_timestamp=req.target_timestamp,
+        pressure_sensor_ids=tuple(canonical_id(s) for s in req.pressure_sensor_ids),
+        history=tuple(strip(w) for w in req.history),
+        current=strip(req.current),
     )

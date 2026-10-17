@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from sentinel.forecasting.features import (
+    IdTranslator,
     SensorLayout,
     group_contributions,
     xgb_feature_names,
@@ -86,6 +87,7 @@ class XGBoostForecaster:
         self._layout = SensorLayout.from_dict(meta["layout"])
         self._sensors: tuple[str, ...] = tuple(meta["sensors"])
         self._names = {s: xgb_feature_names(self._layout, s) for s in self._sensors}
+        self._ids = IdTranslator(self._layout)
         stored = meta.get("feature_names", {})
         drift = [s for s in self._sensors if s in stored and stored[s] != self._names[s]]
         if drift:
@@ -127,23 +129,25 @@ class XGBoostForecaster:
         return self._layout
 
     def predict(self, request: ForecastRequest) -> ForecastResult:
-        missing = [s for s in request.pressure_sensor_ids if s not in self._names]
+        to_model = self._ids.mapping(request.pressure_sensor_ids)
+        missing = [s for s, m in to_model.items() if m not in self._names]
         if missing:
             raise ForecastError(f"sensors without a model: {missing}")
         np = self._np
+        current = self._ids.window(request.current)
         expected: dict[str, float] = {}
         contributions: dict[str, dict[str, float]] = {}
         try:
-            for sensor in request.pressure_sensor_ids:
-                row = xgb_features(request.current, self._layout, sensor)
+            for request_id, sensor in to_model.items():
+                row = xgb_features(current, self._layout, sensor)
                 x = np.asarray([row], dtype=np.float32)
                 if self._engine == "snapml":
-                    expected[sensor] = float(self._models[sensor].predict(x)[0])
+                    expected[request_id] = float(self._models[sensor].predict(x)[0])
                 else:
-                    expected[sensor] = float(self._booster_predict(sensor, x, False)[0])
+                    expected[request_id] = float(self._booster_predict(sensor, x, False)[0])
                 if self._with_contributions:
                     values = [float(v) for v in self._booster_predict(sensor, x, True)[0]]
-                    contributions[sensor] = group_contributions(
+                    contributions[request_id] = group_contributions(
                         self._names[sensor], values[:-1], values[-1]
                     )
         except KeyError as exc:

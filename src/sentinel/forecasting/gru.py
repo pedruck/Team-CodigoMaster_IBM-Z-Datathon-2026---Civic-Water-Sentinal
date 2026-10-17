@@ -23,7 +23,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from sentinel.forecasting.features import SensorLayout, gru_feature_names, gru_step_features
+from sentinel.forecasting.features import (
+    IdTranslator,
+    SensorLayout,
+    gru_feature_names,
+    gru_step_features,
+)
 from sentinel.forecasting.interface import ForecastError
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
@@ -137,6 +142,7 @@ class GRUForecaster:
         self._dir = Path(model_dir)
         meta = json.loads((self._dir / "meta.json").read_text(encoding="utf-8"))
         self._layout = SensorLayout.from_dict(meta["layout"])
+        self._ids = IdTranslator(self._layout)
         self._window = int(meta["window"])
         self._horizon = int(meta.get("horizon", 1))
         if self._horizon < 1:
@@ -190,7 +196,8 @@ class GRUForecaster:
         return self._model
 
     def predict(self, request: ForecastRequest) -> ForecastResult:
-        unknown = [s for s in request.pressure_sensor_ids if s not in self._layout.pressure]
+        to_model = self._ids.mapping(request.pressure_sensor_ids)
+        unknown = [s for s, m in to_model.items() if m not in self._layout.pressure]
         if unknown:
             raise ForecastError(f"sensors not predicted by this model: {unknown}")
         needed = self.min_history_windows
@@ -200,7 +207,7 @@ class GRUForecaster:
         np = self._np
         try:
             steps = [
-                gru_step_features(w, self._layout)
+                gru_step_features(self._ids.window(w), self._layout)
                 for w in request.history[end - self._window : end]
             ]
         except KeyError as exc:
@@ -210,6 +217,6 @@ class GRUForecaster:
         by_sensor = {s: float(v) for s, v in zip(self._layout.pressure, y, strict=True)}
         return ForecastResult(
             timestamp=request.target_timestamp,
-            expected_pressures={s: by_sensor[s] for s in request.pressure_sensor_ids},
+            expected_pressures={s: by_sensor[m] for s, m in to_model.items()},
             model=self._info,
         )

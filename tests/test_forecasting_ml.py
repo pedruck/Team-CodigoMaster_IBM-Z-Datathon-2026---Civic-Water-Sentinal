@@ -7,11 +7,11 @@ from typing import Any
 
 import pytest
 
-from sentinel.forecasting.features import gru_feature_names, xgb_feature_names
+from sentinel.forecasting.features import canonical_id, gru_feature_names, xgb_feature_names
 from sentinel.forecasting.gru import WEIGHTS_FILE, GRUForecaster, build_gru_model, export_onnx
 from sentinel.forecasting.interface import Forecaster, ForecastError
 from sentinel.forecasting.xgb import XGBoostForecaster
-from tests.forecasting_helpers import LAYOUT, T0, request, window
+from tests.forecasting_helpers import LAYOUT, T0, request, short_ids, window
 
 np: Any = pytest.importorskip("numpy")
 
@@ -148,3 +148,17 @@ def test_export_onnx_has_one_fused_gru_node(tmp_path: Path) -> None:
     (onnx_out,) = reference.ReferenceEvaluator(onnx.load(str(path))).run(None, {"window": x})
     keras_out = model.keras_model(x, training=False).numpy()
     assert np.abs(onnx_out - keras_out).max() < 1e-4
+
+
+def test_xgboost_and_gru_accept_both_id_spellings(tmp_path: Path) -> None:
+    xgb_model = XGBoostForecaster(_train_xgb(tmp_path), engine="xgboost")
+    long_req = request(T0, history=8)
+    a = xgb_model.predict(long_req)
+    b = xgb_model.predict(short_ids(long_req))
+    assert b.expected_pressures == {canonical_id(k): v for k, v in a.expected_pressures.items()}
+    assert b.contributions is not None and set(b.contributions) == set(b.expected_pressures)
+
+    gru = GRUForecaster(_train_gru(tmp_path))
+    c = gru.predict(long_req).expected_pressures
+    d = gru.predict(short_ids(long_req)).expected_pressures
+    assert d == {canonical_id(k): v for k, v in c.items()}

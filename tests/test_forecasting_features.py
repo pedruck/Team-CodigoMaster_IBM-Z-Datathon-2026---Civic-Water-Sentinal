@@ -9,7 +9,9 @@ from sentinel.forecasting.features import (
     GROUP_FLOW,
     GROUP_LEVEL,
     GROUP_SENSORS,
+    IdTranslator,
     SensorLayout,
+    canonical_id,
     group_contributions,
     gru_calendar,
     gru_feature_names,
@@ -19,7 +21,7 @@ from sentinel.forecasting.features import (
     xgb_features,
 )
 from sentinel.forecasting.xgb import portable_booster_json
-from tests.forecasting_helpers import LAYOUT, T0, window
+from tests.forecasting_helpers import LAYOUT, T0, request, short_ids, window
 
 
 def test_layout_round_trip() -> None:
@@ -90,3 +92,29 @@ def test_portable_booster_json_rejects_multi_target() -> None:
     raw = json.dumps({"learner": {"learner_model_param": {"base_score": "[1E-1,2E-1]"}}})
     with pytest.raises(ValueError):
         portable_booster_json(raw)
+
+
+def test_canonical_id_strips_column_prefixes() -> None:
+    assert canonical_id("Pressure_n1") == "n1"
+    assert canonical_id("Flow_PUMP_1") == "PUMP_1"
+    assert canonical_id("Level_T1") == "T1"
+    assert canonical_id("n1") == "n1"
+
+
+def test_translator_maps_both_spellings_to_model_ids() -> None:
+    ids = IdTranslator(LAYOUT)
+    assert ids.to_model("n1") == "Pressure_n1"
+    assert ids.to_model("Pressure_n1") == "Pressure_n1"
+    assert ids.to_model("PUMP_1") == "Flow_PUMP_1"
+    assert ids.to_model("unknown") == "unknown"
+
+
+def test_translator_window_renames_only_when_needed() -> None:
+    ids = IdTranslator(LAYOUT)
+    aligned = window(T0)
+    assert ids.window(aligned) is aligned
+    short = short_ids(request(T0)).current
+    renamed = ids.window(short)
+    assert renamed.pressures == aligned.pressures
+    assert renamed.flows == aligned.flows
+    assert renamed.tank_levels == aligned.tank_levels

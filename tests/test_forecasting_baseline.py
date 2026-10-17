@@ -7,7 +7,7 @@ import pytest
 from sentinel.forecasting.baseline import SLOTS, HourOfWeekForecaster, hour_of_week
 from sentinel.forecasting.interface import Forecaster, ForecastError
 from sentinel.forecasting.registry import load_forecaster
-from tests.forecasting_helpers import LAYOUT, T0, request
+from tests.forecasting_helpers import LAYOUT, T0, request, short_ids
 
 
 def _model() -> HourOfWeekForecaster:
@@ -55,3 +55,8 @@ def test_load_through_registry(tmp_path: Path) -> None:
 def test_registry_rejects_unknown_kind(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         load_forecaster("random-forest", tmp_path)
+
+
+def test_accepts_registry_ids_without_column_prefix() -> None:
+    result = _model().predict(short_ids(request(T0)))
+    assert result.expected_pressures == {"n1": 78.0, "n4": 79.0, "n31": 80.0}

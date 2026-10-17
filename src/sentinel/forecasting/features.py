@@ -1,15 +1,18 @@
-"""Feature definitions shared by training (notebooks) and inference (forecasters).
+"""Feature definitions shared by training and inference (forecasters).
 
-The notebooks build the same features vectorised with pandas and assert, on a sample of
-rows, that they match these functions exactly (train/serve parity). Any change here must be
-mirrored in ``notebooks/p2_forecast/p2lib.py`` and the models retrained.
+``sentinel.forecasting.training`` builds the same features vectorised with pandas and the
+notebooks assert, on a sample of rows, that both match exactly (train/serve parity). Any
+change here must be mirrored there and the models retrained.
 
-Sensor IDs are the data owner's column names (``Pressure_n1``, ``Flow_p227``, ``Level_T1``),
-the same IDs the backend reads from ``data/vN/sensors.csv``.
+Two spellings of the same sensor IDs exist in the project: the official registry
+(``config/sensors.battledim.json``: ``n1``, ``p227``, ``T1``) and the data owner's CSV column
+names (``data/vN/sensors.csv``: ``Pressure_n1``, ``Flow_p227``, ``Level_T1``). Models store the
+spelling they were trained with; ``IdTranslator`` maps the spelling of each request onto it,
+so a model works whichever registry the API is started with.
 """
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -45,6 +48,47 @@ class SensorLayout:
             pressure=tuple(data["pressure"]),
             flow=tuple(data.get("flow", ())),
             tank_level=tuple(data.get("tank_level", ())),
+        )
+
+
+COLUMN_PREFIXES = ("Pressure_", "Flow_", "Level_")
+
+
+def canonical_id(sensor_id: str) -> str:
+    """``Pressure_n1`` -> ``n1``; ``n1`` stays ``n1``. Network elements are unique in L-Town."""
+    for prefix in COLUMN_PREFIXES:
+        if sensor_id.startswith(prefix):
+            return sensor_id[len(prefix) :]
+    return sensor_id
+
+
+class IdTranslator:
+    """Maps request sensor IDs (either spelling) to the IDs a model was trained with."""
+
+    def __init__(self, layout: SensorLayout) -> None:
+        ids = (*layout.pressure, *layout.flow, *layout.tank_level)
+        self._model_ids = set(ids)
+        self._by_canonical = {canonical_id(s): s for s in ids}
+
+    def to_model(self, sensor_id: str) -> str:
+        if sensor_id in self._model_ids:
+            return sensor_id
+        return self._by_canonical.get(canonical_id(sensor_id), sensor_id)
+
+    def mapping(self, sensor_ids: Iterable[str]) -> dict[str, str]:
+        return {s: self.to_model(s) for s in sensor_ids}
+
+    def window(self, window: SensorWindow) -> SensorWindow:
+        """Same window with the readings keyed by model IDs (no copy if already aligned)."""
+        keys = (*window.pressures, *window.flows, *window.tank_levels)
+        if all(k in self._model_ids for k in keys):
+            return window
+        return window.model_copy(
+            update={
+                "pressures": {self.to_model(k): v for k, v in window.pressures.items()},
+                "flows": {self.to_model(k): v for k, v in window.flows.items()},
+                "tank_levels": {self.to_model(k): v for k, v in window.tank_levels.items()},
+            }
         )
 
 

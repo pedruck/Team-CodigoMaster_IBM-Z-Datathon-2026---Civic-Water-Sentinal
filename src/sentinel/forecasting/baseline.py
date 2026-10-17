@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
+from sentinel.forecasting.features import IdTranslator, SensorLayout
 from sentinel.forecasting.interface import ForecastError
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
@@ -30,6 +31,7 @@ class HourOfWeekForecaster:
             if len(values) != SLOTS:
                 raise ValueError(f"profile of {sensor} has {len(values)} hours, expected {SLOTS}")
         self._profile = {s: list(v) for s, v in profile.items()}
+        self._ids = IdTranslator(SensorLayout(tuple(self._profile), (), ()))
         self._info = ModelInfo(name=MODEL_NAME, version=version, is_mock=False)
 
     @classmethod
@@ -47,11 +49,12 @@ class HourOfWeekForecaster:
 
     def predict(self, request: ForecastRequest) -> ForecastResult:
         slot = hour_of_week(request.target_timestamp)
-        missing = [s for s in request.pressure_sensor_ids if s not in self._profile]
+        to_model = self._ids.mapping(request.pressure_sensor_ids)
+        missing = [s for s, m in to_model.items() if m not in self._profile]
         if missing:
             raise ForecastError(f"sensors without a profile in the model: {missing}")
         return ForecastResult(
             timestamp=request.target_timestamp,
-            expected_pressures={s: self._profile[s][slot] for s in request.pressure_sensor_ids},
+            expected_pressures={s: self._profile[m][slot] for s, m in to_model.items()},
             model=self._info,
         )
