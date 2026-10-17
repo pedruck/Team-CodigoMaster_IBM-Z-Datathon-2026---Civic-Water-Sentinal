@@ -32,7 +32,7 @@ flowchart LR
 |---|---|---|---|
 | HTTP API (FastAPI) | `sentinel.api` | Backend & Ingestion | implemented, tested |
 | Contracts (Pydantic) | `sentinel.schemas` | Backend & Ingestion, agreed with each owner | implemented; v1.0 `Proposed` |
-| Window validation + sensor registry | `sentinel.services.ingestion`, `sentinel.sensors` | Backend & Ingestion | implemented; real IDs from `data/vN/sensors.csv`, placeholders for dev |
+| Window validation + sensor registry | `sentinel.services.ingestion`, `sentinel.sensors` | Backend & Ingestion | implemented; official IDs from `config/sensors.battledim.json` (data owner), placeholders for dev |
 | History buffer | `sentinel.services.history` | Backend & Ingestion | implemented (in memory) |
 | Pipeline / orchestration | `sentinel.services.pipeline` | Backend & Ingestion | implemented, tested with mocks |
 | Forecaster interface + mock | `sentinel.forecasting` | interface: Backend; real models: ML owner | port + mock only |

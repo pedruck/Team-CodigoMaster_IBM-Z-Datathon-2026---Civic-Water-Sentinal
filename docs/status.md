@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `zanetti/audit-fail-closed`: fail-closed audit and z sign convention (BE-019).
+**Last update:** 2026-10-17 — branch `zanetti/shared-api`: one sensor-ID scheme (official registry of the data owner), shared API script + runbook, full 2019 HTTP replay.
 
 ## Summary
 
@@ -8,7 +8,8 @@ The backend runs end to end **with mocks**: windows are validated, ordered, buff
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
 real models or the real audit log yet. The official sensor set is read from the data owner's
-`data/v1/sensors.csv`, and the whole 2019 export passes validation with 0 rejections. On the LinuxONE VM (s390x) the
+`config/sensors.battledim.json` (official registry, data owner), and the whole 2019 replay passes
+validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
 `Proposed` until the other owners confirm them.
 
@@ -17,12 +18,9 @@ runtime installs from wheels and the 89 tests pass; mypy does not install there 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
 BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
-convention. Details: `docs/implementation-plan.md`.
+convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook. Details: `docs/implementation-plan.md`.
 
 ## In progress
-
-BE-014 real 2019 replay: in-process full year done; HTTP replay waits for the data owner's
-replay tool (the backend now accepts the CSV timestamps as they are, read as UTC).
 
 BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
 waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
@@ -47,9 +45,9 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
+- The shared API on port 8000 holds 2019 in memory; any restart wipes it (re-run the replay,
+  `docs/runbook-vm.md`).
 - Separate repository may need to be merged into a team repository (Q-TEAM-02).
-- v1 timestamps carry no timezone; the backend assumes UTC (flagged per window) until the data
-  owner confirms (Q-DATA-02).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
 - Fail-closed audit: during an audit outage no new alerts are served; the pending queue is in
   memory and lost on restart (ADR-006).
@@ -68,9 +66,8 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Run the HTTP replay of 2019 with the data owner's replay tool (BE-014); confirm Q-DATA-02 (UTC,
-end of interval). Independent meanwhile: runbook for the
-shared API instance on the VM (demo), and BE-017 (load test).
+Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on the shared API
+(`docs/runbook-vm.md`), then measure p50/p99 with real models (BE-015). Independent: BE-017.
 
 ## Verification (2026-10-17)
 
@@ -90,5 +87,10 @@ shared API instance on the VM (demo), and BE-017 (load test).
 | x86: `just check` @ `073c605` | ruff OK · mypy OK (57 files) · **107 passed** |
 | LinuxONE: `scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` @ `073c605` (CSV timestamps sent as is) | 105 120 windows, 0 rejected, 105 120 with `timestamp_tz_assumed`, pipeline p50 0.2231 / p99 0.4074 ms |
 | branch `zanetti/audit-fail-closed` @ `1251d95` — x86 `just ci` · LinuxONE `python -m pytest -q` · LinuxONE `validate_v1_ingestion.py` 2019 (in-memory audit) | ruff OK · mypy OK (58 files) · **115 passed** (x86 and s390x) · 105 120 windows, 0 rejected, p50 0.221 / p99 0.3156 ms |
+| branch `zanetti/shared-api` @ `d4a2750` — x86 `just check` · LinuxONE `python -m pytest -q` (with `SENTINEL_DATA_DIR`) | ruff OK · mypy OK (63 files) · x86 121 passed + 8 skipped (P1 data) · **s390x 129 passed** |
+| LinuxONE: `validate_replay_ingestion.py windows_2019.jsonl` (in process) | 105 120 windows, 0 rejected, 0 tz assumed, p50 0.2157 / p99 0.3026 ms |
+| LinuxONE: `shared_api.sh start / start (dup) / stop / status / start` | started; duplicate refused (exit 1); stopped, process gone; restarted |
+| LinuxONE: `scripts/replay.py windows_2019.jsonl` → shared API :8000 | 105 120 × 201, 723.78 windows/s, client p50 1.284 / p99 2.861 ms |
+| local tunnel `-L 18000:172.17.0.2:8000` | `/health` ok, `/docs` 200 |
 | real models | **NOT_RUN** — blocked (see above) |
 | line coverage | **NOT_RUN** — no coverage tool configured |

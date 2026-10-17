@@ -1,19 +1,16 @@
-"""Run one year of the data owner's ``data/vN`` export through the backend, in process.
+"""Run a JSONL replay (contract ``sentinel.window`` v1.0) through the backend, in process.
 
-Reads ``sensors.csv`` and ``scada_<year>.csv.gz`` (wide CSV, one row per 5-min window) and
-feeds every row as a contract v1.0 window to the pipeline with the MOCK forecaster/detector.
-It checks the contract, the temporal policy and the backend cost on the real data shape; mock
-alerts are not detections. This is a backend check, not the official replay (data owner).
+Input: the data owner's replay file, e.g. ``$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl``
+(``python -m sentinel.data.replay_windows``). Every line is parsed as the HTTP input model and
+fed to the pipeline with the MOCK forecaster/detector and in-memory audit. It checks the
+contract, the temporal policy and the backend cost without HTTP; mock alerts are not
+detections. For the HTTP path use ``scripts/replay.py`` against a running API.
 
-Timestamps are sent exactly as in the CSV (no timezone); the backend reads them as UTC
-(SENTINEL_NAIVE_TIMESTAMP_TZ, ADR-004). Data owner to confirm UTC / end of interval (Q-DATA-02).
-
-Usage: python scripts/validate_v1_ingestion.py <data_dir_vN> [--year 2019] [--limit N]
+Usage: python scripts/validate_replay_ingestion.py <file.jsonl>
+       [--registry config/sensors.battledim.json] [--limit N]
 """
 
 import argparse
-import csv
-import gzip
 import json
 import platform
 import time
@@ -31,47 +28,26 @@ from sentinel.services.errors import SentinelError
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("data_dir", type=Path)
-    ap.add_argument("--year", default="2019")
+    ap.add_argument("file", type=Path)
+    ap.add_argument("--registry", type=Path, default=Path("config/sensors.battledim.json"))
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 
-    registry = SensorRegistry.load(args.data_dir / "sensors.csv")
-    group = {s: "pressures" for s in registry.pressure}
-    group |= {s: "flows" for s in registry.flow}
-    group |= {s: "tank_levels" for s in registry.tank_level}
+    registry = SensorRegistry.load(args.registry)
     pipeline = build_pipeline(Settings(audit_sink="memory"), registry=registry)
 
     statuses: Counter[str] = Counter()
-    tz_assumed = 0
     rejected: Counter[str] = Counter()
-    alerts = 0
+    tz_assumed = alerts = 0
     parse_s = 0.0
     t0 = time.perf_counter()
-    path = args.data_dir / f"scada_{args.year}.csv.gz"
-    with gzip.open(path, "rt", encoding="utf-8", newline="") as fh:
-        reader = csv.reader(fh)
-        header = next(reader)
-        for n, row in enumerate(reader):
+    with args.file.open(encoding="utf-8") as fh:
+        for n, line in enumerate(fh):
             if args.limit is not None and n >= args.limit:
                 break
-            readings: dict[str, dict[str, float]] = {
-                "pressures": {},
-                "flows": {},
-                "tank_levels": {},
-            }
-            for col, raw in zip(header[1:], row[1:], strict=True):
-                readings[group[col]][col] = float(raw)
             tp = time.perf_counter()
             try:
-                window = SensorWindowIn.model_validate(
-                    {
-                        "schema_version": "1.0",
-                        "timestamp": row[0],
-                        "source": f"{args.data_dir.name}-scada-{args.year}",
-                        **readings,
-                    }
-                )
+                window = SensorWindowIn.model_validate_json(line)
             except ValidationError as exc:
                 rejected[f"schema:{exc.errors()[0]['type']}"] += 1
                 continue
@@ -90,15 +66,17 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "machine": platform.machine(),
         "python": platform.python_version(),
-        "file": str(path),
+        "file": str(args.file),
+        "registry": str(args.registry),
         "windows_read": read,
         "accepted_by_status": dict(statuses),
         "rejected": dict(rejected),
         "timestamp_tz_assumed": tz_assumed,
         "mock_alerts_not_detections": alerts,
+        "audit_pending": pipeline.audit_pending,
         "history": pipeline.history_info().model_dump(),
         "elapsed_s": round(time.perf_counter() - t0, 2),
-        "pydantic_parse_ms_mean": round(parse_s / max(read, 1) * 1000, 4),
+        "json_parse_ms_mean": round(parse_s / max(read, 1) * 1000, 4),
         "latency_last_samples": {
             k: v.model_dump() for k, v in pipeline.metrics.latency().items() if v.count
         },

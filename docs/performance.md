@@ -84,7 +84,8 @@ VM); nothing in the backend uses it — it matters for the model runtimes (desig
 
 ### Real data shape: full 2019 v1 export, in process (2026-10-17)
 
-`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` in the shared
+`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` (script later
+replaced by `scripts/validate_replay_ingestion.py`, which reads the replay JSONL) in the shared
 Jupyter container on the LinuxONE VM (`/opt/venv`, Python 3.12.15, same pydantic/fastapi/
 starlette/uvicorn versions as `uv.lock`), commit `c70f997`, `nice -n 10`, VM otherwise idle
 (load ≈ 0.05). Mock forecaster/detector, in-memory audit, official 37-sensor registry.
@@ -100,6 +101,26 @@ An earlier identical run (pre-commit copy of the script) gave 29.39 s and p50/p9
 0.1961/0.2843 ms. At `073c605` (naive CSV timestamps normalised to UTC in ingestion): 32.99 s,
 p50/p99 0.2231/0.4074 ms, max 13.6681 ms. Single runs on a shared VM vary; treat these as
 orders of magnitude, not as the cost of the timezone normalisation.
+
+### Full 2019 over HTTP into the shared API (2026-10-17)
+
+Shared integration API (`scripts/shared_api.sh start`, `main` @ `fcce163`, official registry,
+in-memory audit, mocks, one worker, BLAS threads = 1) in the `notebook` container on the
+LinuxONE VM. Client: `scripts/replay.py` with the data owner's
+`$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl`, same container, `127.0.0.1:8000`,
+`nice -n 10`, sequential, a new connection per request. VM load before: 0.22 (other members'
+Jupyter kernels open, idle).
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 sent · 105 120 × `201` · error rate 0 · 144 `insufficient_history`, 104 976 `scored` |
+| wall time / client throughput | 145.238 s / 723.78 windows/s |
+| client latency p50 / p99 / max | 1.284 / 2.861 / 144.338 ms |
+| server `http_post_windows` p50 / p95 / p99 (last 10 000) | 0.8826 / 1.2801 / 2.1702 ms |
+| pipeline `total` p50 / p95 / p99 (last 10 000) | 0.2678 / 0.3967 / 0.5581 ms |
+| `validation` / `temporal_policy` / `forecast` / `detection` / `audit` p50 | 0.0422 / 0.035 / 0.0381 / 0.0897 / 0.0141 ms |
+| audit backlog after the run | 0 events |
+| API log size | 26.5 MB for the year (one INFO line per window) |
 
 ### x86 vs s390x parity (design doc §7, byte order)
 
@@ -120,6 +141,9 @@ not be used as one.
 | 1 | With mocks, HTTP handling dominates: server HTTP p50 3.96 ms vs pipeline p50 0.80 ms (x86); 0.85 vs 0.19 ms (s390x) | HTTP replays above | JSON parse + Pydantic validation of 37 readings + response serialisation, plus a new TCP connection per request in the stdlib client | keep-alive client for load tests (BE-017); no server change while it is far below budget | not applied |
 | 2 | `temporal_policy` p50 0.05 ms, ~10× the `history` stage | bench above | dominated by `content_hash()` (canonical JSON + SHA-256) — **not profiled** | profile with `cProfile` before changing anything | — |
 | 3 | `forecast` stage (mock) p50 0.07 ms includes building `ForecastRequest` with up to 288 windows | bench above | cost is tuple/model construction — **not profiled** | none needed now | — |
+
+| 4 | Over HTTP, `validation` p50 0.0422 ms vs 0.0093 ms in process | full-year HTTP vs in-process runs above | `normalize_window` re-validates the whole window when turning `SensorWindowIn` into `SensorWindow` — **not profiled** | build the internal model without re-validating the readings (`model_construct` with the already validated fields) if it ever matters | not applied (0.03 ms vs a 300 s interval) |
+| 5 | One spike: `detection` max 141.6 ms, client max 144 ms, during the full-year replay | full-year HTTP run | GC pause or contention with other members' kernels on 3 shared vCPUs — **not investigated** | none; watch p99 on real-model runs | — |
 
 No Rust/C++ optimisation is justified: there is no measured backend bottleneck relative to
 the 300 s interval. Revisit only with LinuxONE measurements of the real models.

@@ -58,8 +58,8 @@ Contracts: [`docs/integration-contracts.md`](docs/integration-contracts.md); Ope
 Environment variables `SENTINEL_*`, all with defaults — see [`.env.example`](.env.example).
 Main ones: `SENTINEL_HISTORY_CAPACITY` (288), `SENTINEL_MIN_HISTORY_WINDOWS` (144),
 `SENTINEL_NAIVE_TIMESTAMP_TZ` (`UTC`: timestamps without timezone are read as UTC; `reject`),
-`SENTINEL_SENSOR_REGISTRY` (placeholder JSON by default; the data owner's `data/vN/sensors.csv`
-for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`). Invalid values fail at
+`SENTINEL_SENSOR_REGISTRY` (placeholder JSON by default; `config/sensors.battledim.json`, the
+official registry, for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`). Invalid values fail at
 startup. State is **in memory** and lost on restart (ADR-003).
 
 ## Layout
@@ -84,7 +84,7 @@ docs/             architecture, contracts, ADRs, plan, status, testing, performa
 [ADRs](docs/adr/README.md) · [Plan](docs/implementation-plan.md) ·
 [Status](docs/status.md) · [Dependencies](docs/dependencies.md) ·
 [Questions for the team](docs/questions-for-team.md) · [Testing](docs/testing.md) ·
-[Performance](docs/performance.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) ·
+[Performance](docs/performance.md) · [VM runbook](docs/runbook-vm.md) · [Data](docs/data.md) · [Agents](AGENTS.md) · [Contributing](CONTRIBUTING.md) ·
 [Changelog](CHANGELOG.md)
 
 ## Data
