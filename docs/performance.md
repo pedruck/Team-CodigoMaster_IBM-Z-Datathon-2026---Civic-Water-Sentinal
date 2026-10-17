@@ -84,7 +84,8 @@ VM); nothing in the backend uses it — it matters for the model runtimes (desig
 
 ### Real data shape: full 2019 v1 export, in process (2026-10-17)
 
-`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` in the shared
+`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` (script later
+replaced by `scripts/validate_replay_ingestion.py`, which reads the replay JSONL) in the shared
 Jupyter container on the LinuxONE VM (`/opt/venv`, Python 3.12.15, same pydantic/fastapi/
 starlette/uvicorn versions as `uv.lock`), commit `c70f997`, `nice -n 10`, VM otherwise idle
 (load ≈ 0.05). Mock forecaster/detector, in-memory audit, official 37-sensor registry.

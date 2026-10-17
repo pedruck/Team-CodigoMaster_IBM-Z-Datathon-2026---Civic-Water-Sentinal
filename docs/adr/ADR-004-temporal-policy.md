@@ -1,6 +1,6 @@
 # ADR-004 — Temporal policy: order, duplicates, gaps, no reprocessing
 
-- **Status:** Proposed — needs confirmation by the data owner (Q-DATA-02, Q-DATA-03) and
+- **Status:** Proposed — data questions answered (Q-DATA-02/03, `docs/data.md`); still needs
   the detection owner (Q-DET-03).
 - **Date:** 2026-10-17
 

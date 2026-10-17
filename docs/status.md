@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `zanetti/audit-fail-closed`: fail-closed audit and z sign convention (BE-019).
+**Last update:** 2026-10-17 — branch `zanetti/shared-api`: one sensor-ID scheme (official registry of the data owner), shared API script + runbook, full 2019 HTTP replay.
 
 ## Summary
 
@@ -8,7 +8,8 @@ The backend runs end to end **with mocks**: windows are validated, ordered, buff
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
 are emitted to a dev sink, and per-stage latency is measured. Nothing is integrated with the
 real models or the real audit log yet. The official sensor set is read from the data owner's
-`data/v1/sensors.csv`, and the whole 2019 export passes validation with 0 rejections. On the LinuxONE VM (s390x) the
+`config/sensors.battledim.json` (official registry, data owner), and the whole 2019 replay passes
+validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass; mypy does not install there yet. All contracts are v1.0
 `Proposed` until the other owners confirm them.
 
@@ -48,8 +49,6 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 ## Risks
 
 - Separate repository may need to be merged into a team repository (Q-TEAM-02).
-- v1 timestamps carry no timezone; the backend assumes UTC (flagged per window) until the data
-  owner confirms (Q-DATA-02).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
 - Fail-closed audit: during an audit outage no new alerts are served; the pending queue is in
   memory and lost on restart (ADR-006).
