@@ -6,6 +6,8 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- First LinuxONE (s390x) baseline: tests, benchmark, HTTP replay and x86/s390x hash parity
+  (`docs/performance.md`).
 - GitHub Actions CI running `just ci` on pull requests and pushes to `main`.
 - Contracts v1.0 (`Proposed`): window, forecast request/result, detection result, alert,
   audit event/ref; examples in `docs/examples/` validated by tests.

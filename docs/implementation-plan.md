@@ -28,7 +28,7 @@ M (½–2 days), L (> 2 days).
 | BE-012 | Integrate real detector behind `Detector` | P0 | BLOCKED | DEP-DET-01..03 | Backend + Detection | M | idem, `SENTINEL_DETECTOR=<name>` |
 | BE-013 | Integrate real audit sink | P1 | BLOCKED | DEP-AUD-01, Q-AUD-03 | Backend + Audit | M | `SENTINEL_AUDIT_SINK=<name>`; chain verified after a replay |
 | BE-014 | Replay of real 2019 data end to end | P1 | BLOCKED | BE-010, DEP-DATA-05 | Backend + Data | S | full 2019 replay with 0 rejected windows (or every rejection explained) |
-| BE-015 | Run on LinuxONE (s390x): install, gates, p50/p99 per window | P1 | BLOCKED | DEP-PLAT-01 | Backend + Platform | M | `just check` on s390x; numbers in `docs/performance.md` |
+| BE-015 | Run on LinuxONE (s390x): install, gates, p50/p99 per window | P1 | IN_PROGRESS (mock baseline done; mypy and real models pending) | DEP-PLAT-01, Q-PLAT-02, BE-011/012 | Backend + Platform | M | `just check` on s390x; numbers in `docs/performance.md` |
 | BE-016 | Dashboard needs (CORS, extra filters) | P2 | TODO | Q-UI-01..03 | Backend + UI | S | dashboard reads the API |
 | BE-017 | Load test (HTTP p50/p99 at replay speed and saturation, keep-alive client) | P2 | TODO | BE-008 | Backend | S | numbers + method in `docs/performance.md` |
 | BE-018 | CI (GitHub Actions running `just ci`) | P2 | DONE | BE-001 | Backend | S | workflow green on PR |

@@ -66,4 +66,5 @@ Priority: **P0** blocks real data or models, **P1** blocks a correct evaluation,
 
 | ID | P | Question | Proposed default | Why |
 |---|---|---|---|---|
-| Q-PLAT-01 | P0 | When is the LinuxONE VM available, which Python, can we `uv sync` there? | Python 3.12 + uv | ADR-001 risk |
+| Q-PLAT-01 | P0 | When is the LinuxONE VM available, which Python, can we `uv sync` there? | Answered 2026-10-17: available, Python 3.12.3; uv 0.11.16 installed for `linux1` | ADR-001 risk |
+| Q-PLAT-02 | P1 | May we `sudo apt install gcc python3-dev` on the shared VM? It lets `mypy` (via `librt`) and any wheel-less package build there; the model runtimes may need it too | install it (owner of the VM decides) | full `just check` on s390x |
