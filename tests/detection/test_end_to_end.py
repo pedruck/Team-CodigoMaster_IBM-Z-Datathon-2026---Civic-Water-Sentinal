@@ -9,6 +9,7 @@ mechanics only and is not evidence of leak detection. The detector is injected t
 ``build_pipeline``; selecting it with ``SENTINEL_DETECTOR=cusum`` is not wired yet.
 """
 
+import hashlib
 import json
 import random
 from collections.abc import Callable, Sequence
@@ -27,6 +28,7 @@ from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
 from sentinel.sensors import SensorRegistry
 from sentinel.synthetic import window_payload
 from tests.conftest import INTERVAL, ts
+from tests.detection.artefacts import FORECASTER_NAME, FORECASTER_VERSION, artefact_fields
 
 REGISTRY = SensorRegistry.load(Path(__file__).parents[2] / DEFAULT_REGISTRY_PATH)
 # sigma 0.1 m: a 0.5 m step gives d = 5, so S grows by 4.5 per window and crosses h = 8 on the
@@ -40,6 +42,7 @@ STEP_AT = 200
 
 
 class Day(NamedTuple):
+    artefact_sha256: str  # hash of the calibration file the server started with
     states: list[str | None]  # detector_state of every POST /v1/windows response
     alerts: list[dict[str, Any]]  # GET /v1/alerts, oldest first
 
@@ -51,7 +54,7 @@ class ProfileForecaster:
 
     def __init__(self, registry: SensorRegistry) -> None:
         self._registry = registry
-        self._info = ModelInfo(name="test-profile", version="0.1.0", is_mock=True)
+        self._info = ModelInfo(name=FORECASTER_NAME, version=FORECASTER_VERSION, is_mock=True)
 
     @property
     def info(self) -> ModelInfo:
@@ -80,16 +83,8 @@ def replay_day(
     """Replay the windows ``indices`` (default: one day); ``stepped(i)`` names the sensors
     reading ``STEP_M`` low at window i. ``states`` follow the order of ``indices``."""
     artefact = tmp_path_factory.mktemp("calibration") / "calibration.synthetic.json"
-    artefact.write_text(
-        json.dumps(
-            {
-                "provenance": "synthetic",
-                "sigma_m": dict.fromkeys(REGISTRY.pressure, 0.1),
-                **CALIBRATION,
-            }
-        ),
-        encoding="utf-8",
-    )
+    fields = artefact_fields(dict.fromkeys(REGISTRY.pressure, 0.1), **CALIBRATION)
+    artefact.write_text(json.dumps(fields), encoding="utf-8")
     settings = settings or Settings()
     pipeline = build_pipeline(
         settings,
@@ -110,6 +105,7 @@ def replay_day(
         assert {r.status_code for r in responses} == {201}
         alerts = client.get("/v1/alerts").json()["items"]
     return Day(
+        artefact_sha256=hashlib.sha256(artefact.read_bytes()).hexdigest(),
         states=[r.json()["detector_state"] for r in responses],
         alerts=sorted(alerts, key=lambda a: a["window_end"]),
     )
@@ -139,7 +135,8 @@ def test_step_on_three_sensors_opens_exactly_one_alert(one_step: Day) -> None:
 
 def test_alert_is_labelled_mock_on_the_alert_and_on_the_detector(one_step: Day) -> None:
     (alert,) = one_step.alerts
-    assert alert["models"]["detector"] == {"name": "cusum", "version": "0.1.0", "is_mock": True}
+    version = f"0.1.0+{one_step.artefact_sha256[:8]}"
+    assert alert["models"]["detector"] == {"name": "cusum", "version": version, "is_mock": True}
     assert alert["is_mock"] is True
 
 
@@ -222,9 +219,7 @@ def test_calibration_without_a_registry_sensor_fails_detection_not_ingestion(
 ) -> None:
     artefact = tmp_path / "calibration.synthetic.json"
     sigma = dict.fromkeys(REGISTRY.pressure[:-1], 0.1)  # one pressure sensor missing
-    artefact.write_text(
-        json.dumps({"provenance": "synthetic", "sigma_m": sigma, **CALIBRATION}), encoding="utf-8"
-    )
+    artefact.write_text(json.dumps(artefact_fields(sigma, **CALIBRATION)), encoding="utf-8")
     settings = Settings(history_capacity=6, min_history_windows=3)
     pipeline = build_pipeline(
         settings,

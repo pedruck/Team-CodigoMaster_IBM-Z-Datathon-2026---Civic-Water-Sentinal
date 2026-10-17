@@ -1,17 +1,20 @@
-"""CUSUM detector (ADR-007), slices BE-012a/b/c.
+"""CUSUM detector (ADR-007), slices BE-012a/b/c/d.
 
 Per-sensor ``S`` with cap ``c*h``, alert episodes per sensor (claim, release below
 ``h_close``, no reset), onset, decay across missing windows and all-or-nothing rejection of
-bad input. Not yet: startup checks and provenance rule (BE-012d), region (BE-012e).
+bad input. ``ModelInfo`` carries the artefact hash and ``is_mock`` follows the calibration
+provenance. Not yet: region (BE-012e).
 """
 
+import hashlib
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sentinel.detection.calibration import CalibrationArtefact
+from sentinel.config import ConfigError
+from sentinel.detection.calibration import CalibrationArtefact, canonical_bytes
 from sentinel.detection.interface import DetectionError
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.detections import (
@@ -21,6 +24,9 @@ from sentinel.schemas.detections import (
     DeviatingSensor,
     SensorResidual,
 )
+
+# Semver of the detector code; ``ModelInfo.version`` appends the artefact hash (ADR-008 §B).
+DETECTOR_VERSION = "0.1.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,19 +38,26 @@ class _State:
 
 
 class CusumDetector:
-    """Per-sensor one-sided CUSUM on ``d = -z``, capped at ``c*h``; one alert when ``n_min``
+    """Per-sensor one-sided CUSUM on ``z``, capped at ``c*h``; one alert when ``n_min``
     unclaimed sensors exceed ``h``. Every number comes from the calibration artefact.
 
-    ``is_mock`` is always true for now: without the startup checks of BE-012d it is not the
-    detector of ADR-007, whatever the provenance.
+    ``is_mock`` is true unless the calibration provenance is ``battledim-2018-oof`` (ADR-008 §B).
 
     ``evaluate`` validates first (timestamp after the last evaluated, sensor sets equal to the
     calibration, finite values) and raises ``DetectionError``; the state changes only in its
     last statement, so any exception leaves it untouched (ADR-007 §9).
     """
 
-    def __init__(self, calibration: CalibrationArtefact, *, interval: timedelta) -> None:
-        """``interval``: the window length (contract §1), used to count missing windows."""
+    def __init__(
+        self,
+        calibration: CalibrationArtefact,
+        *,
+        interval: timedelta,
+        calibration_id: str | None = None,
+    ) -> None:
+        """``interval``: the window length (contract §1), used to count missing windows.
+        ``calibration_id``: sha256 of the artefact file (``from_file`` sets it); by default
+        the sha256 of the file ``write_artefact`` would write for ``calibration``."""
         if interval <= timedelta(0):
             raise ValueError(f"interval must be positive, got {interval}")
         self._cal = calibration
@@ -57,12 +70,57 @@ class CusumDetector:
             last_zero=tuple(None for _ in self._sensors),
             last_timestamp=None,
         )
-        self._info = ModelInfo(name="cusum", version="0.1.0", is_mock=True)
+        self._calibration_id = (
+            calibration_id or hashlib.sha256(canonical_bytes(calibration)).hexdigest()
+        )
+        self._info = ModelInfo(
+            name="cusum",
+            version=f"{DETECTOR_VERSION}+{self._calibration_id[:8]}",
+            is_mock=calibration.is_mock,
+        )
 
     @classmethod
     def from_file(cls, path: Path, *, interval: timedelta) -> "CusumDetector":
-        artefact = CalibrationArtefact.model_validate_json(path.read_text(encoding="utf-8"))
-        return cls(artefact, interval=interval)
+        raw = path.read_bytes()
+        artefact = CalibrationArtefact.model_validate_json(raw)
+        return cls(artefact, interval=interval, calibration_id=hashlib.sha256(raw).hexdigest())
+
+    @classmethod
+    def for_pipeline(
+        cls,
+        path: Path,
+        *,
+        interval: timedelta,
+        pressure_sensors: Sequence[str],
+        forecaster: ModelInfo,
+    ) -> "CusumDetector":
+        """The detector as the server starts it: ``from_file`` plus the startup checks."""
+        detector = cls.from_file(path, interval=interval)
+        registry = frozenset(pressure_sensors)
+        if detector._sensor_set != registry:
+            raise ConfigError(
+                "calibration sensors differ from the registry's pressure sensors: "
+                f"missing={sorted(registry - detector._sensor_set)} "
+                f"unexpected={sorted(detector._sensor_set - registry)}"
+            )
+        order = tuple(pressure_sensors)
+        if detector._sensors != order:
+            at = next(
+                i for i, (a, b) in enumerate(zip(detector._sensors, order, strict=True)) if a != b
+            )
+            raise ConfigError(
+                "calibration lists the pressure sensors in a different order from the "
+                f"registry (first difference at position {at}: calibration "
+                f"{detector._sensors[at]!r}, registry {order[at]!r}); the order must be equal "
+                "(ADR-007 §9)"
+            )
+        calibrated = detector._cal.forecaster
+        if (forecaster.name, forecaster.version) != (calibrated.name, calibrated.version):
+            raise ConfigError(
+                f"calibration was made for forecaster {calibrated.name} {calibrated.version}, "
+                f"but the pipeline serves {forecaster.name} {forecaster.version}"
+            )
+        return detector
 
     @property
     def info(self) -> ModelInfo:
@@ -77,7 +135,8 @@ class CusumDetector:
         cal, state = self._cal, self._state
         self._validate(observed, expected, timestamp)
         residual = tuple(observed[s] - expected[s] for s in self._sensors)
-        z = tuple(r / cal.sigma_m[s] for r, s in zip(residual, self._sensors, strict=True))
+        # z = (expected - observed) / sigma: positive on a pressure drop (Q-DET-02, contract §3).
+        z = tuple(-r / cal.sigma_m[s] for r, s in zip(residual, self._sensors, strict=True))
         overflow = [
             s
             for s, r, zi in zip(self._sensors, residual, z, strict=True)
@@ -94,9 +153,9 @@ class CusumDetector:
         decayed = tuple(max(0.0, s - cal.k * skipped) for s in state.cusum)
         emptied = any(state.cusum) and not any(decayed)
         cap = cal.c * cal.h
-        # d = -z: a pressure drop is positive evidence (design doc §3 sign).
+        # A pressure drop (z > 0) is positive evidence (design doc §3).
         cusum = tuple(
-            min(cap, max(0.0, s_prev - zi - cal.k)) for s_prev, zi in zip(decayed, z, strict=True)
+            min(cap, max(0.0, s_prev + zi - cal.k)) for s_prev, zi in zip(decayed, z, strict=True)
         )
         # Onset: the last window with S = 0, counting the missing windows, where S is 0 at the
         # end of the gap whenever the decay left it at 0.
@@ -142,8 +201,8 @@ class CusumDetector:
                         )
                         for i in above
                     ),
-                    summary=f"[MOCK] CUSUM above h on {len(above)} sensors "
-                    f"(incomplete detector, {cal.provenance} calibration)",
+                    summary=f"{'[MOCK] ' if cal.is_mock else ''}CUSUM above h on "
+                    f"{len(above)} sensors ({cal.provenance} calibration)",
                 ),
             )
         diagnostics: dict[str, float | int | str | bool] = {
@@ -153,6 +212,7 @@ class CusumDetector:
             "c": cal.c,
             "cap": cap,  # c*h: the bound on S
             "h_close": cal.h_close,
+            "calibration_id": self._calibration_id,
             "provenance": cal.provenance,
             "skipped_windows": skipped,
         }

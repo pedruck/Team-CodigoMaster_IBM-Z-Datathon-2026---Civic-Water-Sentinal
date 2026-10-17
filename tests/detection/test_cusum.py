@@ -6,14 +6,16 @@ The calibration numbers below are invented for the tests; they are not results.
 from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime
 from typing import Literal, NoReturn
+from unittest.mock import ANY
 
 import pytest
 
-from sentinel.detection.calibration import CalibrationArtefact, Provenance
+from sentinel.detection.calibration import Provenance
 from sentinel.detection.cusum import CusumDetector
 from sentinel.detection.interface import DetectionError
 from sentinel.schemas.detections import CusumEvidence, DetectionResult, SensorResidual
 from tests.conftest import INTERVAL, ts
+from tests.detection.artefacts import make_artefact
 
 SENSORS = ("P1", "P2", "P3", "P4")
 EXPECTED = dict.fromkeys(SENSORS, 50.0)
@@ -21,18 +23,8 @@ EXPECTED = dict.fromkeys(SENSORS, 50.0)
 
 def make_detector(n_min: int = 2, provenance: Provenance = "synthetic") -> CusumDetector:
     """sigma 0.1 m: a 0.5 m drop gives d = 5, so S grows by 4.5 per window; cap c*h = 16."""
-    return CusumDetector(
-        CalibrationArtefact(
-            provenance=provenance,
-            sigma_m=dict.fromkeys(SENSORS, 0.1),
-            k=0.5,
-            h=8.0,
-            n_min=n_min,
-            c=2.0,
-            h_close=4.0,
-        ),
-        interval=INTERVAL,
-    )
+    artefact = make_artefact(dict.fromkeys(SENSORS, 0.1), provenance=provenance, n_min=n_min)
+    return CusumDetector(artefact, interval=INTERVAL)
 
 
 def test_no_deviation_is_normal_without_alerts() -> None:
@@ -50,7 +42,7 @@ def test_pressure_drop_accumulates_cusum_across_windows() -> None:
     first = detector.evaluate(low, EXPECTED, ts(0))
     second = detector.evaluate(low, EXPECTED, ts(1))
 
-    assert first.residuals["P1"] == SensorResidual(residual_m=-0.5, z=-5.0, cusum=4.5)
+    assert first.residuals["P1"] == SensorResidual(residual_m=-0.5, z=5.0, cusum=4.5)
     assert second.residuals["P1"].cusum == pytest.approx(9.0)
 
 
@@ -65,8 +57,8 @@ def test_alert_opens_when_n_sensors_cross_h() -> None:
     (alert,) = opened.alerts
     assert alert.cusum == CusumEvidence(statistic=9.0, threshold=8.0)
     assert [(s.sensor, s.deviation_m, s.z) for s in alert.deviating_sensors] == [
-        ("P1", -0.5, -5.0),
-        ("P2", -0.5, -5.0),
+        ("P1", -0.5, 5.0),
+        ("P2", -0.5, 5.0),
     ]
 
 
@@ -90,13 +82,18 @@ def test_fewer_than_n_sensors_above_h_is_suspect_without_alert() -> None:
     assert all(r.alerts == () for r in results)
 
 
-@pytest.mark.parametrize("provenance", ["synthetic", "dev-baseline-2018", "battledim-2018-oof"])
-def test_incomplete_detector_is_always_labelled_mock(provenance: Provenance) -> None:
+@pytest.mark.parametrize(
+    ("provenance", "is_mock"),
+    [("synthetic", True), ("dev-baseline-2018", True), ("battledim-2018-oof", False)],
+)
+def test_is_mock_follows_the_provenance_of_the_calibration(
+    provenance: Provenance, is_mock: bool
+) -> None:
     detector = make_detector(provenance=provenance)
 
     result = detector.evaluate(EXPECTED, EXPECTED, ts(0))
 
-    assert detector.info.is_mock and result.model.is_mock
+    assert (detector.info.is_mock, result.model.is_mock) == (is_mock, is_mock)
 
 
 def test_anomaly_score_is_nth_largest_cusum() -> None:
@@ -117,18 +114,27 @@ def test_diagnostics_report_the_calibration_in_use() -> None:
         "c": 2.0,
         "cap": 16.0,  # c*h, the bound on S
         "h_close": 4.0,
+        "calibration_id": ANY,  # checked in test_calibration.py
         "provenance": "synthetic",
         "skipped_windows": 0,
     }
 
 
-def test_alert_summary_is_flagged_as_mock() -> None:
-    detector = make_detector(n_min=1)
+@pytest.mark.parametrize(
+    ("provenance", "flagged"),
+    [("synthetic", True), ("dev-baseline-2018", True), ("battledim-2018-oof", False)],
+)
+def test_alert_summary_is_flagged_as_mock_only_for_a_mock_calibration(
+    provenance: Provenance, flagged: bool
+) -> None:
+    detector = make_detector(n_min=1, provenance=provenance)
     low = {**EXPECTED, "P1": 49.5}
 
     (alert,) = [a for i in range(2) for a in detector.evaluate(low, EXPECTED, ts(i)).alerts]
 
-    assert alert.summary is not None and alert.summary.startswith("[MOCK]")
+    assert alert.summary is not None
+    assert alert.summary.startswith("[MOCK]") is flagged
+    assert provenance in alert.summary
 
 
 def test_cusum_is_not_reset_by_an_alert_and_stops_at_the_cap() -> None:
@@ -296,16 +302,7 @@ def test_non_finite_value_is_rejected(
 
 def test_non_finite_standardised_residual_is_rejected() -> None:
     def tiny_sigma() -> CusumDetector:
-        artefact = CalibrationArtefact(
-            provenance="synthetic",
-            sigma_m=dict.fromkeys(SENSORS, 5e-324),
-            k=0.5,
-            h=8.0,
-            n_min=1,
-            c=2.0,
-            h_close=4.0,
-        )
-        return CusumDetector(artefact, interval=INTERVAL)
+        return CusumDetector(make_artefact(dict.fromkeys(SENSORS, 5e-324)), interval=INTERVAL)
 
     # z = -0.5 / 5e-324 = -inf (a valid but tiny sigma)
     assert_rejected_without_side_effects(LOW_P1, EXPECTED, make=tiny_sigma, passing=EXPECTED)
