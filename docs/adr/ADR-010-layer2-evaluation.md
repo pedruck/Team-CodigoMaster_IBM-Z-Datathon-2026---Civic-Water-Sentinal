@@ -37,21 +37,28 @@ layer 1 and to the competition where it can be, and never overclaimed.
 
 ## Decision
 
-1. **Primary matching rule = the official time window.** `MatchRule(max_delay={"abrupt": 366
-   days, "incipient": 366 days})`, i.e. the window `[start, end]` (`end` is the repair, or
-   `2019-12-31 23:55` when unrepaired), both ends included. The detection time is the alert's
+1. **Primary matching rule = the official time window** `[start, end]` (`end` is the repair, or
+   `2019-12-31 23:55` when unrepaired), both ends included. With `layer1.MatchRule` the window is
+   `[start, min(end, start + max_delay)]`, so `max_delay` must exceed every label window: the
+   inherited `p257` runs from 2018-01-08 to 2019-12-31 (722 days); use `max_delay` = 731 days
+   for both types, checked by a test in EV-002 (a smaller value would cut the 4 inherited leaks). The detection time is the alert's
    `window_end` (simulated time), never `created_at`.
 2. **Assignment, repeats, false alarms** — as `layer1.evaluate` (and the official code where it
    applies): alerts in time order; an alert detects the not-yet-detected leak with the earliest
    `start` among those whose window contains it (the official code picks the closest pipe; we
    have no pipe, see 7); an alert inside windows whose leaks are all detected is a **repeat**
    (reported, neither hit nor false alarm); an alert outside every window is a **false alarm**
-   (ADR-008 §C).
+   (ADR-008 §C). **Consequence:** with the official window and no pipe rule, `p257` is active over
+   the whole of 2019, so every 2019 alert falls inside some window and the primary rule gives
+   **0 false alarms by construction** (the competition discriminates with the 300 m pipe rule,
+   which we cannot apply). False alarms are therefore reported **only from the 7-day view**
+   (item 4), and every table says so.
 3. **Leaks counted: all 23** of the 2019 labels, including the 4 inherited from 2018. Leaks that
    start before the first scored window (the first 144 windows of the run are unscored for lack
    of history) still count; the report lists which ones.
 4. **Secondary views, same run, same alerts** (never replacing the primary):
    - *Operator view:* detected within 7 days of `start` (`max_delay` 7 days for both types);
+     this view is the source of the false-alarm count and false alarms per week;
    - *New in 2019:* the 19 leaks that start in 2019 only.
 5. **Metrics and names:** detected / total per leak type (abrupt, incipient) with the missed
    pipes listed; detection delay from `start` **and** from `peak` (median, max; per leak in the
@@ -102,8 +109,8 @@ produce results labelled "exploratory" (ADR-008 §G).
 ## Risks
 - "Time-only" hits overstate localisation; mitigated by the region accuracy (when computable)
   and by stating the limitation in every table.
-- Long leak windows (unrepaired leaks last until 31 December) make almost any alert a hit; the
-  false-alarm count and the 7-day view expose that.
+- Long leak windows (unrepaired leaks last until 31 December) make every alert a hit or a repeat
+  under the primary rule; that is why false alarms come only from the 7-day view.
 
 ## Dependencies
 ADR-007, ADR-008, BE-012g (regions), DEP-DET-05 (final calibration), Q-DET-07, data v1 labels.

@@ -83,7 +83,7 @@ def render_history(source: AlertSource, now: datetime | None) -> None:
         return
     pages = page_count(result.total, size)
     if result.total == 0:
-        st.info("No alerts in this period.")
+        st.info("No alerts match the history filters.")
     elif not result.items:
         st.info(f"No alerts on page {page}: the last page is {pages}.")
     else:

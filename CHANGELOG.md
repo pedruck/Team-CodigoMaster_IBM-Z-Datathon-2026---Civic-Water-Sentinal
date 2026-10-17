@@ -56,8 +56,13 @@ contract versions are tracked separately (`schema_version`).
   SIMULATED banner now says "a mock model or a non-final calibration".
 - ADR-010 (layer-2 evaluation, `Proposed`, answers Q-UI-06): official BattLeDIM time window
   `[start, end]` (scoring code read on 2026-10-17: no Tmax, 300 m pipe rule, repeats 0), all 23
-  labelled leaks, `layer1.evaluate` reused, secondary views "within 7 days" and "new in 2019";
+  labelled leaks (`max_delay` 731 days so the 4 inherited leaks keep `[start, end]`),
+  `layer1.evaluate` reused, secondary views "within 7 days" and "new in 2019"; false alarms only
+  from the 7-day view (0 by construction under the official window without the pipe rule);
   region accuracy and euro score "not computed" until regions/pipes exist.
+- Demo runbook (UI-007, P6): `docs/demo-runbook.md` — setup with a free local tunnel port,
+  timed script, banner meanings, contingency; history empty state now reads "No alerts match the
+  history filters" (it repeated the list's text).
 - Merge repair: Q-UI-05 and Q-UI-06 (detection owner) and the P6 proposal in Q-DET-04, dropped
   by the merge of `main`, restored; testing.md sentence on data-reading tests restored.
 - ADR-009 (dashboard, `Proposed`) and P6 cross-team questions Q-UI-07, Q-AUD-06, Q-AUD-07,

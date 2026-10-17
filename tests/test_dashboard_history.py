@@ -164,7 +164,7 @@ def test_history_empty_filter_result_is_the_empty_state(app: Any) -> None:
     app.text_input(key="history_region").set_value("R9").run()
 
     assert len(app.dataframe) == 1
-    assert any("No alerts in this period" in i.value for i in app.info)
+    assert any("No alerts match the history filters" in i.value for i in app.info)
 
 
 def test_history_rejects_an_unreadable_time(app: Any) -> None:
