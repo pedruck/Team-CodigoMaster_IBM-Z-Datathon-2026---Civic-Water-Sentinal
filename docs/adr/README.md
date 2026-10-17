@@ -31,3 +31,7 @@ One file per decision with impact on contracts, reliability, performance or inte
 | [ADR-004](ADR-004-temporal-policy.md) | Temporal policy: order, duplicates, gaps, no reprocessing | Proposed |
 | [ADR-005](ADR-005-model-integration.md) | Integration of the real models in process, behind ports | Proposed |
 | [ADR-006](ADR-006-errors-idempotency-observability.md) | Errors, idempotency, audit failure and observability | Proposed |
+| [ADR-009](ADR-009-dashboard.md) | Operator dashboard: server-side, contract-checked, read-only | Proposed |
+
+ADR-007 and ADR-008 are taken by the detection owner's unmerged branch
+`feat/be-012-cusum-detector` (CUSUM detector; calibration and evaluation protocol).
