@@ -38,7 +38,9 @@ Labels (leak start/pipe) must never be sent in a window: they are for offline ev
 Time-series rules (ADR-004): duplicate → 200 idempotent; same timestamp with different data
 → 409 `window_conflict`; older than last accepted → 409 `out_of_order`; gap → accepted with
 `gap_windows`, contiguity resets; fewer contiguous past windows than required → accepted,
-`insufficient_history`.
+`insufficient_history`. A resend is recognised as a duplicate only while its result is
+retained (`SENTINEL_RESULT_CAPACITY`, default 2016 windows = 7 days); older resends get
+409 `out_of_order`.
 
 Valid: [`window.valid.json`](examples/window.valid.json) (abridged):
 
