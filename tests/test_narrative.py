@@ -267,3 +267,45 @@ def test_explanation_of_a_real_pipeline_alert_is_tied_to_its_audit_record(
     assert e.audit == alert.audit
     assert check_narrative(e.text, alert).ok
     assert "mock" in e.text.lower() or "simula" in e.text.lower()
+
+
+# ------------------------------------------- real outputs from the team VM (regression cases)
+# Granite 4.0 H 350M base, llama-cpp-python 0.3.36 on the LinuxONE, 2026-10-17.
+
+VM_MISATTRIBUTED = (
+    "[SIMULATION] Alert A-20190314T1230Z-1 reports a suspected leak in region R4. "
+    "Sensors P14 and P21 read 0.21 m and 0.17 m below the expected pressure since "
+    "2019-03-14 02:10 UTC. The CUSUM statistic reached 12.4 against a threshold of 8.0. "
+    "The top contributions for sensors P14 and P21 are 0.21 m and 0.17 m below the expected "
+    "pressure, respectively."
+)
+VM_PT_SUMMARY = "[MOCK] 3 sensores abaixo o esperado de pressão."
+
+
+def test_vm_text_passing_contributions_off_as_deviations_is_rejected() -> None:
+    """Every number exists in the payload; they are attached to the wrong thing."""
+    check = check_narrative(VM_MISATTRIBUTED, mock_alert())
+    assert not check.ok
+    assert check.unknown_numbers == () and check.unknown_references == ()
+    assert {"0.21 (P14, P21)", "0.17 (P14, P21)"} <= set(check.misattributed_numbers)
+
+
+def test_vm_short_summary_is_accepted() -> None:
+    alert = mock_alert(summary="[MOCK] 3 sensors below expected pressure")
+    assert check_narrative(VM_PT_SUMMARY, alert).ok
+
+
+def test_contribution_next_to_its_feature_is_accepted() -> None:
+    text = "[SIMULATION] Sensor P14 read 0.91 m below expected; hour_of_week contributed 0.21 m."
+    assert check_narrative(text, mock_alert()).ok
+
+
+def test_deviation_of_another_sensor_is_rejected() -> None:
+    check = check_narrative("[SIMULATION] Sensor P09 read 0.91 m below expected.", mock_alert())
+    assert check.misattributed_numbers == ("0.91 (P09)",)
+
+
+def test_known_limit_swap_between_named_sensors_passes() -> None:
+    """Documented limit: both values belong to sensors named in the same clause."""
+    text = "[SIMULATION] Sensors P14 and P21 read 0.62 m and 0.91 m below expected."
+    assert check_narrative(text, mock_alert()).ok

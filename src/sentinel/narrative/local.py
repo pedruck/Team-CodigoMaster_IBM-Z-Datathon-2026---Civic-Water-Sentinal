@@ -122,10 +122,33 @@ def _drop_empty(value: Any) -> Any:
     return value
 
 
-def compact_facts(alert: Alert) -> dict[str, Any]:
-    """``alert_facts`` without empty fields, at any depth: fewer tokens for a small model."""
-    facts: dict[str, Any] = _drop_empty(alert_facts(alert))
-    return facts
+def prompt_facts(alert: Alert) -> dict[str, Any]:
+    """What the small model sees: the core of the alert, rounded to 2 decimals, without empty
+    fields. Contributions, the detector summary, model names and the audit seq stay out: on
+    the VM the 350M model passed contributions off as deviations and echoed the summary. They
+    remain in the evidence table and in the template."""
+    facts = alert_facts(alert)
+    core: dict[str, Any] = {
+        key: facts[key]
+        for key in ("alert_id", "is_mock", "window_end", "region", "suspected_onset")
+    }
+    core["hours_since_onset"] = facts["hours_since_onset"]
+    if alert.cusum:
+        core["cusum"] = {
+            "statistic": round(alert.cusum.statistic, 2),
+            "threshold": round(alert.cusum.threshold, 2),
+        }
+    core["deviating_sensors"] = [
+        {
+            "sensor": d.sensor,
+            "deviation_m": round(d.deviation_m, 2),
+            "z": round(d.z, 2) if d.z is not None else None,
+            "since": facts["deviating_sensors"][i]["since"],
+        }
+        for i, d in enumerate(alert.deviating_sensors)
+    ]
+    slim: dict[str, Any] = _drop_empty(core)
+    return slim
 
 
 def build_completion_prompt(alert: Alert, language: Language = DEFAULT_LANGUAGE) -> str:
@@ -138,7 +161,7 @@ def build_completion_prompt(alert: Alert, language: Language = DEFAULT_LANGUAGE)
             "",
         ]
     parts += [
-        f"{record}: {json.dumps(compact_facts(alert), ensure_ascii=False)}",
+        f"{record}: {json.dumps(prompt_facts(alert), ensure_ascii=False)}",
         f"{explanation}:",
     ]
     return "\n".join(parts)
@@ -149,7 +172,7 @@ class LocalLLMConfig:
     url: str = DEFAULT_URL
     model: str = DEFAULT_MODEL
     timeout_s: float = 60.0
-    max_tokens: int = 160
+    max_tokens: int = 120
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "LocalLLMConfig":
@@ -220,7 +243,7 @@ class LlamaCppNarrator:
         *,
         n_threads: int = 1,
         n_ctx: int = 2048,
-        max_tokens: int = 160,
+        max_tokens: int = 120,
         llama_factory: Callable[..., Any] | None = None,
     ) -> None:
         self.model_path = Path(model_path).expanduser()

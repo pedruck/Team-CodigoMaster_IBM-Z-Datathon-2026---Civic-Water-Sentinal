@@ -6,6 +6,17 @@ used instead. Numbers match after rounding to the decimals written in the text, 
 absolute value ("5,1 m abaixo" restates a deviation of -5.11 m). Integers written in the
 text (counts, years, days) are matched the same way, so the check is strict but not
 pedantic about rounding.
+
+Numbers must also sit next to what they belong to. In each clause (split at ". ", "; ",
+": " and line breaks):
+- a deviation or z-score must belong to a sensor named in that clause (or, when the clause
+  names no sensor, to any deviating sensor);
+- a forecaster contribution needs its feature name in the same clause;
+- global values (CUSUM, threshold, hours since onset, counts, audit seq, dates) go anywhere.
+Found on the VM: Granite 350M wrote "P14 and P21 read 0.21 m and 0.17 m below", reusing the
+contributions of ``hour_of_week`` as deviations; each number existed in the payload, so only
+this rule catches it. It cannot see a swap between two named sensors ("P14 and P21 read
+0.62 m and 0.91 m").
 """
 
 import re
@@ -39,10 +50,14 @@ _FORBIDDEN = re.compile(
 _MOCK_LABEL = re.compile(r"simula|mock", re.IGNORECASE)
 
 
+_CLAUSE = re.compile(r"(?<=[.;:!?])\s+|\n+")
+
+
 class NarrativeCheck(ContractModel):
     ok: bool
     unknown_references: tuple[str, ...] = ()
     unknown_numbers: tuple[str, ...] = ()
+    misattributed_numbers: tuple[str, ...] = ()  # "0.21 (P14, P21)": in the payload, wrong place
     unknown_datetimes: tuple[str, ...] = ()
     forbidden_phrases: tuple[str, ...] = ()
     missing_mock_label: bool = False
@@ -98,10 +113,39 @@ class _Allowed:
         # Longest first, so "P1" never eats the start of an allowed "P10".
         self.literals = sorted(literals, key=len, reverse=True)
 
+        # Where each number belongs, for the per-clause rule.
+        self.sensor_values = {
+            d.sensor: {abs(d.deviation_m)} | ({abs(d.z)} if d.z is not None else set())
+            for d in alert.deviating_sensors
+        }
+        self.feature_values: dict[str, set[float]] = {}
+        for features in (alert.forecast_contributions_m or {}).values():
+            for feature, v in features.items():
+                self.feature_values.setdefault(feature, set()).add(abs(v))
+        global_values = {float(len(alert.deviating_sensors))}
+        if alert.cusum:
+            global_values |= {abs(alert.cusum.statistic), abs(alert.cusum.threshold)}
+        if alert.hours_since_onset is not None:
+            global_values.add(abs(alert.hours_since_onset))
+        if alert.audit:
+            global_values.add(float(alert.audit.seq))
+        if alert.summary:
+            global_values |= {_parse_number(n)[0] for n in _NUMBER.findall(alert.summary)}
+        global_values |= {float(d.year) for d in self.dates} | {float(d.day) for d in self.dates}
+        self.global_values = global_values
+
     def number_ok(self, token: str) -> bool:
-        value, decimals = _parse_number(token)
-        tolerance = 0.5 * 10**-decimals + 1e-9
-        return any(abs(value - n) <= tolerance for n in self.numbers)
+        return _matches(token, self.numbers)
+
+
+def _matches(token: str, values: set[float]) -> bool:
+    value, decimals = _parse_number(token)
+    tolerance = 0.5 * 10**-decimals + 1e-9
+    return any(abs(value - n) <= tolerance for n in values)
+
+
+def _mentions(text: str, literal: str) -> bool:
+    return re.search(rf"(?<![A-Za-z0-9_]){re.escape(literal)}(?![A-Za-z0-9_])", text) is not None
 
 
 def _strip(pattern: re.Pattern[str], text: str, keep: Any) -> tuple[str, list[str]]:
@@ -116,8 +160,9 @@ def _strip(pattern: re.Pattern[str], text: str, keep: Any) -> tuple[str, list[st
     return pattern.sub(repl, text), bad
 
 
-def check_narrative(text: str, alert: Alert) -> NarrativeCheck:
-    allowed = _Allowed(alert)
+def _clean(text: str, allowed: _Allowed) -> tuple[str, list[str], list[str]]:
+    """Blank out allowed literals, dates, times and ID-like tokens. Returns what is left (only
+    numbers to check), the dates/times outside the alert and the unknown IDs."""
     work = text
     for literal in allowed.literals:
         work = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(literal)}(?![A-Za-z0-9_])", " ", work)
@@ -141,16 +186,46 @@ def check_narrative(text: str, alert: Alert) -> NarrativeCheck:
     work, bad_dmy = _strip(_DMY, work, dmy_ok)
     work, bad_time = _strip(_TIME, work, lambda m: (int(m[1]), int(m[2])) in allowed.times)
     work, bad_ids = _strip(_ID, work, lambda m: bool(_Z_SCORE.match(m.group(0))))
+    return work, [*bad_iso, *bad_dmy, *bad_time], bad_ids
+
+
+def _misattributed(text: str, allowed: _Allowed) -> list[str]:
+    bad: list[str] = []
+    for clause in _CLAUSE.split(text):
+        sensors = [s for s in allowed.sensor_values if _mentions(clause, s)]
+        features = [f for f in allowed.feature_values if _mentions(clause, f)]
+        sensor_values: set[float] = set().union(
+            *(allowed.sensor_values[s] for s in (sensors or allowed.sensor_values))
+        )
+        feature_values: set[float] = set().union(*(allowed.feature_values[f] for f in features))
+        work, _, _ = _clean(clause, allowed)
+        for m in _NUMBER.finditer(work):
+            token = m.group(0)
+            if not allowed.number_ok(token):
+                continue  # already reported as unknown
+            if not (
+                _matches(token, allowed.global_values)
+                or _matches(token, sensor_values)
+                or _matches(token, feature_values)
+            ):
+                bad.append(f"{token} ({', '.join(sensors) or '-'})")
+    return bad
+
+
+def check_narrative(text: str, alert: Alert) -> NarrativeCheck:
+    allowed = _Allowed(alert)
+    work, unknown_dt, bad_ids = _clean(text, allowed)
     _, bad_numbers = _strip(_NUMBER, work, lambda m: allowed.number_ok(m.group(0)))
+    misattributed = _misattributed(text, allowed)
 
     forbidden = tuple(m.group(0) for m in _FORBIDDEN.finditer(text))
     missing_mock = alert.is_mock and not _MOCK_LABEL.search(text)
-    unknown_dt = (*bad_iso, *bad_dmy, *bad_time)
     return NarrativeCheck(
-        ok=not (bad_ids or bad_numbers or unknown_dt or forbidden or missing_mock),
+        ok=not (bad_ids or bad_numbers or misattributed or unknown_dt or forbidden or missing_mock),
         unknown_references=tuple(bad_ids),
         unknown_numbers=tuple(bad_numbers),
-        unknown_datetimes=unknown_dt,
+        misattributed_numbers=tuple(misattributed),
+        unknown_datetimes=tuple(unknown_dt),
         forbidden_phrases=forbidden,
         missing_mock_label=missing_mock,
     )

@@ -87,7 +87,19 @@ a cadeia cresce; truncamento abaixo dela é detectado.
 com um valor do alerta (arredondado às casas escritas, por valor absoluto); data ou horário que
 não são `window_end`, `suspected_onset` ou `since`; frases que confirmam ou descartam
 vazamento ("confirmed leak", "definitely", "vazamento confirmado"…); alerta mock sem o aviso
-"[SIMULATION]"/"[SIMULAÇÃO]". Não verifica números por extenso ("three") nem unidades.
+"[SIMULATION]"/"[SIMULAÇÃO]".
+
+Também rejeita **número no lugar errado** (`misattributed_numbers`). Em cada trecho do texto
+(separado por ". ", "; ", ": " ou quebra de linha):
+- um desvio ou z precisa ser de um sensor citado no mesmo trecho;
+- uma contribuição do previsor precisa vir com o nome da feature;
+- valores globais (CUSUM, limiar, horas, contagem, seq, datas) podem aparecer em qualquer trecho.
+
+Essa regra nasceu de um caso real na VM: o Granite 350M escreveu "P14 and P21 read 0.21 m and
+0.17 m below", usando as contribuições de `hour_of_week` como se fossem desvios. Cada número
+existia no payload, então a regra antiga aceitou. Limites que continuam: não detecta troca
+entre dois sensores citados juntos ("P14 and P21 read 0.62 m and 0.91 m"), não confere números
+por extenso ("three") nem unidades.
 
 `Explanation` carrega `alert_payload_sha256` e `audit`, então a explicação fica presa à versão
 auditada do alerta. O LLM nunca decide se existe alerta: isso é do detector (P4).
@@ -160,10 +172,35 @@ modelo, explica um alerta inventado e um do pipeline (en/pt) e libera a memória
 `python -m llama_cpp.server`. Serve para quando o modelo precisar ficar fora do processo da
 API. Hoje a VM não tem `llama-server`.
 
-**Comparação:** o 350M base roda localmente, sem chave e sem rede, mas deve ter taxa de
-aceitação menor. O `ibm/granite-4-h-small` no watsonx é maior e ajustado para instruções, mas
-depende de rede e de credenciais. As duas opções passam pela mesma validação; a escolha final
-depende da taxa de aceitação e dos tempos medidos na VM.
+### Resultado na VM (2026-10-17, `p5_linuxone_granite.ipynb`, 1 thread)
+
+| Medida | Valor |
+|---|---|
+| Runtime | `/opt/venv` Python 3.12.15, llama-cpp-python 0.3.36; `system info`: `zDNN : NNPA = 1`, `CPU : LLAMAFILE = 1, OPENMP = 1, REPACK = 1` |
+| Carga do modelo | 11,1 s (primeira vez) · 0,5 s (arquivo já em cache) |
+| Alerta inventado (en) | 41,0 s · **aceito, mas errado**: contribuições apresentadas como desvios (hoje recusado pela regra acima) |
+| Alerta do pipeline (en) | 34,3 s · recusado: copiou a região `R2` do exemplo → template |
+| Alerta do pipeline (pt) | 44,1 s · aceito: "[MOCK] 3 sensores abaixo o esperado de pressão." (verdadeiro, pobre) |
+
+Os números do `system info` mostram que o build tem suporte a zDNN e detectou o NNPA. Não foi
+medido quanto da inferência roda no acelerador.
+
+O prompt local foi enxugado depois dessas medidas: sem contribuições, resumo do detector,
+modelos e seq; números com 2 casas; `max_tokens` 120. O efeito no tempo e na aceitação ainda não
+foi medido.
+
+**Conclusão e recomendação:**
+- **A infraestrutura funciona no LinuxONE:** o modelo carrega, gera, a validação recusa o que
+  está errado e o fallback entra.
+- **A qualidade do Granite 350M *base* não basta para texto ao operador:** em 3 tentativas houve
+  1 recusa, 1 texto errado e 1 texto trivial. O texto padrão deve ser a exibição principal; o
+  texto do Granite fica como complemento, e só quando aprovado.
+- **Para texto melhor:** um Granite *instruct* em GGUF big-endian (por exemplo, 350M ou 1B
+  instruct convertido com `convert_hf_to_gguf.py --bigendian`) ou o `ibm/granite-4-h-small` no
+  watsonx.
+- **Latência de 34–44 s por explicação com 1 thread:** a explicação precisa ser gerada em
+  segundo plano, logo depois do alerta, e guardada. Não pode ser gerada quando o operador abre
+  o alerta.
 
 ## Como testar no notebook local (Windows, PowerShell)
 
@@ -279,15 +316,16 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 |---|---|
 | `ruff format --check` + `ruff check` (`src tests scripts`) | ok |
 | `mypy` (configuração do projeto, 69 arquivos) | sem problemas |
-| `pytest` (suíte inteira) | 186 passed (89 do backend + 97 da P5) |
+| `pytest` (suíte inteira) | 191 passed (89 do backend + 102 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
 | `p5_linuxone_granite.ipynb` (versão `llama_cpp` no kernel) executado no Windows com um `llama_cpp` falso | 0 erros; carrega, aceita o texto válido, recusa o exemplo copiado (en/pt), descarrega |
-| Granite GGUF real na VM (`--llamacpp`) | **NOT_RUN** — runtime identificado (`llama_cpp` no kernel), execução pendente |
+| Granite GGUF real na VM, `p5_linuxone_granite.ipynb` | carregou (11,1 s); 3 explicações em 34–44 s; ver "Resultado na VM" acima |
+| Granite na VM depois do prompt enxuto e da regra de números no lugar errado | **NOT_RUN** |
 | LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
 | `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
 | Ponta a ponta local: `devserver` + `make_synthetic` + `replay` + `verify --alert` + `sentinel.narrative --alert` | 1 alerta mock; cadeia 289 registros ok; alerta ok; template |
 | `foundation_model_specs` (público) por região | Granite de chat só em us-south e eu-de (`ibm/granite-4-h-small`) |
 | LinuxONE VM (s390x): `p5_auditoria_narrativa.ipynb` completo no Jupyter da VM | todas as seções ok: cadeia de 289 registros válida, adulterações detectadas, alerta `A-20190314T1640Z-1` (mesmo ID e mesmos desvios do x86) ligado ao registro seq 200, LLM falso aceito/recusado como esperado |
 | Paridade x86 × s390x do JSON canônico | `payload_sha256` de `{"i": 1, "status": "scored"}` = `993ee9cc…20d79f` nas duas plataformas |
-| `p5_linuxone_granite.ipynb` e API ponta a ponta na VM, dados reais, watsonx.ai com credenciais | **NOT_RUN** |
+| API ponta a ponta na VM, dados reais, watsonx.ai com credenciais | **NOT_RUN** |

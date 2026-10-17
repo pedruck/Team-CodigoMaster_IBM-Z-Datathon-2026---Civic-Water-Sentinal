@@ -18,7 +18,7 @@ from sentinel.narrative import (
     render_text,
 )
 from sentinel.narrative.__main__ import main as cli_main
-from sentinel.narrative.local import DEFAULT_MODEL, build_completion_prompt, compact_facts
+from sentinel.narrative.local import DEFAULT_MODEL, build_completion_prompt, prompt_facts
 from sentinel.narrative.mock import mock_alert
 
 GOOD = (
@@ -63,8 +63,10 @@ def test_few_shot_prompt_ends_with_the_alert() -> None:
     prompt = build_completion_prompt(alert)
     assert prompt.count("Record:") == 3 and prompt.endswith("Explanation:")
     last_record = prompt.splitlines()[-2].removeprefix("Record: ")
-    assert json.loads(last_record) == compact_facts(alert)
-    assert "audit_seq" in last_record and "null" not in last_record
+    assert json.loads(last_record) == prompt_facts(alert)
+    assert "null" not in last_record and 'deviation_m": -0.91' in last_record
+    for distractor in ("top_contributions_m", "detector_summary", "audit_seq", "models"):
+        assert distractor not in last_record
     pt = build_completion_prompt(alert, "pt")
     assert pt.endswith("Explicação:") and "[SIMULAÇÃO]" in pt
 
@@ -77,7 +79,7 @@ def test_explain_sends_the_few_shot_prompt_to_the_completions_endpoint() -> None
     url, body, timeout_s = fake.calls[0]
     assert url == "http://127.0.0.1:8080/v1/completions"
     assert body["prompt"] == build_completion_prompt(alert)
-    assert body["temperature"] == 0 and body["max_tokens"] == 160
+    assert body["temperature"] == 0 and body["max_tokens"] == 120
     assert "\n\n" in body["stop"]
     assert timeout_s == 60.0
 
