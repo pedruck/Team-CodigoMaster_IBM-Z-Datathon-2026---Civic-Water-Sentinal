@@ -78,8 +78,9 @@ layer 1 and to the competition where it can be, and never overclaimed.
    SHA-256 (`MANIFEST.json` of data v1), registry hash, aggregated `is_mock`, architecture,
    Python, `uv.lock` hash, this ADR's version.
 9. **Wording and watermark:** every table carries "simulated benchmark (BattLeDIM L-Town);
-   thresholds fixed on 2018; 2019 run once" (ADR-008 §H). A run with `is_mock=true` or a
-   provisional registry is watermarked **"NOT A RESULT"** and is not cited.
+   thresholds fixed on 2018; 2019 run once" (ADR-008 §H). A run with `is_mock=true`, a
+   provisional registry or uncommitted code (ADR-008 §G: an identified commit) is watermarked
+   **"NOT A RESULT"** and is not cited.
 10. **Labels:** `eval/v1/leaks_2019.csv` is read only by `src/sentinel/eval/`; before the run, its
     23 rows are checked against the official list above (pipe, start, end, type). A mismatch
     stops the run.
