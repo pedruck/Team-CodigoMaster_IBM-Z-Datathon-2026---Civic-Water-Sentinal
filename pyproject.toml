@@ -42,6 +42,8 @@ ignore = ["PLR0913", "PLR0917", "PLR2004"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR0915"]
+# One-line docstring fixed by the BE-012f brief (identical in every branch that creates it)
+"src/sentinel/detection/offline/__init__.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
