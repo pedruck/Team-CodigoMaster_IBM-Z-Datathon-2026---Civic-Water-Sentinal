@@ -32,6 +32,14 @@ ci:
 dashboard api_url="http://127.0.0.1:8000":
     SENTINEL_DASHBOARD_API_URL={{api_url}} PYTHONPATH=. uv run --group dashboard streamlit run dashboard/app.py
 
+# Dashboard on a recorded run (always shown with the RECORDED REPLAY banner)
+dashboard-playback run="dashboard/playback/fixture-edge-cases":
+    SENTINEL_DASHBOARD_PLAYBACK_DIR={{run}} PYTHONPATH=. uv run --group dashboard streamlit run dashboard/app.py
+
+# Regenerate the playback fixture runs from the mock backend (synthetic day)
+playback-fixtures:
+    uv run python scripts/make_playback_fixtures.py
+
 # Development server with the mocks (http://127.0.0.1:8000/docs)
 dev:
     uv run uvicorn sentinel.main:create_app --factory --reload

@@ -12,12 +12,26 @@ The fixture runs double as test data and demo rehearsal material. They cover:
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Configuration switches between HTTP and playback with no code change
-- [ ] Playback filtering, ordering and pagination match the API semantics (tests against the same cases as the API tests)
-- [ ] Every fixture file (except the deliberately malformed one) is parsed by the contract models in pytest
-- [ ] A headless app test shows the RECORDED REPLAY banner whenever playback is active
-- [ ] `just check` green
+- [x] Configuration switches between HTTP and playback with no code change
+- [x] Playback filtering, ordering and pagination match the API semantics (tests against the same cases as the API tests)
+- [x] Every fixture file (except the deliberately malformed one) is parsed by the contract models in pytest
+- [x] A headless app test shows the RECORDED REPLAY banner whenever playback is active
+- [x] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Done. Playback list semantics are tested against the API's own `AlertStore`
+  (9 queries). Fixture runs come from the mock backend on a synthetic day with the official
+  IDs; edge-case variants (IDs -91..-93) carry invented values and say so in `run.json`.
+- Code review (two axes) fixes applied before commit: file-read failures → `SourceError`;
+  `run.json` optional (evaluation output = alerts + status, story 48); the API metric reads
+  "recorded replay" in playback; shipped `fixture-malformed`; `AlertQuery` bounds; script
+  style; CONTRIBUTING exception for the fixtures.
+- Deferred: the app-level "contract mismatch" test on `fixture-malformed` lands with UI-003
+  (the page does not list alerts yet). Debt: files are re-read on every call (fine at fixture
+  size, measure with an EV-003 run); regeneration rewrites `created_at`/`recorded_at`;
+  write helpers duplicated between the script and the tests.

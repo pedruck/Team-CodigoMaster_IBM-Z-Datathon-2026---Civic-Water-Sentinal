@@ -1,6 +1,7 @@
 """The dashboard's only data seam: an ``AlertSource`` returning parsed contract models.
 
-Adapters: ``HttpAlertSource`` (a running backend). Every response body is parsed with the
+Adapters: ``HttpAlertSource`` (a running backend) and ``PlaybackAlertSource`` (a recorded
+run on disk, always shown with a "RECORDED REPLAY" banner). Every response body is parsed with the
 contract models, so a backend that drifts from the contract raises ``ContractMismatchError``
 instead of reaching the screen.
 """
@@ -11,12 +12,15 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
 from sentinel.schemas.alerts import Alert
 from sentinel.schemas.api import AlertPage, HealthResponse, StatusResponse
+
+MAX_LIMIT = 500
 
 
 class SourceError(Exception):
@@ -45,9 +49,23 @@ class AlertQuery:
     until: datetime | None = None
     region: str | None = None
 
+    def __post_init__(self) -> None:
+        if not 1 <= self.limit <= MAX_LIMIT or self.offset < 0:
+            raise ValueError(f"limit must be 1..{MAX_LIMIT} and offset >= 0 (as the API)")
+
+
+@dataclass(frozen=True)
+class Recording:
+    """Identifies a recorded run; ``None`` on a source means live data."""
+
+    run_id: str
+    recorded_at: str
+    note: str
+
 
 class AlertSource(Protocol):
     name: str
+    recording: Recording | None
 
     def health(self) -> HealthResponse: ...
     def status(self) -> StatusResponse: ...
@@ -71,6 +89,7 @@ class HttpAlertSource:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
         self.name = f"http {self.base_url}"
+        self.recording: Recording | None = None
 
     def _get(self, path: str, params: dict[str, str] | None = None) -> bytes:
         url = f"{self.base_url}{path}"
@@ -108,6 +127,75 @@ class HttpAlertSource:
     def get_alert(self, alert_id: str) -> Alert:
         path = f"/v1/alerts/{urllib.parse.quote(alert_id, safe='')}"
         return parse(Alert, self._get(path), path)
+
+
+class PlaybackAlertSource:
+    """Serves a recorded run from a directory: ``alerts.jsonl`` (one ``Alert`` per line, **in
+    the order the backend stored them**: oldest first), ``status.json`` and, optionally,
+    ``run.json`` (run id, date, note; without it the run is named after the directory).
+    Same list semantics as ``GET /v1/alerts``. Files are re-read on every call."""
+
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir
+        self.name = f"playback {run_dir}"
+        self.recording: Recording | None = self._recording()
+
+    def _read(self, name: str) -> bytes:
+        try:
+            return (self.run_dir / name).read_bytes()
+        except OSError as exc:
+            raise SourceError(f"{self.run_dir}/{name}: {exc.strerror or exc}") from exc
+
+    def _recording(self) -> Recording:
+        if not (self.run_dir / "run.json").exists():
+            if not self.run_dir.is_dir():
+                raise SourceError(f"{self.run_dir}: no such run directory (run.json, status.json)")
+            return Recording(run_id=self.run_dir.name, recorded_at="unknown date", note="")
+        try:
+            meta = json.loads(self._read("run.json"))
+            return Recording(
+                run_id=str(meta["run_id"]),
+                recorded_at=str(meta["recorded_at"]),
+                note=str(meta.get("note", "")),
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SourceError(f"{self.run_dir}/run.json: {exc}") from exc
+
+    def _alerts(self) -> list[Alert]:
+        try:
+            text = self._read("alerts.jsonl").decode()
+        except UnicodeDecodeError as exc:
+            raise ContractMismatchError(f"alerts.jsonl: not UTF-8: {exc}") from exc
+        lines = [line for line in text.splitlines() if line.strip()]
+        return [parse(Alert, line.encode(), f"alerts.jsonl:{n}") for n, line in enumerate(lines, 1)]
+
+    def health(self) -> HealthResponse:
+        """The recording is readable (no live backend is involved)."""
+        return HealthResponse(status="ok", version=self.status().version)
+
+    def status(self) -> StatusResponse:
+        return parse(StatusResponse, self._read("status.json"), "status.json")
+
+    def get_alert(self, alert_id: str) -> Alert:
+        for alert in self._alerts():
+            if alert.alert_id == alert_id:
+                return alert
+        raise AlertNotFoundError(f"alert {alert_id} not in run {self.run_dir.name}")
+
+    def list_alerts(self, query: AlertQuery) -> AlertPage:
+        selected = [
+            a
+            for a in reversed(self._alerts())
+            if (query.since is None or a.window_end >= query.since)
+            and (query.until is None or a.window_end <= query.until)
+            and (query.region is None or a.region == query.region)
+        ]
+        return AlertPage(
+            items=tuple(selected[query.offset : query.offset + query.limit]),
+            total=len(selected),
+            limit=query.limit,
+            offset=query.offset,
+        )
 
 
 def _error_message(exc: urllib.error.HTTPError) -> str:

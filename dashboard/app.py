@@ -9,7 +9,11 @@ from sentinel.schemas.api import StatusResponse
 
 st.set_page_config(page_title="CivicWater Sentinel", layout="wide")
 
-source = source_from_env()
+try:
+    source = source_from_env()
+except SourceError as exc:
+    st.error(f"Cannot open the data source: {exc}")
+    st.stop()
 status: StatusResponse | None = None
 online = False
 try:
@@ -26,6 +30,11 @@ except SourceError as exc:
 header = build_header(status, online)
 
 st.title("CivicWater Sentinel")
+if source.recording is not None:
+    rec = source.recording
+    st.warning(
+        f"RECORDED REPLAY — run {rec.run_id}, {rec.recorded_at}. Not live data. {rec.note}".strip()
+    )
 if header.simulated:
     st.warning("SIMULATED — mock forecaster/detector active: not leak detection.")
 if header.provisional_sensors and status is not None:
@@ -33,7 +42,10 @@ if header.provisional_sensors and status is not None:
 st.caption("Simulated data (BattLeDIM L-Town). Not validated on a real network.")
 
 cols = st.columns(4)
-cols[0].metric("API", "online" if header.online else "offline")
+if source.recording is not None:
+    cols[0].metric("API", "recorded replay")
+else:
+    cols[0].metric("API", "online" if header.online else "offline")
 cols[1].metric("Simulated time", header.simulated_time)
 cols[2].metric("Forecaster", header.forecaster)
 cols[3].metric("Detector", header.detector)

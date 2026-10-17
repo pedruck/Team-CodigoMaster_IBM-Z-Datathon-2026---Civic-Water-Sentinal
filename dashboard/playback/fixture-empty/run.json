@@ -1,0 +1,5 @@
+{
+  "run_id": "fixture-empty",
+  "recorded_at": "2026-10-17",
+  "note": "Fixture: mock backend on a synthetic day without a step. Not a model run."
+}

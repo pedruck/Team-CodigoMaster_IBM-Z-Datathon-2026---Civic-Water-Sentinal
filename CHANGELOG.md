@@ -27,6 +27,14 @@ contract versions are tracked separately (`schema_version`).
   Streamlit is in the optional `dashboard` dependency group (CI installs it; the runtime install
   is unchanged). Guard tests: no leak-label references in `dashboard/`, and the dashboard
   imports only `sentinel.schemas` from the backend.
+- Dashboard playback (UI-002, P6): `PlaybackAlertSource` serves a recorded run (`alerts.jsonl`
+  in stored order + `status.json` + optional `run.json`) with the API's list semantics, behind
+  the same `AlertSource` seam; `SENTINEL_DASHBOARD_PLAYBACK_DIR` / `just dashboard-playback`
+  switch to it and the page shows a permanent "RECORDED REPLAY — run <id>, <date>" banner and
+  "recorded replay" instead of the API state. Fixture runs (`fixture-edge-cases`,
+  `fixture-empty`, `fixture-malformed`) generated from the mock backend by
+  `scripts/make_playback_fixtures.py` (`just playback-fixtures`). `AlertQuery` enforces the
+  API bounds (`limit` 1–500, `offset` ≥ 0).
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM

@@ -1,0 +1,5 @@
+{
+  "run_id": "fixture-edge-cases",
+  "recorded_at": "2026-10-17",
+  "note": "Fixture: mock backend on a synthetic day + hand-made edge-case variants (IDs -91..-93, invented values). Not a model run."
+}

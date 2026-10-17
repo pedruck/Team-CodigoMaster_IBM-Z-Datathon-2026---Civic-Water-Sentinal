@@ -20,6 +20,7 @@ There is a loading state on first load and an empty state "no alerts in this per
 - [ ] Headless tests with playback fixtures: all-null alert renders, empty deviating list renders, empty run shows the empty state
 - [ ] Age uses the status' last timestamp, never the wall clock (test with a fixed status snapshot)
 - [ ] SIMULATED badge per mock alert
+- [ ] Headless test: `fixture-malformed` shows the "contract mismatch" state (carried over from UI-002)
 - [ ] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
