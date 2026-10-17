@@ -173,6 +173,98 @@ Caveats: single runs, shared VM, no warm-up control; x86 numbers come from a lap
 other processes running. The two baselines are **not** a fair platform comparison and must
 not be used as one.
 
+## CUSUM detector (x86-64, synthetic input) — 2026-10-17
+
+Single measurements, **not a benchmark**: x86-64 laptop (Intel Core Ultra 7 155H, 22 threads,
+other processes running), Python 3.14.7, `wip/be-012-docs` @ `a93883b`. They time tests, so they
+include test set-up; they say nothing about the real models or about s390x.
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/detection/test_end_to_end.py -q` | 14 passed in 3.33 s (5.6 s wall with `uv run` start-up) |
+| `uv run pytest tests/detection/test_properties.py -q --durations=3` | 13 passed in 2.29 s; slowest: `test_null_series_run_length_matches_siegmund_arl0` 2.16 s |
+
+The ARL0 test calls `evaluate` 100 000 times with one sensor and generates its noise inside the
+timing: about 22 µs per window as an upper bound for the detector itself (2.16 s / 100 000).
+The cost with 33 sensors through the pipeline and over HTTP is measured in the next two
+sections. `just bench` / `scripts/bench_pipeline.py` build `Settings(audit_sink=...)` directly
+and do not read `SENTINEL_DETECTOR`, so they still measure the mock detector.
+Determinism digest of the fixed replay for BE-015: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64), s390x pending
+(`docs/testing.md`).
+
+## CUSUM detector selected by `SENTINEL_DETECTOR=cusum` — 2026-10-17
+
+Single measurements, **not benchmarks**: x86-64 laptop (Intel Core Ultra 7 155H, 22 threads,
+other processes running), Linux 7.2.9, CPython 3.14.7, uvicorn 0.54.0, one worker. Synthetic
+signal, invented calibration (`provenance = synthetic`, sigma about 0.07 m per sensor, `k = 0.5`,
+`h = 10`, `N = 3`, `c = 2`, `h_close = 5`), persistence mock forecaster, placeholder registry
+(33 pressure sensors), default history settings (capacity 288, 144 required), audit sink `null`
+over HTTP and `memory` in process. They measure backend and detector overhead, not real models,
+and say nothing about s390x.
+
+### Over HTTP, real server (end-to-end run, `docs/testing.md`)
+
+Source: the end-to-end report of the run on the tree of `79f2647` (scenario 1: ramp on 3 sensors,
+one alert). Client: sequential, one new TCP connection per request, loopback; server numbers
+from `GET /v1/status` after the replay.
+
+| Measure | Value |
+|---|---|
+| windows | 330 sent, all `201` (144 `insufficient_history`, 186 scored) |
+| wall time / client throughput | 1.082 s / 304.85 windows/s |
+| client latency per `POST /v1/windows` p50 / p99 / max | 3.077 / 4.578 / 27.628 ms (the max is the very first request, cold path) |
+| server `detection` stage p50 / p99 / max (186 scored windows) | 0.2947 / 1.0845 / 4.7047 ms |
+| server `total` p50 / p99 (330 windows, including the 144 that skip forecast and detection) | 0.516 / 1.2946 ms |
+| server `http_post_windows` p50 / p99 | 1.8118 / 2.8394 ms |
+
+The other four replays of that run (330 windows each, fresh server each time) gave a client p50
+between 2.856 and 2.923 ms and a p99 between 4.261 and 4.676 ms. One run per row, no warm-up and
+no repetitions, so differences between runs are noise.
+
+### In process, `build_pipeline` with the CUSUM selected from the environment
+
+Command (script outside the repository: `scripts/bench_pipeline.py` with `Settings.from_env()`
+instead of `Settings(audit_sink=...)`, same synthetic `generate(..., noise_m=0.05)` stream, no
+leak, so no alert is raised):
+`SENTINEL_DETECTOR=cusum SENTINEL_DETECTOR_CALIBRATION=<file> SENTINEL_AUDIT_SINK=memory python <script> 5000`.
+5000 windows, 4856 scored. Three runs, then two runs of `uv run python scripts/bench_pipeline.py
+--windows 5000` (mock detector) in the same session:
+
+| Detector | `detection` p50 / p99 / max (ms) | `total` p50 / p99 (ms) |
+|---|---|---|
+| CUSUM, run 1 | 0.1101 / 0.3352 / 3.8771 | 0.1896 / 0.5821 |
+| CUSUM, run 2 | 0.1054 / 0.3189 / 5.7599 | 0.1832 / 0.5408 |
+| CUSUM, run 3 | 0.1142 / 0.3399 / 4.3838 | 0.1939 / 0.563 |
+| mock, run 1 | 0.102 / 0.1747 / 2.7154 | 0.2288 / 0.402 |
+| mock, run 2 | 0.0578 / 0.1328 / 3.176 | 0.1299 / 0.3037 |
+
+The two sets of numbers are consistent (detection p50 about 0.1 to 0.3 ms with 33 sensors). The
+mock rows differ from each other by almost a factor of two, so the machine noise is larger than
+any CUSUM-versus-mock difference these runs could show. The cost per window is far below the
+300 s interval; the CUSUM runs in plain Python and is not a measured bottleneck.
+
+## Offline tools of BE-012f (`src/sentinel/detection/offline/`, x86-64) — 2026-10-17
+
+Single measurements of the development tools, same machine and Python as above (Intel Core
+Ultra 7 155H, CPython 3.14.7, pandas from `uv.lock`), measured when the tools were written and
+re-measured once for this document. Not part of the server. Timing only: the `z` matrices below
+are invented noise with invented drops (`numpy.random.default_rng(0)`, 105 120 windows × 33
+sensors, one year of 5-minute windows), parameters are arbitrary, and nothing is read from the
+output.
+
+| Operation | At implementation | Re-measured | Command / source |
+|---|---|---|---|
+| `replay` over 105 120 × 33, `k = 0.5`, `h = 8`, `c = 2`, `h_close = 4`, `N = 1` or `5` | 0.45–0.65 s | 0.469–0.765 s (5 runs for `N = 1`), 0.502–0.675 s (5 runs for `N = 5`) | `sentinel.detection.offline.sweep.replay`, timed with `time.perf_counter` |
+| `sweep` of 18 configurations (`h` in 4, 6, 8, 12, 16, 24 × `N` in 1, 2, 3), 14 invented leaks | 8.9 s (about 0.5 s per configuration) | 9.35, 10.04, 11.22 s (3 runs; 0.52–0.62 s per configuration) | `sentinel.detection.offline.sweep.sweep` |
+| `load_pressures_2018` (reads and hashes `scada_2018.csv.gz` of data v1, 105 120 × 33) | 0.30 s | 0.18–0.35 s (3 runs) | `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data` |
+| `oof_hour_of_week_residuals(slot_minutes=60, statistic="median")` | 0.56 s | 0.43–0.59 s (3 runs) | same |
+| `write_oof` (gzip CSV of the residuals + folds file) | 5.6 s | 4.90–6.24 s (3 runs) | same |
+
+Only the 2018 file is opened by these tools (`load_pressures_2018` has no argument to open
+another year). Each configuration of a `sweep` is a full replay, so its cost should grow
+linearly with the number of configurations (18 configurations measured; larger grids not
+measured).
+
 ## Observed bottlenecks / optimisation log
 
 | # | Observation | Measurement | Hypothesis | Proposed change | Result |

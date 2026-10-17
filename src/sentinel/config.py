@@ -56,6 +56,15 @@ def _choice(env: Mapping[str, str], key: str, default: str, allowed: set[str]) -
     return value
 
 
+def _optional_path(env: Mapping[str, str], key: str) -> Path | None:
+    raw = env.get(key)
+    if raw is None:
+        return None
+    if not raw.strip():  # Path("") would silently mean the current directory
+        raise ConfigError(f"{key} must not be empty; unset it instead")
+    return Path(raw)
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     interval_seconds: int = 300
@@ -67,10 +76,14 @@ class Settings:
     result_capacity: int = 2016
     alert_capacity: int = 10_000
     sensor_registry_path: Path = DEFAULT_REGISTRY_PATH
-    # Only "mock" exists until the owning modules deliver; any other value fails at startup
-    # so a mock is never substituted silently (ADR-005).
+    # Only "mock" exists for the forecaster until its owner delivers; any other value fails at
+    # startup so a mock is never substituted silently (ADR-005).
     forecaster: str = "mock"
+    # "mock" or "cusum" (ADR-007). The CUSUM detector has no numeric default: every number comes
+    # from the calibration file, which has no default path either.
     detector: str = "mock"
+    detector_calibration_path: Path | None = None
+    detector_regions_path: Path | None = None  # optional sensor -> region mapping (ADR-007 §8)
     audit_sink: str = "null"
     # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
     audit_pending_capacity: int = 2016
@@ -87,6 +100,22 @@ class Settings:
                 f"({self.min_history_windows}) exceeds SENTINEL_HISTORY_CAPACITY "
                 f"({self.history_capacity})"
             )
+        if self.detector == "cusum":
+            if self.detector_calibration_path is None:
+                raise ConfigError(
+                    "SENTINEL_DETECTOR=cusum requires SENTINEL_DETECTOR_CALIBRATION "
+                    "(the calibration artefact, ADR-008)"
+                )
+        else:
+            for key, path in (
+                ("SENTINEL_DETECTOR_CALIBRATION", self.detector_calibration_path),
+                ("SENTINEL_DETECTOR_REGIONS", self.detector_regions_path),
+            ):
+                if path is not None:
+                    raise ConfigError(
+                        f"{key} is set but SENTINEL_DETECTOR={self.detector}; "
+                        "it only applies to SENTINEL_DETECTOR=cusum"
+                    )
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -103,7 +132,9 @@ class Settings:
                 e.get("SENTINEL_SENSOR_REGISTRY", str(DEFAULT_REGISTRY_PATH))
             ),
             forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", {"mock"}),
-            detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock"}),
+            detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock", "cusum"}),
+            detector_calibration_path=_optional_path(e, "SENTINEL_DETECTOR_CALIBRATION"),
+            detector_regions_path=_optional_path(e, "SENTINEL_DETECTOR_REGIONS"),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
             audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),
