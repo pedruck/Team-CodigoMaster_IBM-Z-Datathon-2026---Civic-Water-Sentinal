@@ -31,12 +31,12 @@ M (½–2 days), L (> 2 days).
 | BE-015 | Run on LinuxONE (s390x): install, gates, p50/p99 per window | P1 | BLOCKED | DEP-PLAT-01 | Backend + Platform | M | `just check` on s390x; numbers in `docs/performance.md` |
 | BE-016 | Dashboard needs (CORS, extra filters) | P2 | TODO | Q-UI-01..03 | Backend + UI | S | dashboard reads the API |
 | BE-017 | Load test (HTTP p50/p99 at replay speed and saturation, keep-alive client) | P2 | TODO | BE-008 | Backend | S | numbers + method in `docs/performance.md` |
-| BE-018 | CI (GitHub Actions running `just ci`) | P2 | IN_PROGRESS | BE-001 | Backend | S | workflow green on PR |
+| BE-018 | CI (GitHub Actions running `just ci`) | P2 | DONE | BE-001 | Backend | S | workflow green on PR |
 
 ## Order of execution
 
 1. Done: BE-001 → BE-002 → BE-003/004/005 → BE-006 → BE-007 → BE-008/009.
-2. Independent next: BE-018 (CI, in progress), BE-017 (load test), BE-016 once Q-UI answered.
+2. Done: BE-018 (CI). Independent next: BE-017 (load test), BE-016 once Q-UI answered.
 3. As owners deliver: BE-010 (unblocks BE-014), BE-011, BE-012, BE-013, then BE-015.
 
 ## Integration points
