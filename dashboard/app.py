@@ -2,6 +2,7 @@
 
 import streamlit as st
 
+from dashboard.alert_detail import alert_detail
 from dashboard.alert_list import alert_row
 from dashboard.config import source_from_env
 from dashboard.header import build_header
@@ -75,3 +76,41 @@ if status is not None:
             st.caption(f"{len(page.items)} of {page.total} alerts.")
         else:
             st.info("No alerts in this period.")
+
+# --- Alert detail (UI-004): evidence exactly as received; the list above owns its errors. ---
+st.subheader("Alert detail")
+if status is not None:
+    try:
+        shown = source.list_alerts(AlertQuery()).items
+    except SourceError:
+        shown = ()
+    selected = (
+        st.selectbox("Alert", [a.alert_id for a in shown], index=0, key="alert_detail_id")
+        if shown
+        else None
+    )
+    if selected is None:
+        st.caption("No alert to show.")
+    else:
+        try:
+            detail = alert_detail(source.get_alert(selected))
+        except ContractMismatchError as exc:
+            st.error(f"Contract mismatch: alert {selected} does not match the contract. {exc}")
+        except SourceError as exc:
+            st.error(f"Could not load alert {selected} ({source.name}): {exc}")
+        else:
+            if detail.simulated:
+                st.warning("SIMULATED — this alert came from a mock: not leak detection.")
+            st.table(list(detail.facts))
+            st.markdown("**Deviating sensors**")
+            if detail.sensors:
+                st.table(list(detail.sensors))
+            else:
+                st.caption("No deviating sensor.")
+            st.markdown("**Forecast contributions (deviating sensors)**")
+            if detail.contributions:
+                st.table(list(detail.contributions))
+            else:
+                st.caption("Forecast contributions: not provided.")
+            st.markdown("**Explanation**")
+            st.info(detail.explanation)
