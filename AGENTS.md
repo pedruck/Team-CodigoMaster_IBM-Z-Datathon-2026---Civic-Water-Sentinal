@@ -16,7 +16,8 @@ memory. These rules are mandatory.
 | Decisions and why | `docs/adr/` |
 | How to test / measure | `docs/testing.md`, `docs/performance.md` |
 
-Commands: `just --list`. Gates: `just check` (format → lint → typecheck → test).
+Commands: `just --list`. Gates: `just check` (format → lint → typecheck → test); CI runs
+`just ci` (same gates, no file changes) on every PR.
 
 ## 1. Before starting
 

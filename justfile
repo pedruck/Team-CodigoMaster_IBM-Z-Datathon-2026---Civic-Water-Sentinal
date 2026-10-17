@@ -21,6 +21,13 @@ test *args:
 # All quality gates, in the required order
 check: fmt lint typecheck test
 
+# Same gates without modifying files (used by GitHub Actions)
+ci:
+    uv run ruff format --check src tests scripts
+    uv run ruff check src tests scripts
+    uv run mypy
+    uv run pytest
+
 # Development server with the mocks (http://127.0.0.1:8000/docs)
 dev:
     uv run uvicorn sentinel.main:create_app --factory --reload

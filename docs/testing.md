@@ -4,6 +4,7 @@
 
 ```bash
 just check          # format -> lint -> typecheck -> test (all gates)
+just ci             # same gates, format in --check mode (what CI runs)
 just test           # pytest only
 just test -k pipeline -x
 ```
@@ -54,7 +55,7 @@ barriers.
 - Line/branch coverage is **not measured** (no coverage tool added; NOT_RUN).
 - Real models, real sensor IDs, real data, s390x: blocked (`docs/dependencies.md`).
 - Load test at saturation: BE-017.
-- No CI yet: tests run locally only (BE-018).
+- CI: `.github/workflows/ci.yml` runs `just ci` (format check, lint, mypy, pytest) on every PR and push to `main`, Python 3.12 on `ubuntu-latest` (x86_64 only).
 
 ## Last recorded run
 
