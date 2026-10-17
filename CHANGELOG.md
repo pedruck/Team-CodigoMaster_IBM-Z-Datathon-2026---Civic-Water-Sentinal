@@ -54,6 +54,12 @@ contract versions are tracked separately (`schema_version`).
   by `CusumDetector` with an invented synthetic calibration and region mapping (`is_mock=true`)
   fills `region`, `cusum`, `since` and an onset before the alert; 4 headless tests. The
   SIMULATED banner now says "a mock model or a non-final calibration".
+- ADR-010 (layer-2 evaluation, `Proposed`, answers Q-UI-06): official BattLeDIM time window
+  `[start, end]` (scoring code read on 2026-10-17: no Tmax, 300 m pipe rule, repeats 0), all 23
+  labelled leaks, `layer1.evaluate` reused, secondary views "within 7 days" and "new in 2019";
+  region accuracy and euro score "not computed" until regions/pipes exist.
+- Merge repair: Q-UI-05 and Q-UI-06 (detection owner) and the P6 proposal in Q-DET-04, dropped
+  by the merge of `main`, restored; testing.md sentence on data-reading tests restored.
 - ADR-009 (dashboard, `Proposed`) and P6 cross-team questions Q-UI-07, Q-AUD-06, Q-AUD-07,
   Q-DET-07, Q-DOC-01/02; Q-DET-04 lifecycle fields proposed; DEP-UI-03, DEP-DET-06 added
   (UI-006). ADR-007/008 and Q-UI-05/06, Q-DET-06 belong to the detection owner (BE-012).

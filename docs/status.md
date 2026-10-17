@@ -67,7 +67,7 @@ builds its `Settings` without the environment, so `just bench` cannot measure th
 `scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`; a refused startup prints a Python
 traceback whose last line is the `ConfigError` (for pydantic errors, a documentation URL).
 
-P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 and EV-001..003 TODO, spec and tickets in
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 TODO; EV-001 IN_PROGRESS (ADR-010 `Proposed`, awaiting P4 review); EV-002..003 TODO, spec and tickets in
 `.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
 
 ## External dependencies

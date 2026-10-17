@@ -34,3 +34,4 @@ One file per decision with impact on contracts, reliability, performance or inte
 | [ADR-007](ADR-007-cusum-detector.md) | CUSUM detector: statistic, alert lifecycle, gaps, atomicity, regions | Proposed |
 | [ADR-008](ADR-008-calibration-and-evaluation.md) | Detector calibration and evaluation protocol | Proposed |
 | [ADR-009](ADR-009-dashboard.md) | Operator dashboard: server-side, contract-checked, read-only | Proposed |
+| [ADR-010](ADR-010-layer2-evaluation.md) | Layer-2 evaluation of 2019 through the API: matching rule, metrics, manifest | Proposed |

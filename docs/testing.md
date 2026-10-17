@@ -12,9 +12,11 @@ just test -k pipeline -x
 Equivalent raw commands: `uv run ruff format src tests scripts`, `uv run ruff check src tests
 scripts`, `uv run mypy` (strict, pydantic plugin), `uv run pytest`.
 
-All tests use small synthetic data (`sentinel.synthetic`, placeholder sensor IDs; the dashboard playback fixtures use the official IDs over a synthetic signal). No
-BattLeDIM data is used or committed. Tests never sleep; concurrency tests use threads and
-barriers.
+All tests use small synthetic data (`sentinel.synthetic`, placeholder sensor IDs; the dashboard
+playback fixtures in `dashboard/playback/` use the official IDs over a synthetic signal). No
+BattLeDIM data is committed; the only tests that read it are the ones skipped without
+`SENTINEL_DATA_DIR` (`tests/test_p1_data.py`, one test of `test_offline_baseline.py`). Tests
+never sleep; concurrency tests use threads and barriers.
 
 ## Layout
 

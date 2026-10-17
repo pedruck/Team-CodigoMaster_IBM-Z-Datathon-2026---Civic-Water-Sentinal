@@ -27,11 +27,19 @@ merged, instead of a second implementation, if its definitions match.
 **Blocked by:** None (can start immediately). The pipe → region table waits for P4's mapping
 (BE-012g) and P1's graph.
 
-**Status:** ready-for-agent
+**Status:** in progress (ADR-010 written, awaiting P4 review)
 
-- [ ] ADR-010 present, indexed, referencing ADR-008 §F–§H, every rule above stated
-- [ ] Q-UI-06 answered in `docs/questions-for-team.md` (pointing to ADR-010)
+- [x] ADR-010 present, indexed, referencing ADR-008 §F–§H, every rule above stated
+- [x] Q-UI-06 answered in `docs/questions-for-team.md` (pointing to ADR-010)
 - [ ] P4 review recorded and status Accepted before EV-003 runs on 2019
-- [ ] Sources for any BattLeDIM constant cited
+- [x] Sources for any BattLeDIM constant cited
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — The decision changed after reading the official scoring code (KIOS-Research/
+  BattLeDIM, `Scoring_Algorithm.m`, `scoring_function.m`): no Tmax (window `[start, end]`), the
+  4 inherited leaks count (23 total), repeats score 0. Approved by P6 the same day: primary =
+  official window with 23 leaks; "within 7 days" and "new in 2019" as secondary views.
+- Pending: P4 review → status Accepted before EV-003.
