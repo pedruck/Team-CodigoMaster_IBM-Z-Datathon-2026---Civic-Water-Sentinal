@@ -3,7 +3,7 @@
 Per-sensor ``S`` with cap ``c*h``, alert episodes per sensor (claim, release below
 ``h_close``, no reset), onset, decay across missing windows and all-or-nothing rejection of
 bad input. ``ModelInfo`` carries the artefact hash and ``is_mock`` follows the calibration
-provenance. Not yet: region (BE-012e).
+provenance. BE-012e adds the region ranking (``regions.py``).
 """
 
 import hashlib
@@ -16,6 +16,7 @@ from pathlib import Path
 from sentinel.config import ConfigError
 from sentinel.detection.calibration import CalibrationArtefact, canonical_bytes
 from sentinel.detection.interface import DetectionError
+from sentinel.detection.regions import RegionMapping
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.detections import (
     AlertCandidate,
@@ -54,16 +55,36 @@ class CusumDetector:
         *,
         interval: timedelta,
         calibration_id: str | None = None,
+        regions: RegionMapping | None = None,
     ) -> None:
         """``interval``: the window length (contract §1), used to count missing windows.
         ``calibration_id``: sha256 of the artefact file (``from_file`` sets it); by default
-        the sha256 of the file ``write_artefact`` would write for ``calibration``."""
+        the sha256 of the file ``write_artefact`` would write for ``calibration``.
+        ``regions``: sensor -> region mapping (ADR-007 §8); it must cover exactly the
+        calibration sensors (``ValueError`` otherwise). Without it ``region`` and
+        ``region_scores`` stay null and the output is unchanged."""
         if interval <= timedelta(0):
             raise ValueError(f"interval must be positive, got {interval}")
         self._cal = calibration
         self._interval = interval
         self._sensors = tuple(calibration.sigma_m)
         self._sensor_set = frozenset(self._sensors)
+        if regions is not None and regions.sensors != self._sensor_set:
+            raise ValueError(
+                "regions must cover exactly the calibration sensors: "
+                f"missing={sorted(self._sensor_set - regions.sensors)} "
+                f"unexpected={sorted(regions.sensors - self._sensor_set)}"
+            )
+        self._regions_id = None if regions is None else regions.regions_id
+        index = {s: i for i, s in enumerate(self._sensors)}
+        # Per region, its sensors' positions in calibration order: the order of every sum.
+        self._regions: tuple[tuple[str, tuple[int, ...]], ...] = (
+            ()
+            if regions is None
+            else tuple(
+                (r, tuple(sorted(index[s] for s in ss))) for r, ss in regions.regions.items()
+            )
+        )
         self._state = _State(
             cusum=tuple(0.0 for _ in self._sensors),
             claimed=frozenset(),
@@ -93,8 +114,10 @@ class CusumDetector:
         interval: timedelta,
         pressure_sensors: Sequence[str],
         forecaster: ModelInfo,
+        regions: Path | None = None,
     ) -> "CusumDetector":
-        """The detector as the server starts it: ``from_file`` plus the startup checks."""
+        """The detector as the server starts it: ``from_file`` plus the startup checks. With
+        ``regions`` (a mapping file), the mapping must cover exactly ``pressure_sensors``."""
         detector = cls.from_file(path, interval=interval)
         registry = frozenset(pressure_sensors)
         if detector._sensor_set != registry:
@@ -120,7 +143,21 @@ class CusumDetector:
                 f"calibration was made for forecaster {calibrated.name} {calibrated.version}, "
                 f"but the pipeline serves {forecaster.name} {forecaster.version}"
             )
-        return detector
+        if regions is None:
+            return detector
+        mapping = RegionMapping.from_file(regions)
+        if mapping.sensors != registry:
+            raise ConfigError(
+                "regions differ from the registry's pressure sensors: "
+                f"missing={sorted(registry - mapping.sensors)} "
+                f"unexpected={sorted(mapping.sensors - registry)}"
+            )
+        return cls(
+            detector._cal,
+            interval=interval,
+            calibration_id=detector._calibration_id,
+            regions=mapping,
+        )
 
     @property
     def info(self) -> ModelInfo:
@@ -182,6 +219,7 @@ class CusumDetector:
         # N-th largest unclaimed S: an alert opens iff it exceeds h (ADR-007 §3). None while
         # fewer than N sensors are unclaimed.
         statistic = cusum[ranked[cal.n_min - 1]] if len(ranked) >= cal.n_min else None
+        region_scores = self._region_scores(cusum, above) if self._regions else None
         alerts: tuple[AlertCandidate, ...] = ()
         if statistic is not None and statistic > cal.h:
             claimed = claimed | frozenset(above)
@@ -190,6 +228,9 @@ class CusumDetector:
             onsets = [last_zero[i] for i in above]
             alerts = (
                 AlertCandidate(
+                    # The alert's sensors are exactly the unclaimed ones above h, so the sums
+                    # over them are region_scores (ADR-007 §8).
+                    region=None if region_scores is None else _top_region(region_scores),
                     suspected_onset=_earliest(onsets),
                     cusum=CusumEvidence(statistic=statistic, threshold=cal.h),
                     deviating_sensors=tuple(
@@ -216,6 +257,8 @@ class CusumDetector:
             "provenance": cal.provenance,
             "skipped_windows": skipped,
         }
+        if self._regions_id is not None:
+            diagnostics["regions_id"] = self._regions_id
         if emptied:
             diagnostics["reset_reason"] = "gap"  # the skip emptied every S (ADR-007 §7)
         result = DetectionResult(
@@ -225,12 +268,26 @@ class CusumDetector:
             anomaly_score=statistic,
             residuals=residuals,
             alerts=alerts,
+            region_scores=region_scores,
             diagnostics=diagnostics,
         )
         new = _State(cusum=cusum, claimed=claimed, last_zero=last_zero, last_timestamp=timestamp)
         # Everything above is pure; the state changes in one assignment (ADR-007 §9).
         self._state = new
         return result
+
+    def _region_scores(self, cusum: Sequence[float], above: Sequence[int]) -> dict[str, float]:
+        """Per region, the sum of ``S`` over the unclaimed sensors above ``h`` (ADR-007 §8);
+        ``above`` is that set. Plain float64 additions in calibration order (ADR-007 §9)."""
+        scores: dict[str, float] = {}
+        unclaimed_above = frozenset(above)
+        for region, members in self._regions:
+            total = 0.0
+            for i in members:
+                if i in unclaimed_above:
+                    total += cusum[i]
+            scores[region] = total
+        return scores
 
     def _validate(
         self, observed: Mapping[str, float], expected: Mapping[str, float], timestamp: datetime
@@ -259,3 +316,9 @@ class CusumDetector:
 def _earliest(onsets: list[datetime | None]) -> datetime | None:
     known = [t for t in onsets if t is not None]
     return min(known, default=None) if len(known) == len(onsets) else None
+
+
+def _top_region(scores: Mapping[str, float]) -> str:
+    """The region with the largest score; ties go to the first in the file (``max`` keeps the
+    first of equal values)."""
+    return max(scores, key=lambda region: scores[region])
