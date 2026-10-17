@@ -134,6 +134,24 @@ Caveats: single runs, shared VM, no warm-up control; x86 numbers come from a lap
 other processes running. The two baselines are **not** a fair platform comparison and must
 not be used as one.
 
+## CUSUM detector (x86-64, synthetic input) — 2026-10-17
+
+Single measurements, **not a benchmark**: x86-64 laptop (Intel Core Ultra 7 155H, 22 threads,
+other processes running), Python 3.14.7, `wip/be-012-docs` @ `a93883b`. They time tests, so they
+include test set-up; they say nothing about the real models or about s390x.
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/detection/test_end_to_end.py -q` | 14 passed in 3.33 s (5.6 s wall with `uv run` start-up) |
+| `uv run pytest tests/detection/test_properties.py -q --durations=3` | 13 passed in 2.29 s; slowest: `test_null_series_run_length_matches_siegmund_arl0` 2.16 s |
+
+The ARL0 test calls `evaluate` 100 000 times with one sensor and generates its noise inside the
+timing: about 22 µs per window as an upper bound for the detector itself (2.16 s / 100 000).
+The 33-sensor cost per window is not measured; the CUSUM runs in plain Python and is not on any
+measured bottleneck. Measure it through `just bench` once `SENTINEL_DETECTOR=cusum` is wired.
+Determinism digest of the fixed replay for BE-015: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64), s390x pending
+(`docs/testing.md`).
+
 ## Observed bottlenecks / optimisation log
 
 | # | Observation | Measurement | Hypothesis | Proposed change | Result |

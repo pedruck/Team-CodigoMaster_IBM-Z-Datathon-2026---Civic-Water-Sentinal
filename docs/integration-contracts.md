@@ -131,9 +131,11 @@ class Detector(Protocol):
   process** and calls it strictly in timestamp order, never concurrently, never twice for
   the same window. After a restart the state starts empty (ADR-003).
 - **Atomic:** either update state and return, or raise (`DetectionError`) without having
-  changed state.
-- Gaps: the detector is not told explicitly; it receives non-consecutive timestamps. Expected
-  behaviour (reset or continue) to define (Q-DET-03).
+  changed state. This holds for any exception, not only `DetectionError` (the pipeline
+  catches `Exception`).
+- Gaps: the detector is not told explicitly; it receives non-consecutive timestamps. Each
+  missing window counts as zero residual: every S decays by `k` per missing window
+  (ADR-007).
 
 `DetectionResult` — [`detection-result.valid.json`](examples/detection-result.valid.json):
 
@@ -142,7 +144,7 @@ class Detector(Protocol):
 | `timestamp` | must equal the evaluated window (else `invalid_detection`) |
 | `model` | `ModelInfo` |
 | `state` | `normal` \| `suspect` \| `alarm` |
-| `anomaly_score` | optional scalar (e.g. max CUSUM) — unit to define |
+| `anomaly_score` | optional scalar; with the CUSUM detector, the N-th largest S among unclaimed sensors, dimensionless (σ units) |
 | `residuals` | `{sensor: {residual_m, z?, cusum?}}` |
 | `alerts[]` | alerts **opened at this window** (not ongoing ones): `region?`, `suspected_onset?`, `cusum{statistic, threshold}?`, `deviating_sensors[] {sensor, deviation_m, z?, since?}` (≥1), `summary?` |
 | `region_scores` | optional `{region: score}` |
@@ -156,6 +158,43 @@ design doc §3). So in a leak `deviation_m < 0` and `z > 0`. The design doc §6 
 (`deviation_m −0.9`, `z −4.1`) has the wrong z sign. Enforced in the mock and by
 `test_pressure_drop_has_negative_deviation_and_positive_z`.
 
+**CUSUM semantics (`CusumDetector`; ADR-007, calibration in ADR-008, both `Proposed`):**
+- Per sensor `S ← min(c·h, max(0, S + z − k))` (`z` as above, positive on a drop);
+  `residuals[s].cusum` is `S`, so it is never negative and never above the cap `c·h`. σ, `k`,
+  `h`, `N`, `c`, `h_close` come from the calibration artefact, never from code defaults.
+- An alert opens when ≥ `N` **unclaimed** sensors have `S > h`; they become *claimed* and do
+  not count again until `S < h_close`. No reset after an alert; no closing event.
+- `cusum.statistic` = N-th largest `S` among unclaimed sensors, `threshold` = `h`; an alert
+  opens iff `statistic > threshold`. `anomaly_score` carries the same value on every window
+  (null while fewer than `N` sensors are unclaimed).
+- `state`: `alarm` if any sensor is claimed; else `suspect` if an unclaimed sensor has
+  `S > h` (fewer than `N`); else `normal`.
+- `deviating_sensors` = the unclaimed sensors with `S > h` that open the alert; `since` = last
+  window with `S = 0`, so a new episode that starts before `S` returned to 0 inherits the old
+  onset (Q-DET-06); `suspected_onset` = earliest `since`, or `null` when any deviating sensor
+  never had `S = 0` since the first window the detector saw.
+- Gaps: with `m` missing windows every `S` decays to `max(0, S − k·m)` before the current
+  window is processed. The onset and the release happen inside the gap: the last window of
+  the gap counts as a zero whenever the decay left `S` at 0, and a claimed sensor is
+  released if `min(decayed S, new S) < h_close`.
+- `region` / `region_scores` need a sensor → region file `{"regions": {"<region>": ["<sensor>",
+  ...]}}` (file order is the tie-break; each pressure sensor in exactly one region; startup
+  fails if it does not cover exactly `registry.pressure`). `region_scores` is emitted on
+  every window with every region (`0.0` when empty): the sum of `S` over the unclaimed
+  sensors with `S > h`, the same set as `anomaly_score` (after the `h_close` release, before
+  the sensors of the alert opening in this window are claimed). `region` = region with the
+  largest sum (tie: first in the file). Without the file both are null and no new key appears.
+- `diagnostics`: `k`, `h`, `n_min`, `c`, `cap`, `h_close`, `provenance`, `calibration_id`
+  (sha256 of the artefact file), `skipped_windows`; `reset_reason="gap"` only when a skip
+  emptied every `S`; `regions_id` (sha256 of the mapping file) only with a mapping.
+- `complete` is always `true`. `DetectionError` is raised, with the state unchanged
+  (atomic), when the timestamp is ≤ the last evaluated one or has no timezone, when the
+  observed or expected sensor set differs from the calibration's, or when a value or `z` is
+  not finite.
+- `ModelInfo`: `name="cusum"`, `version="0.1.0+<8 hex of the artefact hash>"`,
+  `is_mock=true` unless the calibration `provenance` is `battledim-2018-oof`.
+- `state` is returned by `POST /v1/windows` (`detector_state`) and is in the `window.*`
+  audit payload together with `anomaly_score`; no GET endpoint exposes either (Q-UI-05).
 Mock: `ThresholdMockDetector` — opens one alert when ≥ N sensors are ≥ 3σ below expected.
 Not CUSUM, no region.
 

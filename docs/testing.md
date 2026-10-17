@@ -54,6 +54,21 @@ barriers.
 | 13 | integrated run with mocks | `test_synthetic_day_replay_with_injected_step` |
 | 14 | concurrent requests | `test_concurrent_resend_of_same_window_creates_it_once`, `test_concurrent_distinct_windows_never_corrupt_order`, `test_concurrent_requests_are_serialised`, `test_concurrent_readers_and_writer_keep_invariants` |
 
+## Detection tests (`tests/detection/`, CUSUM detector, BE-012a..e)
+
+All calibrations, sensor IDs and region names in these tests are **invented** (placeholders
+such as `P1`, `P01..P33`); they exercise mechanics and are not evidence of leak detection.
+
+| File | Covers | Seam |
+|---|---|---|
+| `test_cusum.py` | statistic and cap, opening at `N` sensors, episodes (claim / release / no reset), states, onset, gaps and `reset_reason`, atomic rejection with fault injection, `is_mock` from provenance | `CusumDetector.evaluate` |
+| `test_calibration.py` | artefact loading and validation, hash in `ModelInfo.version` and `calibration_id`, `calibrate()` (σ = max(floor, 1.4826·MAD), recovery of a known σ from AR(1) residuals), `for_pipeline` startup checks (`ConfigError`: sensors, order, forecaster) | `calibrate`, `write_artefact`, `for_pipeline` |
+| `test_end_to_end.py` | synthetic days through `POST /v1/windows` → `GET /v1/alerts` with the detector injected into `build_pipeline`: one alert per step, concurrent alerts, release and re-alert, `suspect`, mismatched calibration fails detection not ingestion, gaps | HTTP API (the `SENTINEL_DETECTOR=cusum` selection is not covered yet) |
+| `test_properties.py` | larger step detected no later, scale invariance, null-series run length vs Siegmund ARL0 (100 000 windows) | `CusumDetector.evaluate` |
+| `test_determinism.py` | sha256 of a fixed replay (alerts, release, two gaps) as the reference for the x86 / s390x parity run (BE-015); regenerate with `uv run python -m tests.detection.test_determinism` only when behaviour changes on purpose. Digest on x86-64: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413`; s390x: **NOT_RUN** | `CusumDetector.evaluate` |
+| `test_regions.py` | `region`, `region_scores`, `regions_id`, tie-break, mapping validation, startup failure when the mapping does not cover the registry, `GET /v1/alerts?region=` | `evaluate`, HTTP API |
+| `artefacts.py`, `residuals.py` | helpers: invented artefacts; synthetic residual generator (AR(1), diurnal heteroscedasticity, common mode) | — |
+
 ## Running on the LinuxONE VM (s390x)
 
 `mypy` cannot be installed there yet: its dependency `librt` 0.16.0 has no s390x wheel on
