@@ -24,7 +24,7 @@ contract versions are tracked separately (`schema_version`).
   `docs/p2-forecasting.md`. Forecasters accept both sensor ID spellings (`n1` / `Pressure_n1`). Snap ML import of XGBoost 3.x JSON fixed
   (`portable_booster_json`). ML tests skip where numpy/xgboost/tensorflow are absent.
   Validation reports MAE on clean windows and a one-sided (pressure-drop) leak contrast
-  (`metrics_version` 2).
+  (`metrics_version` 2); sensors with σ = 0 are left out of the contrast.
 - Sensor registry loaded from the data owner's `data/vN/sensors.csv` (official IDs and units,
   shown in `/v1/status`); `scripts/validate_v1_ingestion.py` runs a full year of the export
   through the pipeline.

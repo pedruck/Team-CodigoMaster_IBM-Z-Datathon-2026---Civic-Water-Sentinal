@@ -304,9 +304,12 @@ def leak_contrast(
     a residual pushed the wrong way during a leak (pressure above expected) adds nothing.
     Returns mean drop score in leak-affected windows / mean in clean windows: > 1 leaks show as
     drops, about 1 they do not stand out, < 1 the model moves the residual the wrong way.
+    Sensors with sigma <= 0 are left out: their z is infinite and would turn the result into
+    NaN (the hour-of-week baseline gets sigma = 0 on n215, whose residuals are mostly equal).
     ``None`` if either set is empty or the clean windows have no drop signal.
     """
-    drop = (-resid / sigma).clip(lower=0).mean(axis=1)
+    usable = sigma[sigma > 0].index.intersection(resid.columns)
+    drop = (-resid[usable] / sigma[usable]).clip(lower=0).mean(axis=1)
     affected = ~clean.reindex(drop.index, fill_value=True)
     inside, outside = drop[affected], drop[~affected]
     if inside.empty or outside.empty or not outside.mean() > 0:

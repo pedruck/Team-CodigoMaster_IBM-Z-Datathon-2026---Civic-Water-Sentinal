@@ -58,9 +58,12 @@ pick one** so alerts, the dashboard and P4's sensor → region map use the same 
   2018 windows (baseline, XGBoost).
 - **σ per sensor** (`sigma_m` in every model's metadata): 1.4826·MAD of the validation residuals.
   This is the σ of `z = (expected − observed) / σ` for P4.
-- **Low-variance sensors**: `n215` and `n740` barely move (`docs/data.md` §11), so a tiny σ
-  inflates z. The notebooks list sensors with σ < 0.02 m (`training.low_variance_sensors`) so P4
-  can floor σ for them.
+- **Small σ, and P4's σ floor**: `n215` and `n740` barely move (`docs/data.md` §11), so a tiny σ
+  inflates z. The notebooks list sensors with σ < 0.02 m (`training.low_variance_sensors`).
+  First run on the real `data/v1` (VM, 2026-10-17): the baseline gets **σ = 0 on `n215`** (its
+  residuals are mostly identical, so the MAD is zero), and XGBoost has σ < 0.02 m on **32 of 33
+  sensors** (3–12 mm) because its error is that small. P4 therefore needs a σ floor for every
+  sensor, not only `n215`/`n740`. The leak contrast leaves out sensors with σ = 0.
 - **Validation MAE** is computed on clean windows only (normal operation). Including leak
   windows would reward a model that follows the leak, because it errs less exactly there.
 - **Leak contrast** (in every model's metadata): the pressure-drop score `max(z, 0)`, with

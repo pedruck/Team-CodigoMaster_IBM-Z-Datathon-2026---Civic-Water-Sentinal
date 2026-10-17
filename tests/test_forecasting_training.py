@@ -186,3 +186,19 @@ def test_leak_contrast_counts_only_pressure_drops() -> None:
     assert to_rise == 0.0  # pressure above expected during the leak is no evidence
     # the old |z| version would have scored both the same
     assert (drop.abs() == rise.abs()).all().all()
+
+
+def test_leak_contrast_skips_sensors_with_zero_sigma() -> None:
+    clean = pd.Series([True, True, True, True, False, False])
+    resid = pd.DataFrame(
+        {
+            "a": [0.1, -0.1, 0.1, -0.1, -0.5, -0.5],
+            "flat": [0.0, 0.0, 0.0, 0.0, -0.01, -0.01],  # quantised: MAD = 0
+        }
+    )
+    sigma = training.robust_sigma(resid)
+    assert sigma["flat"] == 0.0
+    with_flat = training.leak_contrast(resid, sigma, clean)
+    without = training.leak_contrast(resid[["a"]], sigma[["a"]], clean)
+    assert with_flat is not None and np.isfinite(with_flat)
+    assert with_flat == pytest.approx(without)
