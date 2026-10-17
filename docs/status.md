@@ -47,7 +47,7 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
   numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
   process (full 2019); full `just check` waits for Q-PLAT-02 (`gcc`). The detector
-  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64, `tests/detection/test_determinism.py`) is **pending on s390x**.
+  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check).
 
 ## Blocked
 
@@ -178,7 +178,12 @@ s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 | same, LinuxONE container `python -m pytest -q` (with ML libraries and `SENTINEL_DATA_DIR`) | **177 passed**; `tests/test_forecaster_wiring.py` 8 passed |
 | LinuxONE `validate_replay_ingestion.py windows_2019.jsonl`, `SENTINEL_FORECASTER=xgboost` (`xgboost-33@0.1.0`), TreeSHAP off, `auto` / `compress_trees` | 105 120 windows each, 0 rejected, 0 processing issues, 0 mock alerts · forecast p50 1.371 / 0.651 ms · total p50 1.574 / 0.839 ms |
 | same, TreeSHAP on, first 600 windows | 0 rejected, 0 issues · forecast p50 135.98 / p99 175.37 ms |
-| real models in the API over HTTP (shared API) | **NOT_RUN** — waits for the merge and an announced restart |
+| x86 `just check` on PR #7 @ `94a1143` (`main` merged in, `uv sync --locked --group dashboard` as CI) | 114 files unchanged · ruff OK · mypy OK (114 files) · **615 passed, 19 skipped** |
+| x86 `just check` on a local merge of PR #7 + PR #10 + PR #11 (not pushed) | 123 files unchanged · ruff OK · mypy OK (123 files) · **645 passed, 19 skipped** |
+| LinuxONE container, same local merge: `python -m pytest -q` | **612 passed, 12 skipped** (streamlit tests skip: no s390x build); `test_determinism.py`, `test_forecaster_wiring.py`, `test_eval_run.py`, `test_dashboard_jupyter.py` 31 passed |
+| LinuxONE, same merge: API on a private port (XGBoost `compress_trees`, TreeSHAP off, mock detector) + `sentinel.eval.run.record_run` with `windows_2019.jsonl` over HTTP | 105 120 windows, 0 rejected, 0 alerts, 0 missing, 320.9 s (≈ 328 windows/s, client and server on the VM) |
+| same, XGBoost `auto` + TreeSHAP, mock detector σ 0.01 m (to get alerts), first 1000 windows; Jupyter dashboard (PR #11) live and on the recorded run | 1000 windows, 0 rejected, 9 alerts, all valid `Alert` with `forecast_contributions_m`; dashboard shows XGBoost `is_mock=false`, the SIMULATED banner and 9 alerts with contributions in both sources |
+| real models on the **shared** API (port 8000) | **NOT_RUN** — waits for the merge and an announced restart |
 | line coverage | **NOT_RUN** — no coverage tool configured |
 | branch `wip/be-012-docs-final`, base `56170f9` plus this documentation change — x86-64 (Intel Core Ultra 7 155H), Python 3.14.7: `just check` (ruff format, ruff check, mypy strict, pytest) | ruff format: 83 files left unchanged · ruff check: all checks passed · mypy: no issues found in 83 source files · **464 passed, 9 skipped** (8 P1 data tests and 1 offline-baseline real-data test, skipped without `SENTINEL_DATA_DIR`) |
 | same, `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run pytest tests/test_p1_data.py tests/detection/test_offline_baseline.py -q` | **48 passed** (the real-data tests ran; the offline one checks shape and finiteness only) |
