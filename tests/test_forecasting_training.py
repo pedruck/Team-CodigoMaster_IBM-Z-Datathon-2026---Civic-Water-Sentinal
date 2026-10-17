@@ -10,6 +10,7 @@ import pytest
 from sentinel.data.clean_mask import mascara_limpa
 from sentinel.forecasting import training
 from sentinel.forecasting.baseline import HourOfWeekForecaster
+from sentinel.forecasting.features import SensorLayout
 
 PRESSURE = ("n1", "n4", "n31")
 FLOW = ("p227", "p235", "PUMP_1")
@@ -107,8 +108,12 @@ def test_layout_and_columns_follow_the_registry(data: Path) -> None:
     df = training.load_scada(2018, short)
     assert list(df.columns) == [*PRESSURE, *FLOW, *LEVEL]
 
-    long = training.load_layout(data / "data" / "v1" / "sensors.csv")
-    assert long.pressure == tuple(f"Pressure_{n}" for n in PRESSURE)
+    # the registry is JSON only (main, PR #4); the CSV column spelling still loads the same data
+    long = SensorLayout(
+        pressure=tuple(f"Pressure_{n}" for n in short.pressure),
+        flow=tuple(f"Flow_{n}" for n in short.flow),
+        tank_level=tuple(f"Level_{n}" for n in short.tank_level),
+    )
     df_long = training.load_scada(2018, long)
     np.testing.assert_array_equal(df_long.to_numpy(), df.to_numpy())
 

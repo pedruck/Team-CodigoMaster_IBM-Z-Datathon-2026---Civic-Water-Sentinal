@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -7,79 +8,81 @@ from sentinel.config import Settings
 from sentinel.main import create_app
 from sentinel.sensors import SensorRegistry
 
-HEADER = "sensor_id,tipo,unidade,elemento_rede,papel\n"
+OFFICIAL = Path("config/sensors.battledim.json")
 
 
-def write_csv(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / "sensors.csv"
-    path.write_text(HEADER + body, encoding="utf-8")
+def write_json(tmp_path: Path, data: dict[str, object]) -> Path:
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
-def test_csv_from_data_owner_is_loaded_in_file_order(tmp_path: Path) -> None:
-    path = write_csv(
-        tmp_path,
-        "Pressure_n1,pressao,m,n1,\n"
-        "Pressure_n4,pressao,m,n4,\n"
-        "Flow_p227,vazao,m3/h,p227,entrada\n"
-        "Flow_PUMP_1,vazao,m3/h,PUMP_1,bomba\n"
-        "Level_T1,nivel,m,T1,tanque\n",
-    )
-    reg = SensorRegistry.load(path)
-    assert reg.pressure == ("Pressure_n1", "Pressure_n4")
-    assert reg.flow == ("Flow_p227", "Flow_PUMP_1")
-    assert reg.tank_level == ("Level_T1",)
+def test_official_registry_is_the_data_owners_network_element_ids() -> None:
+    reg = SensorRegistry.load(OFFICIAL)
     assert reg.provisional is False
-    assert reg.units == {"pressure": "m", "flow": "m3/h", "tank_level": "m"}
-    assert reg.source == str(path)
+    assert reg.counts == {"pressure": 33, "flow": 3, "tank_level": 1}
+    assert reg.pressure[:3] == ("n1", "n4", "n31")
+    assert reg.flow == ("p227", "p235", "PUMP_1")
+    assert reg.tank_level == ("T1",)
 
 
-def test_csv_with_unknown_type_is_rejected(tmp_path: Path) -> None:
-    path = write_csv(tmp_path, "Pressure_n1,pressao,m,n1,\nX1,temperatura,C,x,\n")
-    with pytest.raises(ValueError, match="temperatura"):
-        SensorRegistry.load(path)
-
-
-def test_csv_with_duplicate_ids_is_rejected(tmp_path: Path) -> None:
-    path = write_csv(tmp_path, "Pressure_n1,pressao,m,n1,\nPressure_n1,pressao,m,n1,\n")
-    with pytest.raises(ValueError, match="duplicate"):
-        SensorRegistry.load(path)
-
-
-def test_csv_with_mixed_units_per_type_is_rejected(tmp_path: Path) -> None:
-    path = write_csv(tmp_path, "Pressure_n1,pressao,m,n1,\nPressure_n4,pressao,bar,n4,\n")
-    with pytest.raises(ValueError, match="unit"):
-        SensorRegistry.load(path)
-
-
-def test_csv_without_pressure_sensors_is_rejected(tmp_path: Path) -> None:
-    path = write_csv(tmp_path, "Level_T1,nivel,m,T1,tanque\n")
-    with pytest.raises(ValueError):
-        SensorRegistry.load(path)
-
-
-def test_provisional_json_still_loads() -> None:
+def test_provisional_registry_still_loads() -> None:
     reg = SensorRegistry.load(Path("config/sensors.provisional.json"))
     assert reg.provisional is True
     assert reg.counts == {"pressure": 33, "flow": 3, "tank_level": 1}
     assert reg.units is None
 
 
-def test_api_accepts_real_shaped_window_with_csv_registry(tmp_path: Path) -> None:
-    path = write_csv(
+def test_optional_units_are_loaded(tmp_path: Path) -> None:
+    path = write_json(
         tmp_path,
-        "Pressure_n1,pressao,m,n1,\nFlow_p227,vazao,m3/h,p227,entrada\nLevel_T1,nivel,m,T1,tanque\n",
+        {"provisional": False, "pressure": ["n1"], "units": {"pressure": "m"}},
     )
-    client = TestClient(create_app(Settings(sensor_registry_path=path)))
+    assert SensorRegistry.load(path).units == {"pressure": "m"}
+
+
+def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
+    path = write_json(tmp_path, {"provisional": False, "pressure": ["n1"], "flow": ["n1"]})
+    with pytest.raises(ValueError, match="duplicate"):
+        SensorRegistry.load(path)
+
+
+def test_registry_without_pressure_sensors_is_rejected(tmp_path: Path) -> None:
+    path = write_json(tmp_path, {"provisional": False, "pressure": [], "tank_level": ["T1"]})
+    with pytest.raises(ValueError):
+        SensorRegistry.load(path)
+
+
+def test_api_accepts_replay_window_with_official_registry() -> None:
+    # Same shape as src/sentinel/data/replay_windows.py writes (official IDs, UTC "Z").
+    reg = SensorRegistry.load(OFFICIAL)
     window = {
         "schema_version": "1.0",
         "timestamp": "2019-01-01T00:05:00Z",
-        "pressures": {"Pressure_n1": 28.66},
-        "flows": {"Flow_p227": 82.9},
-        "tank_levels": {"Level_T1": 3.43},
+        "pressures": dict.fromkeys(reg.pressure, 45.0),
+        "flows": dict.fromkeys(reg.flow, 80.0),
+        "tank_levels": dict.fromkeys(reg.tank_level, 3.4),
+        "source": "replay-2019-v1",
     }
+    client = TestClient(create_app(Settings(sensor_registry_path=OFFICIAL)))
     assert client.post("/v1/windows", json=window).status_code == 201
-    registry = client.get("/v1/status").json()["sensor_registry"]
-    assert registry["provisional"] is False
-    assert registry["units"] == {"pressure": "m", "flow": "m3/h", "tank_level": "m"}
-    assert registry["pressure"] == 1
+    status = client.get("/v1/status").json()["sensor_registry"]
+    assert status["provisional"] is False
+    assert status["source"] == str(OFFICIAL)
+    assert status["pressure"] == 33
+
+
+def test_column_style_ids_are_rejected_by_official_registry() -> None:
+    # The SCADA CSV column names (Pressure_n1...) are not sensor IDs (docs/data.md).
+    reg = SensorRegistry.load(OFFICIAL)
+    window = {
+        "schema_version": "1.0",
+        "timestamp": "2019-01-01T00:05:00Z",
+        "pressures": {f"Pressure_{s}": 45.0 for s in reg.pressure},
+        "flows": {f"Flow_{s}": 80.0 for s in reg.flow},
+        "tank_levels": {f"Level_{s}": 3.4 for s in reg.tank_level},
+    }
+    client = TestClient(create_app(Settings(sensor_registry_path=OFFICIAL)))
+    r = client.post("/v1/windows", json=window)
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "sensor_set_mismatch"

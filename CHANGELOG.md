@@ -6,6 +6,9 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
+- One sensor-ID scheme: the official registry `config/sensors.battledim.json` (data owner);
+  loading `data/vN/sensors.csv` as a registry was removed (it used CSV column names such as
+  `Pressure_n1`, incompatible with the replay). Registry JSON may carry optional `units`.
 - Audit is fail-closed (team decision Q-AUD-03): alerts are served only after their audit
   event is recorded; failed events wait in an ordered pending queue retried before each window;
   503 `audit_backlog_full` when `SENTINEL_AUDIT_PENDING_CAPACITY` is reached. Window `audit`
@@ -25,9 +28,10 @@ contract versions are tracked separately (`schema_version`).
   (`portable_booster_json`). ML tests skip where numpy/xgboost/tensorflow are absent.
   Validation reports MAE on clean windows and a one-sided (pressure-drop) leak contrast
   (`metrics_version` 2); sensors with σ = 0 are left out of the contrast.
-- Sensor registry loaded from the data owner's `data/vN/sensors.csv` (official IDs and units,
-  shown in `/v1/status`); `scripts/validate_v1_ingestion.py` runs a full year of the export
-  through the pipeline.
+- `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
+  `windows_2019.jsonl`) through the pipeline in process.
+- `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM
+  (running on port 8000 with the full 2019 replay loaded, mocks).
 - First LinuxONE (s390x) baseline: tests, benchmark, HTTP replay and x86/s390x hash parity
   (`docs/performance.md`).
 - GitHub Actions CI running `just ci` on pull requests and pushes to `main`.

@@ -31,9 +31,10 @@ Common rules for every contract model:
 
 Sensor set: every window must contain **exactly** the IDs of the sensor registry
 (`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. For real
-data, point it at the data owner's table `data/vN/sensors.csv` (official BattLeDIM IDs:
-`Pressure_n1`…`Pressure_n769`, `Flow_p227`, `Flow_p235`, `Flow_PUMP_1`, `Level_T1`; registry
-order = file order). The default `config/sensors.provisional.json` keeps **placeholder IDs**
+data, use the data owner's official registry `config/sensors.battledim.json` (BattLeDIM
+network-element IDs: `n1`…`n769`, `p227`, `p235`, `PUMP_1`, `T1`; registry order = array
+order). The SCADA CSV column names (`Pressure_n1`, `Flow_p227`, `Level_T1`) are **not** sensor
+IDs and are rejected (`docs/data.md`). The default `config/sensors.provisional.json` keeps **placeholder IDs**
 (`P01..P33`, `F01..F03`, `T01`) for development and tests.
 
 Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
