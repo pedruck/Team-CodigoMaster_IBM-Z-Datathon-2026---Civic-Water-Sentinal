@@ -1,0 +1,11 @@
+# Dono de cada área. Complete com o usuário do GitHub de cada pessoa.
+/src/sentinel/schemas/      @pedruck @Bappoz
+/src/sentinel/api/          @Bappoz
+/src/sentinel/services/     @Bappoz
+/src/sentinel/observability/ @Bappoz
+# /src/sentinel/data/        @usuario-p1
+# /src/sentinel/forecasting/ @usuario-p2
+# /src/sentinel/detection/   @usuario-p4
+# /src/sentinel/audit/       @usuario-p5
+# /src/sentinel/eval/        @usuario-p6
+# /dashboard/                @usuario-p6

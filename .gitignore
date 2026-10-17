@@ -18,7 +18,7 @@ htmlcov/
 .claude/settings.local.json
 
 # Data: BattLeDIM / SCADA files are never committed (see README, "Data")
-data/
+/data/
 *.parquet
 *.csv
 *.xlsx
@@ -37,3 +37,9 @@ data/
 .vscode/
 *.swp
 .DS_Store
+
+# Time (VM / notebooks)
+.ipynb_checkpoints/
+*.csv.gz
+/models/
+/logs/
