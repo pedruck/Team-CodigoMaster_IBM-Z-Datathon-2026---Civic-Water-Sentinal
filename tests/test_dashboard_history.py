@@ -14,6 +14,10 @@ from typing import Any
 
 import pytest
 
+# dashboard.history imports streamlit at module level; streamlit has no s390x build (no pyarrow
+# wheel), so on the LinuxONE VM this module is skipped instead of failing collection.
+pytest.importorskip("streamlit")
+
 from dashboard.history import history_query, page_count, parse_utc
 from dashboard.source import AlertQuery
 from tests.test_dashboard_source import Stub
