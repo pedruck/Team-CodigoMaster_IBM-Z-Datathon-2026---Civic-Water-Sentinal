@@ -34,6 +34,8 @@ def get_status(pipeline: PipelineDep, request: Request) -> StatusResponse:
         forecaster=pipeline.forecaster.info,
         detector=pipeline.detector.info,
         audit_sink=pipeline.audit_sink.name,
+        audit_pending_events=pipeline.audit_pending["events"],
+        audit_pending_alerts=pipeline.audit_pending["alerts"],
         mocks_active=pipeline.mocks_active,
         counters={**counters, "alerts_stored": len(pipeline.alerts)},
         latency=m.latency(),

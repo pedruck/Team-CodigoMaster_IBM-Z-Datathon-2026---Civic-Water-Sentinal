@@ -25,6 +25,7 @@ barriers.
 | `tests/test_history.py` | unit | order, repeated/older timestamps, gaps, capacity, past-only tail, restart, concurrent readers |
 | `tests/test_sensors.py` | unit + API | registry from the data owner's `sensors.csv` (order, units, unknown types, duplicates, mixed units), provisional JSON, real-shaped window accepted by the API |
 | `tests/test_timezone_policy.py` | unit + API | naive / offset timestamps, UTC assumption flag, `reject` policy, naive ≡ `Z` duplicate, setting validation |
+| `tests/test_audit_fail_closed.py` | integration + API | alert withheld while audit is down, ordered flush on recovery, events queue behind pending ones, 503 when backlog full (state unchanged), disabled audit, status counters |
 | `tests/test_config.py` | unit | env parsing, documented defaults, invalid config fails at startup, no silent non-mock models |
 | `tests/test_metrics.py` | unit | nearest-rank percentiles, counters |
 | `tests/test_pipeline.py` | integration (mocks, no HTTP) | insufficient history, past-only forecaster input, duplicate/conflict/out-of-order, gaps, capacity, forecaster/detector failures, contract violations, single stateful detector, audit events, audit failure, restart, concurrency |

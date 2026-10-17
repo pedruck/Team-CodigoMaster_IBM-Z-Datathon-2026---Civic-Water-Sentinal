@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `zanetti/ingestion`: real sensor registry from `data/v1` (BE-010); full 2019 export validated on LinuxONE.
+**Last update:** 2026-10-17 — branch `zanetti/audit-fail-closed`: fail-closed audit and z sign convention (BE-019).
 
 ## Summary
 
@@ -16,7 +16,8 @@ runtime installs from wheels and the 89 tests pass; mypy does not install there 
 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
-BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions). Details: `docs/implementation-plan.md`.
+BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
+convention. Details: `docs/implementation-plan.md`.
 
 ## In progress
 
@@ -32,7 +33,7 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 |---|---|
 | BE-011 real forecaster | DEP-ML-01..03 (ML owner) |
 | BE-012 real detector | DEP-DET-01..03 (detection owner) |
-| BE-013 real audit sink | DEP-AUD-01, Q-AUD-03 (audit owner) |
+| BE-013 real audit sink | DEP-AUD-01 (audit owner) |
 
 ## Pending (independent, not started)
 
@@ -50,11 +51,10 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 - v1 timestamps carry no timezone; the backend assumes UTC (flagged per window) until the data
   owner confirms (Q-DATA-02).
 - Gap policy blinds scoring for 12 h after any missing window (ADR-004); v1 has no gaps.
-- Fail-open audit can serve alerts missing from the log (ADR-006, Q-AUD-03).
+- Fail-closed audit: during an audit outage no new alerts are served; the pending queue is in
+  memory and lost on restart (ADR-006).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
 - `mypy` not installable on s390x without `gcc` (Q-PLAT-02); model runtime wheels on s390x unverified.
-- Design-doc inconsistencies flagged: residual/z sign (Q-DET-02), alert↔audit hash
-  circularity (Q-AUD-05).
 
 ## Known bottlenecks
 
@@ -69,8 +69,8 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 ## Next recommended step
 
 Run the HTTP replay of 2019 with the data owner's replay tool (BE-014); confirm Q-DATA-02 (UTC,
-end of interval). Independent meanwhile: fail-closed audit decided in
-`docs/team-workflow.md` (Q-AUD-03) needs an ADR-006 update, and BE-017 (load test).
+end of interval). Independent meanwhile: runbook for the
+shared API instance on the VM (demo), and BE-017 (load test).
 
 ## Verification (2026-10-17)
 

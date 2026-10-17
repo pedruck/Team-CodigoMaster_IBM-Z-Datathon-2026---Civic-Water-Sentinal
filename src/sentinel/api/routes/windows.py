@@ -15,6 +15,7 @@ router = APIRouter(prefix="/v1", tags=["ingestion"])
         200: {"model": WindowResult, "description": "Idempotent resend of an accepted window"},
         409: {"model": ErrorResponse, "description": "out_of_order or window_conflict"},
         422: {"model": ErrorResponse, "description": "Invalid payload or sensor set"},
+        503: {"model": ErrorResponse, "description": "audit_backlog_full: retry later"},
     },
 )
 def ingest_window(

@@ -5,6 +5,7 @@ detection -> alerts -> audit. Policies: ADR-004 (temporal) and ADR-006 (errors/i
 import logging
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,7 +28,11 @@ from sentinel.schemas.detections import AlertCandidate, DetectionResult
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
 from sentinel.schemas.windows import SensorWindow, SensorWindowIn
 from sentinel.sensors import SensorRegistry
-from sentinel.services.errors import SentinelError, TemporalConflictError
+from sentinel.services.errors import (
+    SentinelError,
+    ServiceUnavailableError,
+    TemporalConflictError,
+)
 from sentinel.services.history import HistoryBuffer
 from sentinel.services.ingestion import normalize_window, validate_window
 from sentinel.services.stores import AlertStore, ResultStore
@@ -70,6 +75,9 @@ class Pipeline:
         self.alerts = AlertStore(settings.alert_capacity)
         self._lock = threading.Lock()
         self._last_ts: datetime | None = None
+        # Fail-closed audit (ADR-006): events the sink has not accepted yet, in chain order.
+        # An alert waits here with its event and is served only once the event is recorded.
+        self._audit_pending: deque[tuple[AuditEvent, Alert | None]] = deque()
 
     @property
     def required_history(self) -> int:
@@ -83,6 +91,14 @@ class Pipeline:
     def last_timestamp(self) -> datetime | None:
         with self._lock:
             return self._last_ts
+
+    @property
+    def audit_pending(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "events": len(self._audit_pending),
+                "alerts": sum(1 for _, alert in self._audit_pending if alert is not None),
+            }
 
     def history_info(self) -> HistoryInfo:
         return HistoryInfo(
@@ -115,6 +131,7 @@ class Pipeline:
 
         # One window at a time: the detector is stateful and must see windows in order.
         with self._lock:
+            self._flush_audit()
             t = time.perf_counter()
             content_hash = window.content_hash()
             stored = self.results.get(window.timestamp)
@@ -135,6 +152,12 @@ class Pipeline:
                         "timestamp": window.timestamp.isoformat(),
                         "last_timestamp": self._last_ts.isoformat(),
                     },
+                )
+            if len(self._audit_pending) >= self.settings.audit_pending_capacity:
+                raise ServiceUnavailableError(
+                    "audit_backlog_full",
+                    "audit log unavailable and its backlog is full; retry later",
+                    {"pending_events": len(self._audit_pending)},
                 )
             timer.measure("temporal_policy", t)
 
@@ -179,6 +202,7 @@ class Pipeline:
                         for i, c in enumerate(detection.alerts, start=1)
                     ]
 
+        raised = tuple(a.alert_id for a in alerts)
         t = time.perf_counter()
         audit_status, alerts = self._audit(
             window, status, alerts, detection, gap, content_hash, issues, tz_assumed
@@ -195,7 +219,7 @@ class Pipeline:
             gap_windows=gap,
             history=self.history_info(),
             detector_state=detection.state if detection else None,
-            alert_ids=tuple(a.alert_id for a in alerts),
+            alert_ids=raised,
             forecaster=self.forecaster.info if status != "insufficient_history" else None,
             detector=self.detector.info if detection else None,
             issues=tuple(issues),
@@ -320,23 +344,26 @@ class Pipeline:
         issues: list[ProcessingIssue],
         tz_assumed: bool,
     ) -> tuple[AuditStatus, list[Alert]]:
-        """Alerts are kept even if auditing fails (fail-open, ADR-006 — Proposed)."""
+        """Send this window's events; return the alerts that may be served now.
+
+        Fail-closed (Q-AUD-03, ADR-006): an alert whose ``alert.raised`` event is not recorded
+        stays pending and is not served. Events keep window order: while anything is pending,
+        new events queue behind it.
+        """
         if not self.audit_sink.enabled:
             return "disabled", alerts
-        failed = False
-        audited: list[Alert] = []
-        for alert in alerts:
-            ref = self._append(
+        events: list[tuple[AuditEvent, Alert | None]] = [
+            (
                 AuditEvent(
                     type="alert.raised",
                     window_end=window.timestamp,
                     alert_id=alert.alert_id,
                     payload=alert.model_dump(mode="json", exclude={"audit"}),
                 ),
-                issues,
+                alert,
             )
-            failed |= ref is None
-            audited.append(alert.model_copy(update={"audit": ref}))
+            for alert in alerts
+        ]
         payload: dict[str, Any] = {
             "status": status,
             "content_hash": content_hash,
@@ -344,21 +371,29 @@ class Pipeline:
             "gap_windows": gap,
             "detector_state": detection.state if detection else None,
             "anomaly_score": detection.anomaly_score if detection else None,
-            "alert_ids": [a.alert_id for a in audited],
+            "alert_ids": [a.alert_id for a in alerts],
             "forecaster": self.forecaster.info.model_dump(),
             "detector": self.detector.info.model_dump(),
             "issues": [i.model_dump() for i in issues],
         }
-        ref = self._append(
-            AuditEvent(
-                type="window.scored" if status == "scored" else "window.not_scored",
-                window_end=window.timestamp,
-                payload=payload,
-            ),
-            issues,
+        events.append(
+            (
+                AuditEvent(
+                    type="window.scored" if status == "scored" else "window.not_scored",
+                    window_end=window.timestamp,
+                    payload=payload,
+                ),
+                None,
+            )
         )
-        failed |= ref is None
-        return ("failed" if failed else "recorded"), audited
+        published: list[Alert] = []
+        for event, alert in events:
+            ref = None if self._audit_pending else self._append(event, issues)
+            if ref is None:
+                self._audit_pending.append((event, alert))
+            elif alert is not None:
+                published.append(alert.model_copy(update={"audit": ref}))
+        return ("pending" if self._audit_pending else "recorded"), published
 
     def _append(self, event: AuditEvent, issues: list[ProcessingIssue]) -> AuditRef | None:
         try:
@@ -368,6 +403,23 @@ class Pipeline:
             self.metrics.inc("audit_failures")
             issues.append(ProcessingIssue(stage="audit", code=type(exc).__name__, message=str(exc)))
             return None
+
+    def _flush_audit(self) -> None:
+        """Retry pending audit events in order; publish alerts as their events are recorded."""
+        while self._audit_pending:
+            event, alert = self._audit_pending[0]
+            try:
+                ref = self.audit_sink.append(event)
+            except Exception:  # boundary with a pluggable module owned by another member
+                log.exception(
+                    "audit retry failed", extra={"fields": {"pending": len(self._audit_pending)}}
+                )
+                self.metrics.inc("audit_failures")
+                return
+            self._audit_pending.popleft()
+            self.metrics.inc("audit_retried")
+            if alert is not None:
+                self.alerts.add(alert.model_copy(update={"audit": ref}))
 
     def _record(self, result: WindowResult, timer: StageTimer) -> None:
         for stage, seconds in timer.durations.items():

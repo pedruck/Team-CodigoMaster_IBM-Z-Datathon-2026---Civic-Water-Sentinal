@@ -17,12 +17,12 @@ document (it lists the members, not their roles) — first item of `docs/questio
 | DEP-ML-03 | ML | Runtime deps and LinuxONE compatibility (Snap ML, onnxruntime/zDLC, PyTorch container) | optional dependency group | install on s390x | OPEN | Q-ML-04, DEP-PLAT-01 | none | `uv sync` works on the VM |
 | DEP-ML-04 | ML | Latency per window, warm-up need, failure modes | numbers measured on the VM | p99 budget, timeouts | OPEN | Q-ML-05 | mock latency only | entries in `docs/performance.md` |
 | DEP-DET-01 | Detection & localisation | Implementation of `Detector` (residual, CUSUM, region ranking) | contract §3 | replaces mock | OPEN | Q-DET-01 | `ThresholdMockDetector` (`is_mock`) | real class passes contract tests |
-| DEP-DET-02 | Detection | Residual/z sign convention, σ, k, h, score units | contract §3 | alert evidence fields | OPEN | Q-DET-02 | `residual = observed − expected` | convention in contract §3 |
+| DEP-DET-02 | Detection | Residual/z sign convention, σ, k, h, score units | contract §3 | alert evidence fields | PARTIAL — sign convention decided and implemented (contract §3); σ, k, h, score units still open | Q-DET-02 (closed) | — | σ/k/h/units in contract §3 |
 | DEP-DET-03 | Detection | State behaviour across gaps/restarts; alert closing | contract §3 | pipeline, alert lifecycle | OPEN | Q-DET-03, Q-DET-04 | no reset signal; alerts never close | ADR-004 accepted |
 | DEP-DET-04 | Detection | Sensor → region mapping | used by detector only | `region` field, `/v1/alerts?region=` | OPEN | Q-DET-05 | `region = null` | mapping delivered with detector |
 | DEP-AUD-01 | Audit & narrative | Real `AuditSink` (hash chain, persistence) | contract §4 | traceability, durability | OPEN | Q-AUD-01, Q-AUD-02 | `NullAuditSink` / `InMemoryAuditSink` | sink passes contract tests, chain verifiable |
 | DEP-AUD-02 | Audit | Read access to the log (`GET /v1/audit`?) and permissions | to define | endpoint | OPEN | Q-AUD-04 | endpoint not created | contract + ADR |
-| DEP-AUD-03 | Audit | Failure mode (fail-open vs fail-closed) | ADR-006 | acceptance semantics | OPEN | Q-AUD-03 | fail-open | ADR-006 accepted |
+| DEP-AUD-03 | Audit | Failure mode (fail-open vs fail-closed) | ADR-006 | acceptance semantics | RESOLVED 2026-10-17 — fail-closed with pending queue (ADR-006) | — | — | done |
 | DEP-AUD-04 | Narrative | Where the narrative is generated and stored; link to alert | to define | alert payload | OPEN | Q-AUD-05 | not in alert payload | contract update |
 | DEP-UI-01 | Dashboard & evaluation | Endpoints, filters, pagination, status vocabulary | contract §5 | read API | PARTIAL | Q-UI-01, Q-UI-02 | current read API | dashboard consumes it |
 | DEP-UI-02 | Dashboard | CORS origin / how the dashboard is served | config | browser access | OPEN | Q-UI-03 | no CORS middleware | origin configured |

@@ -72,6 +72,8 @@ class Settings:
     forecaster: str = "mock"
     detector: str = "mock"
     audit_sink: str = "null"
+    # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
+    audit_pending_capacity: int = 2016
     mock_detector_sigma_m: float = 1.0
     mock_detector_z_threshold: float = 3.0
     mock_detector_min_sensors: int = 2
@@ -103,6 +105,7 @@ class Settings:
             forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", {"mock"}),
             detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock"}),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
+            audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),
             mock_detector_z_threshold=_float(e, "SENTINEL_MOCK_DETECTOR_Z_THRESHOLD", 3.0),
             mock_detector_min_sensors=_int(e, "SENTINEL_MOCK_DETECTOR_MIN_SENSORS", 2),
