@@ -67,6 +67,9 @@ builds its `Settings` without the environment, so `just bench` cannot measure th
 `scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`; a refused startup prints a Python
 traceback whose last line is the `ConfigError` (for pydantic errors, a documentation URL).
 
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 IN_PROGRESS (runbook `docs/demo-runbook.md`, two technical rehearsals OK on 2026-10-17: live via tunnel and forced fallback to `fixture-cusum`; presenter rehearsal pending); EV-001 IN_PROGRESS (ADR-010 `Proposed`, awaiting P4 review); EV-002..003 TODO, spec and tickets in
+`.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
+
 ## External dependencies
 
 17 open/partial items in `docs/dependencies.md` (new: DEP-DET-05, out-of-fold 2018 residuals from
@@ -75,6 +78,11 @@ the ML owner; DEP-DET-04 is now partial); P0 questions in
 Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
+
+- Unmerged owner branches change the P6 plan (2026-10-17 18:30): `feat/be-012-cusum-detector`
+  (real CUSUM, ADR-007/008: layer-2 2019 evaluation through the API is P6's, Q-UI-06) and
+  `leo/local-version` (hash chain, verifier CLI, narrative; no HTTP endpoint, records fail-open,
+  Q-DOC-01). P6 renumbered to ADR-009/010, Q-UI-07, Q-DET-07.
 
 - The shared API on port 8000 holds 2019 in memory; any restart wipes it (re-run the replay,
   `docs/runbook-vm.md`).
@@ -131,6 +139,14 @@ with real models (BE-015, incl. the s390x run of the determinism test). Independ
 
 | Command | Result |
 |---|---|
+| Merge of `main` (a63d367: CUSUM detector, XGBoost forecaster) into `feat/dashboard-mvp`; conflict markers left staged in `CHANGELOG.md`, `docs/adr/README.md`, `docs/dependencies.md` resolved | ruff OK · mypy: no issues in 112 files · **599 passed, 18 skipped** |
+| Dashboard vs real CUSUM: `fixture-cusum` (`scripts/make_playback_fixtures.py`) + `tests/test_dashboard_cusum.py`; gates | mypy: no issues in 113 files · **604 passed, 18 skipped** |
+| Scratch e2e (not committed): real `uvicorn` with `SENTINEL_DETECTOR=cusum` (invented synthetic calibration + 2-region mapping), 288 synthetic windows with a ramp on n1/n4/n31, dashboard `AppTest` over HTTP | 288 × 201; 1 alert `A-20190314T1705Z-1`, region R-SYN-A, onset 16:35, CUSUM 9.393 > 8.0, age 6 h 50 min, audit seq 205; SIMULATED shown; no exception |
+| UI-004..006 integrated (three worktrees, cherry-picked; app.py conflict resolved) + review fixes: `ruff format --check`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 81 files · **225 passed, 8 skipped** (P1 data tests) |
+| UI-003 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 74 files · **169 passed, 8 skipped** (P1 data tests) |
+| UI-002 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 72 files · **160 passed, 8 skipped** (P1 data tests) |
+| UI-001 gates (x86, Python 3.12, `uv sync --locked --group dashboard`): `ruff format`, `ruff check`, `mypy`, `pytest` over src tests scripts dashboard | ruff OK · mypy: no issues in 70 files · **133 passed, 8 skipped** (P1 data tests, no `$SENTINEL_DATA_DIR`) |
+| UI-001 smoke: SSH tunnel `-L 8000:172.17.0.2:8000 linux1@148.100.99.103`, dashboard `AppTest` + `streamlit run --server.headless` | header: API online, simulated time 2019-12-31 23:55 UTC, mock-persistence/mock-threshold, SIMULATED badge; `/_stcore/health` ok |
 | `just check` (ruff format, ruff check, mypy strict, pytest) | 52 files unchanged · ruff: all checks passed · mypy: no issues in 52 files · **89 passed** |
 | `just bench 5000` | 5000 windows, total p50 0.3707 ms / p99 0.7358 ms (mocks) |
 | uvicorn + `scripts/replay.py` (576 synthetic windows) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 6.797 / p99 14.837 ms |

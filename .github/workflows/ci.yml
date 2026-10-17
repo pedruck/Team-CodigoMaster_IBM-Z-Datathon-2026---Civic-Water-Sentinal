@@ -25,5 +25,5 @@ jobs:
       - uses: taiki-e/install-action@v2.87.29
         with:
           tool: just
-      - run: uv sync --locked
+      - run: uv sync --locked --group dashboard
       - run: just ci

@@ -43,6 +43,28 @@ M (½–2 days), L (> 2 days).
 | BE-019 | Apply team decisions: fail-closed audit with pending queue (Q-AUD-03) and z sign convention (Q-DET-02) | P0 | DONE | — | Backend | S | `tests/test_audit_fail_closed.py`, `test_pressure_drop_has_negative_deviation_and_positive_z` green; ADR-006 and contract §3–§5 updated |
 | BE-020 | Shared integration API on the VM: one ID scheme, `scripts/shared_api.sh`, runbook | P0 | DONE | BE-010 | Backend | S | API on port 8000 from `shared/civicwater/main` via the script; start/status/stop verified on the VM; `docs/runbook-vm.md` |
 
+## P6 — Dashboard & evaluation
+
+Owner: P6. Spec and tickets: `.scratch/p6-dashboard-evaluation/` (spec + one file per
+ticket). Deadline 2026-10-18 10:00. UI-* are Tier 1 (mandatory); EV-* are Tier 2 and run
+only if the real detector is plugged into the VM API by 2026-10-17 22:00 (EV-003 gate).
+Details and acceptance criteria are in each ticket file. ADR-007/008 and Q-UI-05/06,
+Q-DET-06 belong to the detection owner (BE-012, merged in PR #5); P6 uses ADR-009
+(dashboard), ADR-010 (layer-2 evaluation), Q-UI-07, Q-DET-07.
+
+| ID | Ticket | Task | Prio | Status | Depends on | Owner | Effort |
+|---|---|---|---|---|---|---|---|
+| UI-001 | 01 | Tracer: dashboard shows the live API status (HTTP adapter, contract parsing, label guard) | P0 | DONE | — | P6 | S |
+| UI-002 | 02 | Playback adapter + contract fixtures, RECORDED REPLAY banner | P0 | DONE | UI-001 | P6 | S |
+| UI-003 | 03 | "Recent alerts" list (null-safe, simulated clock, SIMULATED badge) | P0 | DONE | UI-002 | P6 | S |
+| UI-004 | 04 | Alert detail with structured evidence | P0 | DONE | UI-003 | P6 | S |
+| UI-005 | 05 | Polling, dedup, failure states, paginated history with filters | P1 | DONE | UI-003 | P6 | M |
+| UI-006 | 06 | Cross-team proposals (Q-UI-07, Q-AUD-06/07, Q-DET-07, Q-UI-03/04) + ADR-009 | P1 | DONE | — | P6 | S |
+| UI-007 | 07 | Demo runbook and contingency rehearsal (C5) | P0 | IN_PROGRESS (runbook + 2 technical rehearsals done; presenter rehearsal pending) | UI-004, UI-005 | P6 | S |
+| EV-001 | 08 | ADR-010 layer-2 evaluation protocol (answers Q-UI-06 of P4's ADR-008), accepted before any 2019 run | P1 | IN_PROGRESS (ADR-010 written; P4 review + Accepted pending) | — | P6 (+P4 review) | S |
+| EV-002 | 09 | Evaluation metrics core and report (header, watermark) | P1 | TODO | EV-001 | P6 | S |
+| EV-003 | 10 | Layer-2 2019 run through the API (ADR-008), recorder + manifest, playback-compatible output | P1 | TODO (gated 22:00) | EV-002, UI-002 | P6 | M |
+
 ## Order of execution
 
 1. Done: BE-001 → BE-002 → BE-003/004/005 → BE-006 → BE-007 → BE-008/009.
