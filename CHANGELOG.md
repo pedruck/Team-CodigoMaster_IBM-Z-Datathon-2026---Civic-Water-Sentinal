@@ -20,6 +20,13 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- Operator dashboard tracer (UI-001, P6): Streamlit page (`just dashboard api_url=...`) with
+  the header from `/health` + `/v1/status` (simulated time, models, SIMULATED badge). Reads the
+  backend only through `dashboard.source.AlertSource` (HTTP adapter, stdlib); every answer is
+  parsed with the contract models (`ContractMismatchError` / `SourceUnavailableError`).
+  Streamlit is in the optional `dashboard` dependency group (CI installs it; the runtime install
+  is unchanged). Guard tests: no leak-label references in `dashboard/`, and the dashboard
+  imports only `sentinel.schemas` from the backend.
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM

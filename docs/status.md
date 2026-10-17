@@ -37,7 +37,7 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
-P6 dashboard & evaluation: UI-001..007 and EV-001..003 planned (TODO), spec and tickets in
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer); UI-002..007 and EV-001..003 TODO, spec and tickets in
 `.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
 
 ## External dependencies
@@ -76,6 +76,8 @@ Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on 
 
 | Command | Result |
 |---|---|
+| UI-001 gates (x86, Python 3.12, `uv sync --locked --group dashboard`): `ruff format`, `ruff check`, `mypy`, `pytest` over src tests scripts dashboard | ruff OK · mypy: no issues in 70 files · **133 passed, 8 skipped** (P1 data tests, no `$SENTINEL_DATA_DIR`) |
+| UI-001 smoke: SSH tunnel `-L 8000:172.17.0.2:8000 linux1@148.100.99.103`, dashboard `AppTest` + `streamlit run --server.headless` | header: API online, simulated time 2019-12-31 23:55 UTC, mock-persistence/mock-threshold, SIMULATED badge; `/_stcore/health` ok |
 | `just check` (ruff format, ruff check, mypy strict, pytest) | 52 files unchanged · ruff: all checks passed · mypy: no issues in 52 files · **89 passed** |
 | `just bench 5000` | 5000 windows, total p50 0.3707 ms / p99 0.7358 ms (mocks) |
 | uvicorn + `scripts/replay.py` (576 synthetic windows) | 576 × 201; resend 5 × 200; 1 mock alert; client p50 6.797 / p99 14.837 ms |

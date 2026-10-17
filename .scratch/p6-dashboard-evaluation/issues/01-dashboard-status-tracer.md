@@ -16,13 +16,26 @@ It also adds the CI guard: a test that fails if dashboard sources reference leak
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Streamlit and the tunnel verified; outcome recorded in the ticket's Comments
-- [ ] The dashboard dependency group exists; the base `uv sync` is unchanged
-- [ ] The header shows simulated time, model infos, the SIMULATED badge (when `mocks_active`) and online/offline
-- [ ] The HTTP adapter returns parsed contract models; typed errors for mismatch and unavailable, covered by tests
-- [ ] The label-guard test is green and part of `just check`
-- [ ] `just check` green
+- [x] Streamlit and the tunnel verified; outcome recorded in the ticket's Comments
+- [x] The dashboard dependency group exists; the base `uv sync` is unchanged
+- [x] The header shows simulated time, model infos, the SIMULATED badge (when `mocks_active`) and online/offline
+- [x] The HTTP adapter returns parsed contract models; typed errors for mismatch and unavailable, covered by tests
+- [x] The label-guard test is green and part of `just check`
+- [x] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Streamlit 1.66.0 (pyarrow 26.0.0) installs on x86 in ~8 s. SSH works with
+  `linux1@148.100.99.103` (host `ibmdatathon`, s390x); the runbook's `linuxone` is a local
+  ssh-config alias. Tunnel `ssh -f -N -o ControlMaster=no -o ControlPath=none
+  -o ExitOnForwardFailure=yes -L 8000:172.17.0.2:8000 linux1@148.100.99.103` works; real
+  `/health`, `/v1/status`, `/v1/alerts` parse with the contract models. The shared API had
+  replayed all of 2019 with mocks: 0 alerts.
+- Runbook issue for P3: `docker inspect -f '{{.NetworkSettings.IPAddress}}' notebook` fails on
+  the VM (`map has no entry for key "IPAddress"`); `172.17.0.2` still valid. Goes to UI-006.
+- `just` is not installed on the P6 laptop; gates were run with the equivalent `uv run`
+  commands.
