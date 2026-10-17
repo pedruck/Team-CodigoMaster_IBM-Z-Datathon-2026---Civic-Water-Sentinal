@@ -17,9 +17,10 @@ being used silently.
   `Detector` (`docs/integration-contracts.md` §2–§3), plus their artefact files.
 - Artefacts are loaded **once at startup** (`build_pipeline`), never per request; startup
   fails if loading fails. Warm-up, if needed, happens at startup.
-- Selection by env (`SENTINEL_FORECASTER`, `SENTINEL_DETECTOR`). Today the only accepted
-  value is `mock`; unknown values fail at startup. A real value is added only together
-  with its implementation, so a mock can never replace a requested real model.
+- Selection by env (`SENTINEL_FORECASTER`, `SENTINEL_DETECTOR`). Today the forecaster accepts
+  only `mock`; the detector accepts `mock` and `cusum` (ADR-007, ADR-008). Unknown values fail at
+  startup. A real value is added only together with its implementation, so a mock can never
+  replace a requested real model.
 - One detector instance per process; called in order under the pipeline lock.
 - Mock usage is visible in every result (`is_mock`) and in `/v1/status.mocks_active`.
 

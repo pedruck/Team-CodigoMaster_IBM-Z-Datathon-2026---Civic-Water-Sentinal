@@ -4,7 +4,16 @@
   (Q-ML-07, Q-ML-08), the evaluation owner (Q-UI-06) and the team (Q-TEAM-03).
 - **Date:** 2026-10-17
 - **Implementation:** §B and the startup checks, `calibrate()` (σ only) and the property and
-  determinism tests: BE-012d (`src/sentinel/detection/calibration.py`, `cusum.py`).
+  determinism tests: BE-012d (`src/sentinel/detection/calibration.py`, `cusum.py`). The startup
+  checks run when `SENTINEL_DETECTOR=cusum` is selected: `build_pipeline` →
+  `CusumDetector.for_pipeline` (`src/sentinel/main.py`; `tests/test_detector_startup.py`).
+  Offline tools for §C, §E and §F (BE-012f, parts 1 and 2; development only, pandas, never
+  imported by the server) in `src/sentinel/detection/offline/`: `baseline.py` (out-of-fold
+  hour-of-week residuals, monthly folds, slot of the week; `write_oof` writes the residual and
+  fold files and returns the two hashes for `calibrate()`), `sweep.py` (`replay` of a `z` matrix
+  with exact parity with the detector, `sweep` over a grid of `h` and `N`) and `layer1.py`
+  (counts and delays; the matching rule between an alert and a leak is **provisional**, Q-UI-06,
+  and is an argument of every call, never a default). The development run itself is in progress.
 
 ## Context
 The design document fixes the models, σ, k and h on 2018 only and replays the whole of 2019
@@ -79,13 +88,29 @@ owner's prior is "without".
 
 **E. Development stage.** Until the ML owner delivers residuals (DEP-DET-05), the detection
 owner computes out-of-fold residuals of a local hour-of-week baseline in
-`src/sentinel/detection/offline/` (BE-012f, in progress), with `provenance = dev-baseline-2018`. Its purpose is to learn the
+`src/sentinel/detection/offline/` (BE-012f; the tools exist, the development run is in progress),
+with `provenance = dev-baseline-2018`. Its purpose is to learn the
 real residual structure, to test the σ estimator and to exercise the sweep. Its numbers never
 become delivered results. Synthetic residuals are used only to test mechanics (state,
 atomicity, determinism), through **property** tests (a larger step is detected earlier; a null
 series gives a false-alarm rate close to the target; scale invariance), never "this `h` gives
 X". The synthetic residual generator includes AR(1) noise, diurnal heteroscedasticity and a
 common-mode component, so it is harder than the real signal, not easier.
+
+*Finding of the sweep tool: the false-alarm count is not monotone in `h`.* One expects fewer
+false alarms as `h` grows, and that holds in the test only for one sensor, `N = 1` and no cap
+(`test_false_alarms_do_not_increase_with_h_for_one_sensor_without_a_cap`). In general it does
+not, for three reasons: (1) the cap `c·h` is higher for a larger `h`, so `S` is higher after
+a big excursion and, on a later rebound, can end above the larger `h` while the lower `S` of the
+smaller `h` stays below it; (2) with `N > 1` the sensors of a group cross a larger `h` in
+different windows, so the groups that open alerts, and the sensors left unclaimed, differ;
+(3) the false alarms are counted against the matching windows of the labelled leaks (§F), so an
+opening that moves in time can change class. Only (1) has a counterexample, verified on the real
+`CusumDetector` and not only on the replay
+(`test_a_larger_h_can_open_more_alerts_when_the_cap_is_active`: on the same series `h = 5.0`
+opens one alert and `h = 5.5` opens two); (2) and (3) follow from the claim rule and the matching
+rule and have no test of their own. Consequence: the table of a sweep is read cell by cell,
+never interpolated between values of `h`, and `h` is not chosen from an assumed monotone curve.
 
 **F. Evaluation layers.**
 - *Layer 1 (detection owner, 2018 out-of-fold):* delay × false-alarms-per-week curve per
@@ -151,6 +176,10 @@ artefact only needs DEP-DET-05.
 
 ## Risks
 - Only 14 labelled events (6 abrupt), so any tuning can overfit; few parameters are tuned.
+- The false-alarm count is not monotone in `h` (§E): a sweep table cannot be interpolated, and
+  the operating point is read from the replayed cells.
+- The matching rule used by the layer-1 tool is provisional (Q-UI-06); every delay and
+  false-alarm count computed with it is provisional too.
 - σ is inflated by leaks inside 2018, which lowers sensitivity (conservative direction).
 - Leaks still active from 2018 at the start of 2019, and the first 144 windows that are not
   scored for lack of history, may be counted as hits or false alarms depending on the

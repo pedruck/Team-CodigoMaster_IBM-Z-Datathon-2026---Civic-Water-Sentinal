@@ -198,6 +198,16 @@ design doc §3). So in a leak `deviation_m < 0` and `z > 0`. The design doc §6 
 Mock: `ThresholdMockDetector` — opens one alert when ≥ N sensors are ≥ 3σ below expected.
 Not CUSUM, no region.
 
+**Selection at startup (not part of the schema):** `SENTINEL_DETECTOR` is `mock` (default) or
+`cusum`. With `cusum`, `SENTINEL_DETECTOR_CALIBRATION` (the artefact, ADR-008 §B) is required and
+`SENTINEL_DETECTOR_REGIONS` (the mapping above) is optional; with `mock`, setting either is a
+`ConfigError` rather than being ignored. The server refuses to start (`ConfigError`) when a file
+is missing or invalid, when the artefact was made for another forecaster `name`/`version` than
+the one served, when its sensors differ from `registry.pressure` or are in another order, or when
+the mapping does not cover exactly `registry.pressure` (`CusumDetector.for_pipeline`, called from
+`build_pipeline`; README, "Running with the CUSUM detector"). A detector passed to
+`build_pipeline` wins over the environment.
+
 ## 4. Alert and audit (owners to confirm: audit; dashboard)
 
 `Alert` v1.0 — [`alert.mock.json`](examples/alert.mock.json). Built by the backend from an

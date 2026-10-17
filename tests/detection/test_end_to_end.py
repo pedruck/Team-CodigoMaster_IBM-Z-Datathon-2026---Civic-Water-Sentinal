@@ -9,7 +9,8 @@ with ``CusumDetector.for_pipeline``.
 
 Synthetic signal, placeholder sensor IDs and an invented calibration: this exercises the
 mechanics only and is not evidence of leak detection. The detector is injected through
-``build_pipeline``; selecting it with ``SENTINEL_DETECTOR=cusum`` is not wired yet.
+``build_pipeline`` here; the selection with ``SENTINEL_DETECTOR=cusum`` is tested in
+``tests/test_detector_startup.py``.
 """
 
 import hashlib

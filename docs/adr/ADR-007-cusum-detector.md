@@ -6,7 +6,12 @@
   that ADR-004 left open ("Revisit when": detection owner).
 - **Date:** 2026-10-17
 - **Implementation:** `src/sentinel/detection/cusum.py`, `regions.py`, `calibration.py`
-  (BE-012a..e). The selection by `SENTINEL_DETECTOR=cusum` is not part of it yet.
+  (BE-012a..e). The selection by `SENTINEL_DETECTOR=cusum` is wired in `build_pipeline`
+  (`src/sentinel/main.py`, `config.py`; `tests/test_detector_startup.py`, BE-012). Offline
+  tools of BE-012f in `src/sentinel/detection/offline/`, development only and never imported by
+  the server: `baseline.py` (out-of-fold residuals, monthly folds, slot of the week), `sweep.py`
+  (replay of a `z` matrix on a regular grid, without gaps, with exact parity with this detector, and the parameter sweep) and
+  `layer1.py` (delay and false-alarm counts; its matching rule is **provisional**, Q-UI-06).
 
 ## Context
 The design document (§3) specifies a per-sensor CUSUM on the standardised residual,
@@ -147,8 +152,10 @@ More state than the mock (per-sensor `S`, claim flag, last-zero time). The cap, 
 - `SENTINEL_DETECTOR=cusum` is added to `build_pipeline` only together with the
   implementation (ADR-005); the startup checks of ADR-008 live in
   `CusumDetector.for_pipeline`. Status 2026-10-17: the detector is implemented (BE-012a..e)
-  and injectable through `build_pipeline`; the selection by environment variable is being
-  wired.
+  and selected by `SENTINEL_DETECTOR=cusum` with `SENTINEL_DETECTOR_CALIBRATION` (required) and
+  `SENTINEL_DETECTOR_REGIONS` (optional); the server refuses to start with a `ConfigError` on any
+  mismatch (README, `docs/integration-contracts.md` §3). The mechanics were also checked end to
+  end against the real server with synthetic data (`docs/testing.md`).
 - `state` and `anomaly_score` are visible only in the `POST /v1/windows` response
   (`detector_state`) and in the `window.*` audit payload; no GET endpoint exposes them
   (Q-UI-05).
@@ -167,7 +174,7 @@ More state than the mock (per-sensor `S`, claim flag, last-zero time). The cap, 
 
 ## Dependencies
 Q-ML-07 (premise), Q-UI-05 (state visibility), Q-UI-06 (evaluation), DEP-DET-04 (region
-mapping), DEP-DET-05 (residuals for calibration), wiring in `build_pipeline` (ADR-005).
+mapping), DEP-DET-05 (residuals for calibration), wiring in `build_pipeline` (ADR-005; done).
 
 ## Revisit when
 The first real out-of-fold residuals are available (ADR-008), Q-UI-05 is answered, the region

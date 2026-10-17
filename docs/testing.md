@@ -13,8 +13,9 @@ Equivalent raw commands: `uv run ruff format src tests scripts`, `uv run ruff ch
 scripts`, `uv run mypy` (strict, pydantic plugin), `uv run pytest`.
 
 All tests use small synthetic data (`sentinel.synthetic`, placeholder sensor IDs). No
-BattLeDIM data is used or committed. Tests never sleep; concurrency tests use threads and
-barriers.
+BattLeDIM data is committed; the only tests that read it are the ones skipped without
+`SENTINEL_DATA_DIR` (`tests/test_p1_data.py`, one test of `test_offline_baseline.py`). Tests
+never sleep; concurrency tests use threads and barriers.
 
 ## Layout
 
@@ -27,7 +28,8 @@ barriers.
 | `tests/test_timezone_policy.py` | unit + API | naive / offset timestamps, UTC assumption flag, `reject` policy, naive ≡ `Z` duplicate, setting validation |
 | `tests/test_audit_fail_closed.py` | integration + API | alert withheld while audit is down, ordered flush on recovery, events queue behind pending ones, 503 when backlog full (state unchanged), disabled audit, status counters |
 | `tests/test_p1_data.py` | data (P1) | official registry, cleaning mask, data checks; skipped without `SENTINEL_DATA_DIR` |
-| `tests/test_config.py` | unit | env parsing, documented defaults, invalid config fails at startup, no silent non-mock models |
+| `tests/test_config.py` | unit | env parsing, documented defaults, invalid config fails at startup, no silent non-mock models; `SENTINEL_DETECTOR` (`mock` / `cusum`), `SENTINEL_DETECTOR_CALIBRATION` (required with `cusum`) and `SENTINEL_DETECTOR_REGIONS` (optional): both files refused with the mock detector, an empty path refused |
+| `tests/test_detector_startup.py` | integration + API (TestClient) | `SENTINEL_DETECTOR=cusum` through `Settings.from_env` → `create_app`: `/v1/status` reports `cusum` with `0.1.0+<8 hex of the file's sha256>` and `is_mock`, `mocks_active` stays true even with a non-mock forecaster, an injected detector wins; startup refused (`ConfigError` naming the file) for a calibration of another forecaster name or version (checked against the forecaster actually served), missing / extra / reordered sensors, missing, directory or invalid files, a region mapping that does not cover the registry or repeats a sensor; a synthetic ramp over HTTP gives `normal` then `alarm`, one `is_mock` alert with the ramped sensors, and the region of the mapping |
 | `tests/test_metrics.py` | unit | nearest-rank percentiles, counters |
 | `tests/test_pipeline.py` | integration (mocks, no HTTP) | insufficient history, past-only forecaster input, duplicate/conflict/out-of-order, gaps, capacity, forecaster/detector failures, contract violations, single stateful detector, audit events, audit failure, restart, concurrency |
 | `tests/test_api.py` | API (TestClient) | every endpoint, status codes, error envelope, raw-JSON NaN, filters/pagination, status counters, concurrent requests, OpenAPI paths |
@@ -54,20 +56,105 @@ barriers.
 | 13 | integrated run with mocks | `test_synthetic_day_replay_with_injected_step` |
 | 14 | concurrent requests | `test_concurrent_resend_of_same_window_creates_it_once`, `test_concurrent_distinct_windows_never_corrupt_order`, `test_concurrent_requests_are_serialised`, `test_concurrent_readers_and_writer_keep_invariants` |
 
-## Detection tests (`tests/detection/`, CUSUM detector, BE-012a..e)
+## Detection tests (`tests/detection/`, CUSUM detector, BE-012a..f)
 
 All calibrations, sensor IDs and region names in these tests are **invented** (placeholders
-such as `P1`, `P01..P33`); they exercise mechanics and are not evidence of leak detection.
+such as `P1`, `P01..P33`); they exercise mechanics and are not evidence of leak detection. The
+detector is selected by environment variable in `tests/test_detector_startup.py` (above); here
+it is injected into `build_pipeline` or called directly.
 
 | File | Covers | Seam |
 |---|---|---|
 | `test_cusum.py` | statistic and cap, opening at `N` sensors, episodes (claim / release / no reset), states, onset, gaps and `reset_reason`, atomic rejection with fault injection, `is_mock` from provenance | `CusumDetector.evaluate` |
 | `test_calibration.py` | artefact loading and validation, hash in `ModelInfo.version` and `calibration_id`, `calibrate()` (σ = max(floor, 1.4826·MAD), recovery of a known σ from AR(1) residuals), `for_pipeline` startup checks (`ConfigError`: sensors, order, forecaster) | `calibrate`, `write_artefact`, `for_pipeline` |
-| `test_end_to_end.py` | synthetic days through `POST /v1/windows` → `GET /v1/alerts` with the detector injected into `build_pipeline`: one alert per step, concurrent alerts, release and re-alert, `suspect`, mismatched calibration fails detection not ingestion, gaps | HTTP API (the `SENTINEL_DETECTOR=cusum` selection is not covered yet) |
+| `test_end_to_end.py` | synthetic days through `POST /v1/windows` → `GET /v1/alerts` with the detector injected into `build_pipeline`: one alert per step, concurrent alerts, release and re-alert, `suspect`, mismatched calibration fails detection not ingestion, gaps | HTTP API (the `SENTINEL_DETECTOR=cusum` selection is covered by `tests/test_detector_startup.py`) |
 | `test_properties.py` | larger step detected no later, scale invariance, null-series run length vs Siegmund ARL0 (100 000 windows) | `CusumDetector.evaluate` |
 | `test_determinism.py` | sha256 of a fixed replay (alerts, release, two gaps) as the reference for the x86 / s390x parity run (BE-015); regenerate with `uv run python -m tests.detection.test_determinism` only when behaviour changes on purpose. Digest on x86-64: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413`; s390x: **NOT_RUN** | `CusumDetector.evaluate` |
 | `test_regions.py` | `region`, `region_scores`, `regions_id`, tie-break, mapping validation, startup failure when the mapping does not cover the registry, `GET /v1/alerts?region=` | `evaluate`, HTTP API |
+| `test_offline_baseline.py` | `offline/baseline.py` (BE-012f, needs pandas): recovery of a known weekly profile, the expected value of a month never uses that month (median and mean), `slot_minutes` must divide a day, a slot with no training data is refused, input refused if not a finite, timezone-naive, single-year table, `write_oof` byte-for-byte reproducible (gzip without timestamp or file name, floats that round-trip) with the two hashes feeding `calibrate()`, folds file as time blocks, `load_pressures_2018` refuses a file that differs from `MANIFEST.json` before parsing it; one real-data test (shape and finiteness only, no values), skipped without `SENTINEL_DATA_DIR` | `oof_hour_of_week_residuals`, `write_oof`, `load_pressures_2018` (DataFrames; fake `v1` directories in `tmp_path`) |
+| `test_offline_sweep.py` | `offline/sweep.py`: `replay` against expectations worked out by hand from ADR-007 (multiples of 0.5, exact in float64) and **bit-for-bit parity with `CusumDetector`** over seeded scenarios (several sensors per alert, release then re-claim, unknown onset, ties at `h_close` and at the cap); input and parameter refusals (irregular grid, non-finite or non-float64 `z`, parameters the artefact would refuse); `sweep` table shape, order, determinism, counts and medians per leak type; false alarms are monotone in `h` for one sensor without cap, and a **counterexample with the cap active** checked against the real detector (ADR-008 §E) | `replay`, `sweep` vs `CusumDetector.evaluate` |
+| `test_offline_layer1.py` | `offline/layer1.py`: delay from `start` and from `peak` (negative if before the peak), matching window `[start, min(end, start + max_delay)]` per leak type, every opening is exactly a detection, a repeat or a false alarm, false alarms per week, misses listed per type, refusals (unknown type, repair before start, unparsed dates, naive vs aware times, no parameter with a default). The matching rule is **provisional** (Q-UI-06): the tests use invented rules | `evaluate`, `MatchRule` |
 | `artefacts.py`, `residuals.py` | helpers: invented artefacts; synthetic residual generator (AR(1), diurnal heteroscedasticity, common mode) | — |
+
+## End-to-end against the real server (manual, synthetic data)
+
+`TestClient` runs in process, so the startup wiring was also checked once against a real
+`uvicorn` process and real HTTP. Run 2026-10-17 on the tree of `79f2647` (identical to the
+pre-squash tip `6fba793` that was tested), x86-64, single worker, `127.0.0.1`. Everything was
+synthetic (invented sine plus noise, invented calibration, placeholder IDs; one run with the
+official IDs and synthetic values): it checks the **mechanics**, not leak detection (AGENTS §7).
+The helper scripts were outside the repository (not committed); the procedure is below.
+
+**Result: no bug found.** 84 automated checks over the raw responses, plus an independent
+re-implementation of the CUSUM formula (importing nothing from `sentinel.detection`) that
+predicted `detector_state` for every window and every alert; the server matched it window by
+window in all five replays.
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | calibration from `calibrate()` + `write_artefact()` served with regions; ramp on 3 sensors (= N) of one region | 330 windows: 144 `insufficient_history`, then `normal`, `suspect` (3), `alarm` (17); exactly 1 alert, `is_mock: true`, `region` = the ramp region, `deviating_sensors` = the ramped sensors, `cusum.statistic` > `threshold`; `?region=` returns it only under its region; resend of the alarm window is `200` with `duplicate: true` |
+| 1b | ramp on 4 sensors | the alert lists only the sensors above `h` at the opening window (3 of 4); the 4th stays unclaimed (alone it cannot open an alert) |
+| 2 | step of 0.5 m, persistence forecaster | no alert, `normal` throughout (`S` peaks below `h` and decays) |
+| 2b | step of 3.0 m | an alert **does** open at the step window (`S` jumps to the cap `c·h`): a step does not accumulate, but one with `z > h + k` in a single window crosses `h` |
+| 3 | startup refusals (5 required + 6 extra cases) | exit code 1 before listening, port free afterwards: calibration of another forecaster (name, or version), reordered or missing sensors, `cusum` without the calibration variable, missing path, regions that miss a sensor or repeat one, calibration not JSON, calibration set with the mock detector |
+| 4 | official registry `config/sensors.battledim.json`, synthetic readings and calibration | same behaviour with the IDs `n1`…`n769`; a window with the placeholder IDs gets `422 sensor_set_mismatch` |
+| 5 | no `SENTINEL_*` variable | `/v1/status` reports `mock-threshold` and `mock-persistence`; the README flow (`scripts/make_synthetic.py` + `scripts/replay.py`, 288 windows) raised the mock alert |
+
+Observations that are not bugs of the detector: (a) with the persistence forecaster the ramp
+alerted 13 windows (65 min) after it started although it alone would cross `h` in about 9,
+because persistence cannot follow the synthetic diurnal sine, which was rising at that hour;
+(b) `/v1/status` shows `history.size` 289 for `capacity` 288, because the pipeline keeps the
+past plus the window being scored (`Pipeline.__init__`), and `throughput_windows_per_s` is
+uptime-based (idle time included), so wall time of the client was used instead; (c) a refused
+startup prints a Python traceback whose last line is `sentinel.config.ConfigError: ...` (the same
+as the older `SENTINEL_FORECASTER=gru`); for failures that come from pydantic (calibration not
+JSON, a sensor in two regions) the message spans three lines and the last line of the traceback
+is a pydantic documentation URL; (d) the liveness endpoint is `GET /health`.
+
+Not exercised there (covered by unit tests only): gaps, restart in the middle of an episode,
+concurrency. State is in memory (ADR-003), so every scenario started from a fresh process.
+
+**Reproduce** (replace `$T` by the worktree, `$OUT` by a scratch directory outside the repo):
+
+```bash
+cd $T && uv sync --locked
+# 1. Files. Python, using only the public API: residuals of the registry's pressure sensors
+#    (e.g. persistence residuals of a `sentinel.synthetic` series) -> sentinel.detection.calibration
+#    .calibrate(provenance="synthetic", forecaster=ForecasterIdentity("mock-persistence", "0.1.0"),
+#    ...) -> write_artefact(artefact, "$OUT/calibration.json"); a regions JSON that splits the
+#    registry's pressure sensors into 3 groups; a JSONL of 330 windows 5 minutes apart built with
+#    sentinel.synthetic.window_payload(ts, registry, drop_m=..., drop_sensors=...), flat for 300
+#    windows and then a ramp (drop_m grows by a fixed amount per window) on exactly N sensors.
+
+# 2. Real server (clean environment, one worker)
+env -i PATH=$PATH HOME=$HOME \
+  SENTINEL_DETECTOR=cusum \
+  SENTINEL_DETECTOR_CALIBRATION=$OUT/calibration.json \
+  SENTINEL_DETECTOR_REGIONS=$OUT/regions.json \
+  .venv/bin/uvicorn sentinel.main:create_app --factory --host 127.0.0.1 --port 8765 &
+curl -s localhost:8765/health
+
+# 3. Replay over HTTP (the report used a small stdlib client that kept every response body;
+#    scripts/replay.py sends the same windows but keeps only latency)
+uv run python scripts/replay.py $OUT/ramp.jsonl --url http://127.0.0.1:8765
+
+# 4. Queries
+curl -s localhost:8765/v1/status                      # detector cusum 0.1.0+<8 hex>, is_mock true
+curl -s localhost:8765/v1/alerts
+curl -s 'localhost:8765/v1/alerts?region=R-centre'    # also another region and an unknown one
+curl -s localhost:8765/v1/alerts/<alert_id>
+
+# 5. Stop and check the port is free
+kill <pid>; ss -ltnp | grep 8765
+
+# Refusals: the same command without `&`, with one defect per run (wrong forecaster in the
+# artefact, reordered sensors, no SENTINEL_DETECTOR_CALIBRATION, a path that does not exist,
+# a regions file without one sensor); the process must exit with code 1 and never listen.
+# Official registry: add SENTINEL_SENSOR_REGISTRY=config/sensors.battledim.json and files that
+# use its IDs. Default detector: start with no SENTINEL_* variable.
+```
+
+Timings of that run are in `docs/performance.md`.
 
 ## Running on the LinuxONE VM (s390x)
 

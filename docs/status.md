@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — CUSUM detector (BE-012a..e) implemented and tested behind the `Detector` port; detector design documented (ADR-007/008, contract §3 semantics). `SENTINEL_DETECTOR=cusum` wiring and the development calibration (BE-012f) are in progress.
+**Last update:** 2026-10-17 — the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f (out-of-fold baseline residuals, replay/sweep, layer-1 counts) exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`.
 
 ## Summary
 
@@ -12,10 +12,15 @@ real models or the real audit log yet. The official sensor set is read from the 
 validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass (recorded before the detector work); mypy does not install there yet.
 `CusumDetector` (per-sensor episodes, gap decay, atomic rejection, calibration artefact with hash,
-region ranking) exists and is tested with **invented, synthetic** calibrations: it is not selectable
-at startup yet (`SENTINEL_DETECTOR=cusum` in progress), nothing is calibrated on real residuals
-(DEP-DET-05) and any output of it is `is_mock=true`. All contracts are v1.0 `Proposed` until the
-other owners confirm them.
+region ranking) exists and is tested with **invented, synthetic** calibrations. It is selected with
+`SENTINEL_DETECTOR=cusum` and `SENTINEL_DETECTOR_CALIBRATION` (required; `SENTINEL_DETECTOR_REGIONS`
+optional); the server refuses to start with a `ConfigError` on a missing or invalid file, another
+forecaster, other or reordered sensors or a mapping that does not cover the registry, and `mock`
+stays the default (README). A manual end-to-end run against the real `uvicorn` server with
+synthetic data found no bug (`docs/testing.md`). Nothing is calibrated on real residuals
+(DEP-DET-05) and any output of the CUSUM is `is_mock=true`. The offline tools of BE-012f live in
+`src/sentinel/detection/offline/` (dev only, never imported by the server). All contracts are v1.0
+`Proposed` until the other owners confirm them.
 
 ## Done (tests green)
 
@@ -24,15 +29,21 @@ BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic r
 BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
 convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook ·
 BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefact, `calibrate()`,
-`for_pipeline`, region ranking (injectable through `build_pipeline`, not yet selectable by
-environment variable). Details: `docs/implementation-plan.md`.
+`for_pipeline`, region ranking · BE-012 selection `SENTINEL_DETECTOR=cusum` in `build_pipeline`
+(startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
+BE-012f parts 1 and 2: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
+exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1 counts with a
+**provisional** matching rule (`offline/layer1.py`, Q-UI-06). Details:
+`docs/implementation-plan.md`.
 
 ## In progress
 
-- BE-012 umbrella: wiring `SENTINEL_DETECTOR=cusum` in `config.py` / `main.py`.
+- BE-012 umbrella: selection and tools done; the final calibration and the layer-1 evaluation
+  (BE-012h) are blocked.
 - BE-012f: development calibration on 2018 (out-of-fold hour-of-week baseline,
-  `provenance = dev-baseline-2018`, `is_mock = true`) in `src/sentinel/detection/offline/`;
-  unblocked (BE-010 on `main`, data v1 available locally).
+  `provenance = dev-baseline-2018`, `is_mock = true`). Parts 1 and 2 (the tools) are done; the
+  development run that produces the artefact, the sensitivity of σ and the delay × false-alarms
+  numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; full `just check`
   waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012. The detector
   determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64, `tests/detection/test_determinism.py`) is **pending on s390x**.
@@ -49,6 +60,13 @@ environment variable). Details: `docs/implementation-plan.md`.
 ## Pending (independent, not started)
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
+
+Small leftovers of the CUSUM selection, outside the scope of the documentation pass that
+recorded them: the comment above `SENTINEL_FORECASTER` in `.env.example` still says that only
+`mock` exists and the file does not list the new detector variables; `scripts/bench_pipeline.py`
+builds its `Settings` without the environment, so `just bench` cannot measure the CUSUM;
+`scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`; a refused startup prints a Python
+traceback whose last line is the `ConfigError` (for pydantic errors, a documentation URL).
 
 ## External dependencies
 
@@ -67,15 +85,22 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
   memory and lost on restart (ADR-006).
 - In-memory state: restart loses history, results, alerts, metrics, detector state (ADR-003).
 - Detector: the calibration numbers exist only in tests and are invented; nothing is calibrated
-  on real residuals yet. A new CUSUM episode on a sensor whose `S` has not returned to 0 inherits
-  the old onset (Q-DET-06). If the pipeline discards a result the detector already returned, its
-  state has advanced while the window was lost (ADR-007 Risks).
+  on real residuals yet. The false-alarm count of a sweep is not monotone in `h` (ADR-008 §E), so
+  a sweep table must not be interpolated, and the layer-1 matching rule is provisional (Q-UI-06):
+  any delay or false-alarm count computed with it is provisional too. With the persistence mock
+  forecaster a step does not accumulate (a ramp does), so the served CUSUM is only a mechanics
+  check until the real forecaster arrives (ADR-007 §1). A new CUSUM episode on a sensor whose
+  `S` has not returned to 0 inherits the old onset (Q-DET-06). If the pipeline discards a result
+  the detector already returned, its state has advanced while the window was lost (ADR-007
+  Risks).
 - `mypy` not installable on s390x without `gcc` (Q-PLAT-02); model runtime wheels on s390x unverified.
 
 ## Known bottlenecks
 
 With mocks on x86, HTTP handling (p50 ≈ 4 ms server-side) dominates the pipeline
-(p50 ≈ 0.4–0.8 ms). Both are far below the 300 s interval. See `docs/performance.md`.
+(p50 ≈ 0.4–0.8 ms). Both are far below the 300 s interval. With the CUSUM selected (synthetic
+calibration, mock forecaster, x86) the `detection` stage had p50 about 0.1 ms in process and
+0.29 ms over HTTP, single measurements (`docs/performance.md`).
 
 ## Future optimisations
 
@@ -84,7 +109,7 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Pending for the detection owner
 
-- Wire `SENTINEL_DETECTOR=cusum` (in progress) and BE-012f (in progress).
+- Finish BE-012f (the development run).
 - Pre-registration of ADR-008 §G, all `not yet registered`: δ (→ `k`), persistence-test
   criterion, false-alarm budget (Q-TEAM-03), the region rule (Q-DET-05), artefact hash. Must be
   committed before any evaluation run.
@@ -95,9 +120,10 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Finish the `SENTINEL_DETECTOR=cusum` selection and BE-012f, then integrate the real
-forecaster/audit as they arrive (BE-011/013) on the shared API (`docs/runbook-vm.md`) and measure
-p50/p99 with real models (BE-015, incl. the s390x run of the determinism test). Independent: BE-017.
+Finish BE-012f (the development run on the 2018 baseline residuals), register the ADR-008 §G
+fields, then integrate the real forecaster/audit as they arrive (BE-011/013) on the shared API
+(`docs/runbook-vm.md`; the script starts the mock detector) and measure p50/p99 with real models
+(BE-015, incl. the s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-17)
 
@@ -128,3 +154,10 @@ p50/p99 with real models (BE-015, incl. the s390x run of the determinism test). 
 | same, `uv run pytest tests/detection -q` | **178 passed** |
 | detector determinism digest, x86-64 (`tests/detection/test_determinism.py`) | `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` · s390x: **NOT_RUN** (BE-015) |
 | line coverage | **NOT_RUN** — no coverage tool configured |
+| branch `wip/be-012-docs-final`, base `56170f9` plus this documentation change — x86-64 (Intel Core Ultra 7 155H), Python 3.14.7: `just check` (ruff format, ruff check, mypy strict, pytest) | ruff format: 83 files left unchanged · ruff check: all checks passed · mypy: no issues found in 83 source files · **464 passed, 9 skipped** (8 P1 data tests and 1 offline-baseline real-data test, skipped without `SENTINEL_DATA_DIR`) |
+| same, `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run pytest tests/test_p1_data.py tests/detection/test_offline_baseline.py -q` | **48 passed** (the real-data tests ran; the offline one checks shape and finiteness only) |
+| same, `uv run pytest tests/detection -q` (no `SENTINEL_DATA_DIR`) | **312 passed, 1 skipped** |
+| same, `uv run pytest tests/test_detector_startup.py tests/test_config.py -q` | **39 passed** |
+| README procedure with a synthetic calibration and regions (uvicorn on 127.0.0.1, `SENTINEL_DETECTOR=cusum`) | `/health` ok; `/v1/status` reports detector `cusum` `0.1.0+<8 hex>`, `is_mock: true`, `mocks_active: true`; `cusum` without the calibration variable, a missing calibration file and the calibration variable set with the mock detector each end in a `ConfigError` |
+| manual end-to-end run on the real server, tree of `79f2647`, synthetic data (`docs/testing.md`) | 84 checks passed, no bug found; 330 windows over HTTP in 1.082 s, client p50 3.077 / p99 4.578 ms (`docs/performance.md`) |
+| `SENTINEL_DETECTOR=cusum` on the s390x VM, the shared API | **NOT_RUN** — the shared API runs the mock detector (`scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`) |
