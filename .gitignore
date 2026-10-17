@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.csv.gz
+*.onnx
+*.so
+models/
+data/
+logs/
+.env
