@@ -1,4 +1,4 @@
-"""Alert detail: the structured evidence exactly as received (no recomputation, no rounding).
+"""Alert detail (ADR-009): the structured evidence exactly as received, no recomputation.
 
 Numbers are shown with Python's own ``str`` of the received float. ``created_at`` (server
 wall clock) appears only here, labelled "recorded by server". The audit reference is shown
@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from dashboard.alert_list import NO_REGION, NOT_PROVIDED, fmt_time
+from dashboard.header import model_label
 from sentinel.schemas.alerts import Alert, AuditRef
-from sentinel.schemas.common import ModelInfo
 
 AUDIT_UNAVAILABLE = "audit unavailable"
 EXPLANATION_UNAVAILABLE = "explanation unavailable"
@@ -31,10 +31,6 @@ class AlertDetail:
 
 def _num(value: float | None) -> str:
     return NOT_PROVIDED if value is None else str(value)
-
-
-def _model(info: ModelInfo) -> str:
-    return f"{info.name} {info.version}" + (" (mock)" if info.is_mock else "")
 
 
 def _audit(ref: AuditRef | None) -> str:
@@ -61,8 +57,8 @@ def alert_detail(alert: Alert) -> AlertDetail:
         "Estimated onset": fmt_time(alert.suspected_onset),
         "Hours since onset (backend)": _num(alert.hours_since_onset),
         "Detector summary": alert.summary if alert.summary is not None else NOT_PROVIDED,
-        "Forecaster": _model(alert.models.forecaster),
-        "Detector": _model(alert.models.detector),
+        "Forecaster": model_label(alert.models.forecaster),
+        "Detector": model_label(alert.models.detector),
         "Audit reference": _audit(alert.audit),
         "Recorded by server": _recorded(alert.created_at),
     }

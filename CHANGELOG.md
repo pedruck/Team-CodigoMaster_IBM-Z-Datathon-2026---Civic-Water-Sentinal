@@ -40,6 +40,18 @@ contract versions are tracked separately (`schema_version`).
   provided" when null), estimated onset, age on the simulated clock (`status.last_timestamp`
   minus `window_end`) and a per-alert SIMULATED badge; empty state, loading spinner and a
   contract-mismatch state for alerts. Works with the HTTP and playback sources.
+- Dashboard alert detail (UI-004, P6): select an alert of the list to see its evidence exactly
+  as received (deviating sensors, CUSUM vs threshold, onset, contributions, summary, models),
+  the audit reference raw or "audit unavailable" (never "verified"), "explanation
+  unavailable", and `created_at` labelled "recorded by server".
+- Dashboard polling and history (UI-005, P6): the list refreshes every
+  `SENTINEL_DASHBOARD_REFRESH_S` (5 s) with `since` + dedup by `alert_id`; "API unavailable
+  since hh:mm" with back-off up to 60 s; contract mismatch hides the data; the page reruns when
+  the simulated time or the alerts change; warning when more than 500 alerts arrive in one
+  poll. Paginated history with time-range and region filters.
+- ADR-009 (dashboard, `Proposed`) and P6 cross-team questions Q-UI-07, Q-AUD-06, Q-AUD-07,
+  Q-DET-07, Q-DOC-01/02; Q-DET-04 lifecycle fields proposed; DEP-UI-03, DEP-DET-06 added
+  (UI-006). ADR-007/008 and Q-UI-05/06, Q-DET-06 are used by the detection owner's branch.
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM

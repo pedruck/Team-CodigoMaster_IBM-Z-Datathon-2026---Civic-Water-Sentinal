@@ -8,12 +8,24 @@ The operator can also browse a **paginated history** (`limit`/`offset`) filtered
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Test: two consecutive refreshes with overlapping data yield no duplicates
-- [ ] Test: an unreachable HTTP backend yields the unavailable banner; the back-off schedule is capped at 60 s
-- [ ] Test: a malformed playback record yields the contract-mismatch state
-- [ ] Test: history pagination and filters (time range, region) match API semantics
-- [ ] `just check` green
+- [x] Test: two consecutive refreshes with overlapping data yield no duplicates
+- [x] Test: an unreachable HTTP backend yields the unavailable banner; the back-off schedule is capped at 60 s
+- [x] Test: a malformed playback record yields the contract-mismatch state
+- [x] Test: history pagination and filters (time range, region) match API semantics
+- [x] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Done by a worktree subagent (refresh: 19 tests, history: 19 tests), integrated
+  by cherry-pick with a hand-resolved conflict in `app.py`.
+- Review fixes: full rerun when the simulated time or the alerts change (header clock and
+  detail selector follow the list); contract mismatch clears the shown alerts; warning when
+  more than 500 new alerts arrive in one poll.
+- Debt: `until`-anchored pagination; history does not auto-refresh nor reset the page on a
+  filter change; back-off applies to every error kind; three requests per tick; test helpers
+  (stub, fixture writers, app launch) duplicated across test files; error wording repeated in
+  three modules.

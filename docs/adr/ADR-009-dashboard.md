@@ -4,7 +4,7 @@
   backend owner P3 (read API, Q-UI-07, Q-DOC-01/02), the detection owner P4 (Q-UI-07,
   Q-DET-07) and the audit owner P5 (Q-AUD-06, Q-AUD-07).
 - **Date:** 2026-10-17
-- **Implementation:** `dashboard/` (UI-001..003 done; UI-004/005 pending),
+- **Implementation:** `dashboard/` (UI-001..005 done),
   `tests/test_dashboard_*.py`. Spec: `.scratch/p6-dashboard-evaluation/spec.md`.
 
 ## Context
@@ -47,7 +47,7 @@ coupling the dashboard to backend internals.
    is added to the contract (Q-UI-05 on P4's branch).
 7. **Refresh by polling** every ~5 s (configurable), exponential back-off up to 60 s on error,
    liveness from `/health`; new alerts fetched with `since` = newest `window_end` shown,
-   deduplicated by `alert_id` (`since` is inclusive). No SSE/WebSocket. (UI-005, pending.)
+   deduplicated by `alert_id` (`since` is inclusive). No SSE/WebSocket. When the simulated time or the listed alerts change, the whole page reruns so the header clock and the detail selector follow the list (UI-005).
 8. **Mandatory banners:** "SIMULATED" when `status.mocks_active` or `alert.is_mock`;
    "RECORDED REPLAY — run <id>, <date>" whenever the playback adapter is active; "Provisional
    sensor IDs" when the registry is provisional; a fixed "Simulated data (BattLeDIM L-Town),

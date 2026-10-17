@@ -1,4 +1,4 @@
-"""Polling of the 'Recent alerts' list, without Streamlit: merge/dedup and back-off.
+"""Polling of the 'Recent alerts' list, without Streamlit: merge/dedup and back-off (ADR-009).
 
 Each poll asks for alerts ``since`` the newest ``window_end`` already shown. ``since`` is
 inclusive (contract §5), so the answer repeats alerts already shown; they are deduplicated by
@@ -42,6 +42,7 @@ class PollState:
     retry_at: float = 0.0
     recovered: bool = False
     loaded: bool = False
+    truncated: bool = False  # more new alerts than one request returns (see the history)
 
 
 def merge_newest_first(
@@ -89,7 +90,25 @@ def poll(
         status=status,
         recovered=state.failures > 0,
         loaded=True,
+        truncated=since is not None and page.total > len(page.items),
     )
+
+
+def needs_full_rerun(previous: PollState, state: PollState) -> bool:
+    """The whole page (header clock, detail selector) must follow the list when the backend
+    recovered, the simulated time moved or the listed alerts changed. Not on the first load:
+    the full run that triggered it is already fresh."""
+    if not previous.loaded or not state.loaded:
+        return False
+    if state.recovered:
+        return True
+    clock = (
+        previous.status.last_timestamp if previous.status else None,
+        state.status.last_timestamp if state.status else None,
+    )
+    if state.status is not None and clock[0] != clock[1]:
+        return True
+    return [a.alert_id for a in previous.alerts] != [a.alert_id for a in state.alerts]
 
 
 def _failed(
@@ -106,6 +125,7 @@ def _failed(
     since = (state.unavailable_since or wall_now) if kind == "unavailable" else None
     return replace(
         state,
+        alerts=state.alerts if kind == "unavailable" else (),  # stale only while unreachable
         failures=failures,
         error=str(exc),
         error_kind=kind,

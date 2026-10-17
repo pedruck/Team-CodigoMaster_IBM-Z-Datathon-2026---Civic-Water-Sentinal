@@ -18,11 +18,18 @@ ADR-009 (dashboard architecture; ADR-007/008 are taken by P4's branch) is writte
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Each new question has an owner, a priority, a proposed default and the dashboard's behaviour until answered
-- [ ] `docs/dependencies.md` rows added/updated (DEP-UI-03, DEP-AUD-02, DEP-AUD-04, DEP-DET-03)
-- [ ] ADR-009 present and indexed in the ADR README
-- [ ] CHANGELOG `Unreleased` updated
+- [x] Each new question has an owner, a priority, a proposed default and the dashboard's behaviour until answered
+- [x] `docs/dependencies.md` rows added/updated (DEP-UI-03, DEP-AUD-02, DEP-AUD-04, DEP-DET-03)
+- [x] ADR-009 present and indexed in the ADR README
+- [x] CHANGELOG `Unreleased` updated
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Done by a worktree subagent. IDs checked against every origin branch. The
+  `not_applicable` drift exists only on unmerged branches (Q-DOC-01); runbook fix untested
+  (Q-DOC-02). Review fixes: Q-DET-04 lifecycle fields proposed, DEP-DET-03 updated,
+  DEP-DET-06 added for Q-DET-07.

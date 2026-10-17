@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from dashboard.config import refresh_interval_s
-from dashboard.refresh import PollState, backoff_s, merge_newest_first, poll
+from dashboard.refresh import PollState, backoff_s, merge_newest_first, needs_full_rerun, poll
 from dashboard.source import HttpAlertSource, PlaybackAlertSource
 from sentinel.schemas.alerts import Alert
 from tests.test_dashboard_source import Stub
@@ -175,6 +175,7 @@ def test_malformed_record_after_a_refresh_is_a_contract_mismatch(tmp_path: Path)
     assert second.error_kind == "mismatch"
     assert second.error is not None and "alerts.jsonl:2" in second.error
     assert second.unavailable_since is None
+    assert second.alerts == ()  # never keep data next to a contract mismatch (story 22)
 
 
 # --- unreachable backend --------------------------------------------------------------------
@@ -276,3 +277,49 @@ def test_app_hides_data_on_contract_mismatch_after_a_refresh(
     assert not app.exception
     assert any("alerts do not match the contract" in e.value for e in app.error)
     assert len(app.dataframe) == 0
+
+
+# --- review fixes: full rerun, truncation ----------------------------------------------------
+
+
+def test_full_rerun_when_simulated_time_or_alerts_change(tmp_path: Path) -> None:
+    run = write_run(tmp_path / "run", [fixture_alert("A-20190314T1640Z-1", "2019-03-14T16:40:00Z")])
+    source = PlaybackAlertSource(run)
+    first = poll(PollState(), source, base_s=5.0, wall_now=WALL, mono_now=0.0)
+    same = poll(first, source, base_s=5.0, wall_now=WALL, mono_now=5.0)
+    append(run, json.dumps(fixture_alert("A-20190314T1645Z-1", "2019-03-14T16:45:00Z")))
+    grown = poll(same, source, base_s=5.0, wall_now=WALL, mono_now=10.0)
+
+    assert needs_full_rerun(PollState(), first) is False  # first load: the page is fresh
+    assert needs_full_rerun(first, same) is False
+    assert needs_full_rerun(same, grown) is True
+
+
+def test_full_rerun_when_the_simulated_clock_moves(tmp_path: Path) -> None:
+    run = write_run(tmp_path / "run", [fixture_alert("A-20190314T1640Z-1", "2019-03-14T16:40:00Z")])
+    source = PlaybackAlertSource(run)
+    first = poll(PollState(), source, base_s=5.0, wall_now=WALL, mono_now=0.0)
+    status = json.loads((run / "status.json").read_text())
+    status["last_timestamp"] = "2019-03-15T00:00:00Z"
+    (run / "status.json").write_text(json.dumps(status))
+
+    moved = poll(first, source, base_s=5.0, wall_now=WALL, mono_now=5.0)
+
+    assert needs_full_rerun(first, moved) is True
+
+
+def test_more_new_alerts_than_one_request_is_flagged(tmp_path: Path) -> None:
+    first_alert = fixture_alert("A-20190314T0000Z-1", "2019-03-14T00:00:00Z")
+    run = write_run(tmp_path / "run", [first_alert])
+    source = PlaybackAlertSource(run)
+    first = poll(PollState(), source, base_s=5.0, wall_now=WALL, mono_now=0.0)
+    burst = [
+        json.dumps(fixture_alert(f"A-20190314T0001Z-{n}", "2019-03-14T00:05:00Z"))
+        for n in range(501)
+    ]
+    append(run, *burst)
+
+    second = poll(first, source, base_s=5.0, wall_now=WALL, mono_now=5.0)
+
+    assert second.truncated is True
+    assert first.truncated is False

@@ -16,7 +16,7 @@ class Header:
     provisional_sensors: bool
 
 
-def _model(info: ModelInfo) -> str:
+def model_label(info: ModelInfo) -> str:
     return f"{info.name} {info.version}" + (" (mock)" if info.is_mock else "")
 
 
@@ -34,8 +34,8 @@ def build_header(status: StatusResponse | None, online: bool) -> Header:
     return Header(
         online=online,
         simulated_time=last.strftime("%Y-%m-%d %H:%M UTC") if last else "no window yet",
-        forecaster=_model(status.forecaster),
-        detector=_model(status.detector),
+        forecaster=model_label(status.forecaster),
+        detector=model_label(status.detector),
         simulated=status.mocks_active,
         provisional_sensors=bool(status.sensor_registry.get("provisional", True)),
     )

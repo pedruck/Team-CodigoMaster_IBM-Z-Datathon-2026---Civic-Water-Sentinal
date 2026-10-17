@@ -37,7 +37,7 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
-P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003 DONE (recent alerts); UI-004..007 and EV-001..003 TODO, spec and tickets in
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 and EV-001..003 TODO, spec and tickets in
 `.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
 
 ## External dependencies
@@ -47,6 +47,11 @@ P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback
 Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
+
+- Unmerged owner branches change the P6 plan (2026-10-17 18:30): `feat/be-012-cusum-detector`
+  (real CUSUM, ADR-007/008: layer-2 2019 evaluation through the API is P6's, Q-UI-06) and
+  `leo/local-version` (hash chain, verifier CLI, narrative; no HTTP endpoint, records fail-open,
+  Q-DOC-01). P6 renumbered to ADR-009/010, Q-UI-07, Q-DET-07.
 
 - The shared API on port 8000 holds 2019 in memory; any restart wipes it (re-run the replay,
   `docs/runbook-vm.md`).
@@ -76,6 +81,7 @@ Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on 
 
 | Command | Result |
 |---|---|
+| UI-004..006 integrated (three worktrees, cherry-picked; app.py conflict resolved) + review fixes: `ruff format --check`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 81 files · **225 passed, 8 skipped** (P1 data tests) |
 | UI-003 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 74 files · **169 passed, 8 skipped** (P1 data tests) |
 | UI-002 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 72 files · **160 passed, 8 skipped** (P1 data tests) |
 | UI-001 gates (x86, Python 3.12, `uv sync --locked --group dashboard`): `ruff format`, `ruff check`, `mypy`, `pytest` over src tests scripts dashboard | ruff OK · mypy: no issues in 70 files · **133 passed, 8 skipped** (P1 data tests, no `$SENTINEL_DATA_DIR`) |

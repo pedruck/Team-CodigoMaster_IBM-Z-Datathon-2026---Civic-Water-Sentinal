@@ -1,4 +1,4 @@
-"""Paginated alert history, filtered by time range (UTC) and region.
+"""Paginated alert history, filtered by time range (UTC) and region (ADR-009).
 
 Same semantics as ``GET /v1/alerts`` (contract §5): newest first, ``since``/``until``
 inclusive on ``window_end``, exact ``region``, ``limit``/``offset``. Pagination is

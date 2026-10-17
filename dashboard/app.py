@@ -1,4 +1,4 @@
-"""Streamlit entry point: ``just dashboard``. Rendering only; no business rules here."""
+"""Streamlit entry point: ``just dashboard``. Rendering only; no business rules here (ADR-009)."""
 
 import streamlit as st
 
@@ -6,8 +6,7 @@ from dashboard.alert_detail import alert_detail
 from dashboard.config import refresh_interval_s, source_from_env
 from dashboard.header import build_header
 from dashboard.history import render_history
-from dashboard.live import STATE_KEY, render_recent_alerts
-from dashboard.refresh import PollState
+from dashboard.live import render_recent_alerts, shown_alerts
 from dashboard.source import (
     ContractMismatchError,
     SourceError,
@@ -68,7 +67,7 @@ render_recent_alerts(source, refresh_s)
 # --- Alert detail (UI-004): evidence exactly as received; options = the alerts listed above. ---
 st.subheader("Alert detail")
 if status is not None:
-    shown = st.session_state.get(STATE_KEY, PollState()).alerts  # what the list shows
+    shown = shown_alerts()
     selected = (
         st.selectbox("Alert", [a.alert_id for a in shown], index=0, key="alert_detail_id")
         if shown

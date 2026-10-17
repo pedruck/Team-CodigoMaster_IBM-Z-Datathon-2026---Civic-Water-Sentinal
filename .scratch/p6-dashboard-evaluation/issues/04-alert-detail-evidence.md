@@ -12,10 +12,16 @@ The audit reference is shown raw (seq and hash), or "audit unavailable" when nul
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-17)
 
-- [ ] Headless tests: full alert, all-null alert and audit-null alert each render the expected markers
-- [ ] No "verified" wording anywhere in the UI
-- [ ] `just check` green
+- [x] Headless tests: full alert, all-null alert and audit-null alert each render the expected markers
+- [x] No "verified" wording anywhere in the UI
+- [x] `just check` green
 
 Spec: `.scratch/p6-dashboard-evaluation/spec.md`
+
+## Comments
+
+- 2026-10-17 — Done by a worktree subagent (12 headless tests), integrated by cherry-pick.
+  Review fix: the selector options are the alerts the list shows (`live.shown_alerts()`), and
+  the page reruns when they change; no second `list_alerts` call.

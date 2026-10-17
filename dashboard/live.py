@@ -1,5 +1,5 @@
 """The auto-refreshing 'Recent alerts' list (Streamlit fragment). Rules live in
-``dashboard.refresh``; this module only keeps the poll state and renders it."""
+``dashboard.refresh``; this module only keeps the poll state and renders it (ADR-009)."""
 
 import time
 from datetime import UTC, datetime
@@ -7,10 +7,17 @@ from datetime import UTC, datetime
 import streamlit as st
 
 from dashboard.alert_list import alert_row
-from dashboard.refresh import PollState, backoff_s, poll
+from dashboard.refresh import PollState, backoff_s, needs_full_rerun, poll
 from dashboard.source import AlertSource
+from sentinel.schemas.alerts import Alert
 
 STATE_KEY = "recent_alerts_poll"
+
+
+def shown_alerts() -> tuple[Alert, ...]:
+    """The alerts the list currently shows (empty before the first load or on a mismatch)."""
+    state: PollState = st.session_state.get(STATE_KEY, PollState())
+    return state.alerts
 
 
 def render_recent_alerts(source: AlertSource, refresh_s: float) -> None:
@@ -23,8 +30,8 @@ def _recent_alerts(source: AlertSource, refresh_s: float) -> None:
     with st.spinner("Loading alerts…"):
         state = poll(previous, source, refresh_s, datetime.now(UTC), time.monotonic())
     st.session_state[STATE_KEY] = state
-    if state.recovered:
-        st.rerun()  # the backend is back: refresh the header too
+    if needs_full_rerun(previous, state):
+        st.rerun()  # header clock and detail selector follow the list
 
     if state.error_kind == "unavailable" and state.unavailable_since is not None:
         st.error(
@@ -47,5 +54,7 @@ def _recent_alerts(source: AlertSource, refresh_s: float) -> None:
             f"{len(state.alerts)} most recent alerts, refreshed every {refresh_s:g} s. "
             "Older alerts: see the history below."
         )
+        if state.truncated:
+            st.warning("More new alerts arrived than one request returns: see the history below.")
     else:
         st.info("No alerts in this period.")

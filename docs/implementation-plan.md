@@ -49,9 +49,9 @@ Q-DET-06 are used by the detection owner's branch `feat/be-012-cusum-detector`; 
 | UI-001 | 01 | Tracer: dashboard shows the live API status (HTTP adapter, contract parsing, label guard) | P0 | DONE | — | P6 | S |
 | UI-002 | 02 | Playback adapter + contract fixtures, RECORDED REPLAY banner | P0 | DONE | UI-001 | P6 | S |
 | UI-003 | 03 | "Recent alerts" list (null-safe, simulated clock, SIMULATED badge) | P0 | DONE | UI-002 | P6 | S |
-| UI-004 | 04 | Alert detail with structured evidence | P0 | TODO | UI-003 | P6 | S |
-| UI-005 | 05 | Polling, dedup, failure states, paginated history with filters | P1 | TODO | UI-003 | P6 | M |
-| UI-006 | 06 | Cross-team proposals (Q-UI-07, Q-AUD-06/07, Q-DET-07, Q-UI-03/04) + ADR-009 | P1 | TODO | — | P6 | S |
+| UI-004 | 04 | Alert detail with structured evidence | P0 | DONE | UI-003 | P6 | S |
+| UI-005 | 05 | Polling, dedup, failure states, paginated history with filters | P1 | DONE | UI-003 | P6 | M |
+| UI-006 | 06 | Cross-team proposals (Q-UI-07, Q-AUD-06/07, Q-DET-07, Q-UI-03/04) + ADR-009 | P1 | DONE | — | P6 | S |
 | UI-007 | 07 | Demo runbook and contingency rehearsal (C5) | P0 | TODO | UI-004, UI-005 | P6 | S |
 | EV-001 | 08 | ADR-010 layer-2 evaluation protocol (answers Q-UI-06 of P4's ADR-008), accepted before any 2019 run | P1 | TODO | — | P6 (+P4 review) | S |
 | EV-002 | 09 | Evaluation metrics core and report (header, watermark) | P1 | TODO | EV-001 | P6 | S |
