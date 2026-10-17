@@ -74,7 +74,11 @@ Accepted with assumption: [`window.naive-timestamp.json`](examples/window.naive-
 
 Response: `WindowResult` — [`window-result.scored.json`](examples/window-result.scored.json).
 `status ∈ {scored, insufficient_history, forecast_failed, detection_failed}`,
-`audit ∈ {recorded, disabled, failed}`, `issues[]`, `latency_ms` per stage.
+`audit ∈ {recorded, pending, disabled}` (fail-closed: `pending` = events not yet in the log,
+alerts withheld — see §4), `issues[]`, `latency_ms` per stage. The result is a snapshot taken
+when the window was processed: an idempotent resend returns it unchanged (e.g. still
+`pending` after the queue was flushed); current audit state is in `/v1/status` and
+`GET /v1/alerts/{id}`.
 
 ## 2. Forecaster (owner to confirm: ML)
 
@@ -144,9 +148,12 @@ class Detector(Protocol):
 | `diagnostics` | free `{key: number|string|bool}` (e.g. `k`, `h`) |
 | `complete`, `issues[]` | `complete=false` → result kept, issue `incomplete_detection` |
 
-**Sign convention (proposed):** `residual_m = observed − expected` (negative when pressure is
-low). The design document writes `z = (expected − observed)/σ` (§3) but its example alert
-shows `deviation_m: -0.9, z: -4.1` (§6), i.e. the opposite sign. To confirm (Q-DET-02).
+**Sign convention (decided, Q-DET-02, `docs/team-workflow.md`):**
+`residual_m` / `deviation_m` = observed − expected (negative when pressure is low) and
+`z = (expected − observed)/σ` (**positive** when pressure is low, as CUSUM accumulates it,
+design doc §3). So in a leak `deviation_m < 0` and `z > 0`. The design doc §6 example
+(`deviation_m −0.9`, `z −4.1`) has the wrong z sign. Enforced in the mock and by
+`test_pressure_drop_has_negative_deviation_and_positive_z`.
 
 Mock: `ThresholdMockDetector` — opens one alert when ≥ N sensors are ≥ 3σ below expected.
 Not CUSUM, no region.
@@ -188,8 +195,13 @@ window.scored, window.not_scored}`; one `window.*` event per accepted window (de
 
 Requirements for the real sink (audit owner): append-only, sequence assigned by the sink,
 `hash = SHA-256(prev_hash ‖ canonical JSON)` (design doc §6), thread-safe, durable before
-returning. Shipped sinks: `NullAuditSink` (disabled) and `InMemoryAuditSink` (dev only, no
-hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
+returning; raise `AuditError` when the event was **not** stored. The backend is
+**fail-closed** (Q-AUD-03, ADR-006): an alert is served only after its `alert.raised` event
+is recorded; failed events wait in an ordered pending queue, retried before every new window;
+a full queue (`SENTINEL_AUDIT_PENDING_CAPACITY`) answers 503 `audit_backlog_full`. The sink
+therefore receives events strictly in window order, possibly late, never twice after a
+successful append. Shipped sinks: `NullAuditSink` (disabled: alerts served, `audit="disabled"`)
+and `InMemoryAuditSink` (dev only, no hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
 contract and who may read it (DEP-AUD-02).
 
 ## 5. Read API for the dashboard
@@ -197,14 +209,15 @@ contract and who may read it (DEP-AUD-02).
 | Endpoint | Response | Notes |
 |---|---|---|
 | `GET /health` | `{status, version}` | liveness only |
-| `GET /v1/status` | `StatusResponse` | history, registry (provisional flag), models (`mocks_active`), counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
+| `GET /v1/status` | `StatusResponse` | history, registry (provisional flag, units), models (`mocks_active`), `audit_pending_events`, `audit_pending_alerts`, counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
 | `GET /v1/alerts` | `AlertPage {items, total, limit, offset}` | newest first; `limit` 1–500 (50), `offset`, `since`/`until` (TZ required, on `window_end`, inclusive), `region` |
 | `GET /v1/alerts/{id}` | `Alert` | 404 `not_found` |
 
 Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
 `validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
 `timestamp_without_timezone` 422 (only with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`),
-`out_of_order` 409, `window_conflict` 409, `not_found` 404, `internal_error` 500.
+`out_of_order` 409, `window_conflict` 409, `not_found` 404, `audit_backlog_full` 503 (retry
+later), `internal_error` 500.
 
 ## 6. Versioning and change process
 
