@@ -139,6 +139,7 @@ s390x run of the determinism test). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| Jupyter view: `tests/test_dashboard_jupyter.py` (7) + run of `JupyterDashboard` inside the VM's `notebook` container (s390x, `/opt/venv`, no install) against the shared API and `fixture-cusum` | live: online, 2019-12-31 23:55, mocks, no alerts; playback: RECORDED REPLAY, alert R-SYN-A with detail. Browser rendering of the widgets not checked |
 | Merge of `main` (a63d367: CUSUM detector, XGBoost forecaster) into `feat/dashboard-mvp`; conflict markers left staged in `CHANGELOG.md`, `docs/adr/README.md`, `docs/dependencies.md` resolved | ruff OK · mypy: no issues in 112 files · **599 passed, 18 skipped** |
 | Dashboard vs real CUSUM: `fixture-cusum` (`scripts/make_playback_fixtures.py`) + `tests/test_dashboard_cusum.py`; gates | mypy: no issues in 113 files · **604 passed, 18 skipped** |
 | Scratch e2e (not committed): real `uvicorn` with `SENTINEL_DETECTOR=cusum` (invented synthetic calibration + 2-region mapping), 288 synthetic windows with a ramp on n1/n4/n31, dashboard `AppTest` over HTTP | 288 × 201; 1 alert `A-20190314T1705Z-1`, region R-SYN-A, onset 16:35, CUSUM 9.393 > 8.0, age 6 h 50 min, audit seq 205; SIMULATED shown; no exception |

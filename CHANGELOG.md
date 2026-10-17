@@ -57,6 +57,10 @@ contract versions are tracked separately (`schema_version`).
   since hh:mm" with back-off up to 60 s; contract mismatch hides the data; the page reruns when
   the simulated time or the alerts change; warning when more than 500 alerts arrive in one
   poll. Paginated history with time-range and region filters.
+- Jupyter view of the dashboard (P6): `dashboard/jupyter.py` (ipywidgets) + notebook
+  `notebooks/p6_eval/dashboard.ipynb`; same source seam, poll, formatting and banners as the
+  Streamlit page, for JupyterLab on the VM where Streamlit cannot run (no `pyarrow` for s390x).
+  `ipywidgets` added to the optional `dashboard` group. Checked in the VM's container (s390x).
 - Dashboard checked against the real CUSUM detector (P6): playback run `fixture-cusum` generated
   by `CusumDetector` with an invented synthetic calibration and region mapping (`is_mock=true`)
   fills `region`, `cusum`, `since` and an onset before the alert; 4 headless tests. The
