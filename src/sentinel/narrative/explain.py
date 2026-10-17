@@ -5,9 +5,11 @@ never decides whether there is a leak (design document §6). Its text is accepte
 ``check_narrative`` finds nothing outside the payload; otherwise, or if the model fails,
 the deterministic template is returned and the reason is recorded.
 
-The team uses watsonx.ai / Granite (``sentinel.narrative.watsonx.WatsonxNarrator``), but
-anything with ``name`` and ``generate(prompt) -> str`` works (``FunctionNarrator`` wraps a
-plain function). Explanations are in English by default (``DEFAULT_LANGUAGE``).
+Two Granite narrators exist: watsonx.ai (``sentinel.narrative.watsonx.WatsonxNarrator``) and
+the GGUF model on the LinuxONE VM (``sentinel.narrative.local.LocalGraniteNarrator``). Anything
+with ``name`` and ``generate(prompt) -> str`` works (``FunctionNarrator`` wraps a plain
+function); an optional ``prompt_for(alert, language)`` replaces the default instruction
+prompt. Explanations are in English by default (``DEFAULT_LANGUAGE``).
 """
 
 import json
@@ -128,8 +130,11 @@ def explain(
 
     if narrator is None:
         return build("template", template)
+    # A narrator may bring its own prompt (a base model needs examples, not rules).
+    prompt_for = getattr(narrator, "prompt_for", None)
     try:
-        text = narrator.generate(build_prompt(alert, language)).strip()
+        prompt = prompt_for(alert, language) if callable(prompt_for) else None
+        text = narrator.generate(prompt or build_prompt(alert, language)).strip()
     except Exception as exc:  # boundary with an external model: never blocks the explanation
         log.exception("narrator failed", extra={"fields": {"alert_id": alert.alert_id}})
         return build("template", template, fallback_reason=f"narrator_error: {exc!r}")

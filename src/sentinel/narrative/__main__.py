@@ -1,22 +1,27 @@
-"""Explain one alert from the command line; with ``--watsonx``, through Granite on watsonx.ai.
+"""Explain one alert from the command line, optionally through Granite.
 
     python -m sentinel.narrative                              # invented alert, template
-    python -m sentinel.narrative --watsonx                    # invented alert, Granite
-    python -m sentinel.narrative --alert alert.json --watsonx # JSON of GET /v1/alerts/{id}
+    python -m sentinel.narrative --local                      # Granite GGUF on the VM
+    python -m sentinel.narrative --watsonx                    # Granite on watsonx.ai
+    python -m sentinel.narrative --alert alert.json --local   # JSON of GET /v1/alerts/{id}
 
-``--watsonx`` reads the ``WATSONX_*`` variables (see ``sentinel.narrative.watsonx``). Prints
-the ``Explanation`` as JSON. Exit code: 0 ok; 1 Granite was asked for but its text was not
-used (see ``fallback_reason`` and ``check``); 2 missing configuration.
+``--local`` reads ``LOCAL_LLM_*`` (see ``sentinel.narrative.local``); ``--watsonx`` reads
+``WATSONX_*`` (see ``sentinel.narrative.watsonx``). Prints the ``Explanation`` as JSON with
+the generation time. Exit code: 0 ok; 1 Granite was asked for but its text was not used (see
+``fallback_reason`` and ``check``); 2 missing configuration.
 """
 
 import argparse
+import json
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
 from sentinel.narrative.explain import Narrator, explain
 from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language
+from sentinel.narrative.local import LocalGraniteNarrator, LocalLLMError
 from sentinel.narrative.mock import mock_alert
 from sentinel.narrative.watsonx import WatsonxError, WatsonxNarrator
 from sentinel.schemas.alerts import Alert
@@ -25,7 +30,9 @@ from sentinel.schemas.alerts import Alert
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Explain a CivicWater Sentinel alert.")
     parser.add_argument("--alert", type=Path, help="alert JSON; default: invented mock alert")
-    parser.add_argument("--watsonx", action="store_true", help="use Granite on watsonx.ai")
+    model = parser.add_mutually_exclusive_group()
+    model.add_argument("--local", action="store_true", help="Granite GGUF served on the VM")
+    model.add_argument("--watsonx", action="store_true", help="Granite on watsonx.ai")
     parser.add_argument("--language", choices=["en", "pt"], default=DEFAULT_LANGUAGE)
     args = parser.parse_args(argv)
 
@@ -35,15 +42,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         else mock_alert()
     )
     narrator: Narrator | None = None
-    if args.watsonx:
-        try:
+    try:
+        if args.local:
+            narrator = LocalGraniteNarrator.from_env()
+        elif args.watsonx:
             narrator = WatsonxNarrator.from_env()
-        except WatsonxError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return 2
+    except (LocalLLMError, WatsonxError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    started = time.perf_counter()
     explanation = explain(alert, narrator, language=cast(Language, args.language))
-    sys.stdout.write(explanation.model_dump_json(indent=2) + "\n")
-    return 1 if args.watsonx and explanation.source != "llm" else 0
+    report = explanation.model_dump(mode="json")
+    report["elapsed_s"] = round(time.perf_counter() - started, 3)
+    sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    return 1 if narrator is not None and explanation.source != "llm" else 0
 
 
 if __name__ == "__main__":
