@@ -24,7 +24,8 @@ Defaults: official registry `config/sensors.battledim.json`, in-memory audit sin
 no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
-Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window).
+Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
+≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).
 
 ## Access from your machine
 
@@ -34,7 +35,10 @@ The container does not publish port 8000; tunnel to the container address:
 ssh -N -L 8000:172.17.0.2:8000 linuxone
 ```
 
-Then `http://localhost:8000/docs`. Nothing is exposed to the internet. If `172.17.0.2`
+Then `http://localhost:8000/docs`. Nothing is exposed to the internet. If your SSH config
+uses `ControlMaster`, add `-o ControlMaster=no -o ControlPath=none`: otherwise the forward
+attaches to the shared master connection and survives Ctrl-C (close it with
+`ssh -O cancel -L 8000:172.17.0.2:8000 linuxone`). If `172.17.0.2`
 changes (container recreated), get it with
 `docker inspect -f '{{.NetworkSettings.IPAddress}}' notebook` on the VM host.
 
@@ -66,8 +70,8 @@ Send it from the Jupyter terminal (same container, so `127.0.0.1` works):
 nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" --url http://127.0.0.1:8000
 ```
 
-It takes a few minutes and loads the shared VM: announce it and avoid running it during
-someone's latency measurement. Expected: every window `201` (or `200` if re-sent), 144
+Measured 2026-10-17: 105 120 × `201` in 145 s (`docs/performance.md`). It loads the shared
+VM: announce it and avoid running it during someone's latency measurement. Expected: every window `201` (or `200` if re-sent), 144
 `insufficient_history`, the rest `scored`; mock alerts until the real models are wired.
 
 ## Troubleshooting

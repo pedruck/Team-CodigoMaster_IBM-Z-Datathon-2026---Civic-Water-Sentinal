@@ -27,13 +27,13 @@ M (½–2 days), L (> 2 days).
 | BE-011 | Integrate real forecaster(s) behind `Forecaster` | P0 | BLOCKED | DEP-ML-01..03 | Backend + ML | M | `SENTINEL_FORECASTER=<name>` loads at startup; contract tests with the real class green |
 | BE-012 | Integrate real detector behind `Detector` | P0 | BLOCKED | DEP-DET-01..03 | Backend + Detection | M | idem, `SENTINEL_DETECTOR=<name>` |
 | BE-013 | Integrate real audit sink | P1 | BLOCKED | DEP-AUD-01 | Backend + Audit | M | `SENTINEL_AUDIT_SINK=<name>`; chain verified after a replay |
-| BE-014 | Replay of real 2019 data end to end | P1 | IN_PROGRESS (HTTP replay on the shared API pending) | DEP-DATA-05 | Backend + Data | S | full 2019 replay with 0 rejected windows (or every rejection explained) |
+| BE-014 | Replay of real 2019 data end to end | P1 | DONE (mocks; 105 120 × 201 over HTTP on the shared API, `docs/performance.md`) | DEP-DATA-05 | Backend + Data | S | full 2019 replay with 0 rejected windows (or every rejection explained) |
 | BE-015 | Run on LinuxONE (s390x): install, gates, p50/p99 per window | P1 | IN_PROGRESS (mock baseline done; mypy and real models pending) | DEP-PLAT-01, Q-PLAT-02, BE-011/012 | Backend + Platform | M | `just check` on s390x; numbers in `docs/performance.md` |
 | BE-016 | Dashboard needs (CORS, extra filters) | P2 | TODO | Q-UI-01..03 | Backend + UI | S | dashboard reads the API |
-| BE-017 | Load test (HTTP p50/p99 at replay speed and saturation, keep-alive client) | P2 | TODO | BE-008 | Backend | S | numbers + method in `docs/performance.md` |
+| BE-017 | Load test (HTTP p50/p99 at replay speed and saturation, keep-alive client) | P2 | TODO (sequential full-year HTTP baseline exists, BE-014) | BE-008 | Backend | S | numbers + method in `docs/performance.md` |
 | BE-018 | CI (GitHub Actions running `just ci`) | P2 | DONE | BE-001 | Backend | S | workflow green on PR |
 | BE-019 | Apply team decisions: fail-closed audit with pending queue (Q-AUD-03) and z sign convention (Q-DET-02) | P0 | DONE | — | Backend | S | `tests/test_audit_fail_closed.py`, `test_pressure_drop_has_negative_deviation_and_positive_z` green; ADR-006 and contract §3–§5 updated |
-| BE-020 | Shared integration API on the VM: one ID scheme, `scripts/shared_api.sh`, runbook | P0 | IN_PROGRESS | BE-010 | Backend | S | API on port 8000 from `shared/civicwater/main` via the script; start/status/stop verified on the VM; `docs/runbook-vm.md` |
+| BE-020 | Shared integration API on the VM: one ID scheme, `scripts/shared_api.sh`, runbook | P0 | DONE | BE-010 | Backend | S | API on port 8000 from `shared/civicwater/main` via the script; start/status/stop verified on the VM; `docs/runbook-vm.md` |
 
 ## Order of execution
 

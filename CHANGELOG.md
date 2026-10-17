@@ -22,7 +22,8 @@ contract versions are tracked separately (`schema_version`).
 ### Added
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
-- `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM.
+- `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM
+  (running on port 8000 with the full 2019 replay loaded, mocks).
 - First LinuxONE (s390x) baseline: tests, benchmark, HTTP replay and x86/s390x hash parity
   (`docs/performance.md`).
 - GitHub Actions CI running `just ci` on pull requests and pushes to `main`.
