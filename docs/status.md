@@ -139,6 +139,9 @@ with real models (BE-015, incl. the s390x run of the determinism test). Independ
 
 | Command | Result |
 |---|---|
+| Merge of `main` (a63d367: CUSUM detector, XGBoost forecaster) into `feat/dashboard-mvp`; conflict markers left staged in `CHANGELOG.md`, `docs/adr/README.md`, `docs/dependencies.md` resolved | ruff OK · mypy: no issues in 112 files · **599 passed, 18 skipped** |
+| Dashboard vs real CUSUM: `fixture-cusum` (`scripts/make_playback_fixtures.py`) + `tests/test_dashboard_cusum.py`; gates | mypy: no issues in 113 files · **604 passed, 18 skipped** |
+| Scratch e2e (not committed): real `uvicorn` with `SENTINEL_DETECTOR=cusum` (invented synthetic calibration + 2-region mapping), 288 synthetic windows with a ramp on n1/n4/n31, dashboard `AppTest` over HTTP | 288 × 201; 1 alert `A-20190314T1705Z-1`, region R-SYN-A, onset 16:35, CUSUM 9.393 > 8.0, age 6 h 50 min, audit seq 205; SIMULATED shown; no exception |
 | UI-004..006 integrated (three worktrees, cherry-picked; app.py conflict resolved) + review fixes: `ruff format --check`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 81 files · **225 passed, 8 skipped** (P1 data tests) |
 | UI-003 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 74 files · **169 passed, 8 skipped** (P1 data tests) |
 | UI-002 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 72 files · **160 passed, 8 skipped** (P1 data tests) |

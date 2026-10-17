@@ -1,0 +1,5 @@
+{
+  "run_id": "fixture-cusum",
+  "recorded_at": "2026-10-17",
+  "note": "Fixture: CUSUM detector with an INVENTED synthetic calibration and region mapping, mock forecaster, synthetic day with a ramp on 3 sensors. Not a calibration or model result."
+}

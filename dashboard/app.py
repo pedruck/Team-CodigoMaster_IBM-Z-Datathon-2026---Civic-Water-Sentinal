@@ -44,7 +44,10 @@ if source.recording is not None:
         f"RECORDED REPLAY — run {rec.run_id}, {rec.recorded_at}. Not live data. {rec.note}".strip()
     )
 if header.simulated:
-    st.warning("SIMULATED — mock forecaster/detector active: not leak detection.")
+    st.warning(
+        "SIMULATED — a mock model or a non-final calibration is active (is_mock): "
+        "not leak detection."
+    )
 if header.provisional_sensors and status is not None:
     st.warning("Provisional sensor IDs in use.")
 st.caption("Simulated data (BattLeDIM L-Town). Not validated on a real network.")

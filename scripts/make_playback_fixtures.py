@@ -8,6 +8,11 @@ Both runs come from the backend itself, in process, with the **mocks** over one 
   variants of that alert covering the contract edges (every nullable field null, empty
   deviating-sensor list, every nullable field present). Variant values are invented for UI
   testing; they stay ``is_mock=true`` and the run note says so.
+- ``fixture-cusum``: the **CUSUM detector** (ADR-007) with an invented ``synthetic`` calibration
+  (sigma 0.1 m, k 0.5, h 8, N 3, c 2, h_close 4 → ``is_mock=true``) and an invented two-region
+  mapping (``R-SYN-A`` / ``R-SYN-B``), over a day where 3 sensors of ``R-SYN-A`` ramp down
+  0.2 m per window from 16:40. Exercises the fields the mock never fills: ``region``,
+  ``cusum``, ``since``, a ``suspected_onset`` before the alert. Not a calibration result.
 - ``fixture-malformed``: one valid mock alert and one record without ``models`` (contract
   violation on purpose) → the dashboard must show "contract mismatch".
 
@@ -16,19 +21,23 @@ Usage: ``uv run python scripts/make_playback_fixtures.py [out_dir]``.
 
 import argparse
 import json
-from datetime import UTC, datetime
+import random
+import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from sentinel.config import Settings
+from sentinel.detection.calibration import CalibrationArtefact, write_artefact
 from sentinel.main import build_pipeline, create_app
 from sentinel.schemas.alerts import Alert, AuditRef
 from sentinel.schemas.detections import CusumEvidence
 from sentinel.sensors import SensorRegistry
-from sentinel.synthetic import generate
+from sentinel.synthetic import generate, window_payload
 
 DAY = datetime(2019, 3, 14, tzinfo=UTC)
+STEP = timedelta(minutes=5)
 OFFICIAL_REGISTRY = Path("config/sensors.battledim.json")
 
 
@@ -50,6 +59,54 @@ def replay(leak: bool) -> tuple[list[Alert], str]:
     page = client.get("/v1/alerts", params={"limit": 500}).json()
     alerts = [Alert.model_validate(a) for a in reversed(page["items"])]  # stored order
     return alerts, client.get("/v1/status").text
+
+
+def replay_cusum() -> tuple[list[Alert], str]:
+    registry = SensorRegistry.load(OFFICIAL_REGISTRY)
+    pressure = registry.pressure
+    half = len(pressure) // 2
+    with tempfile.TemporaryDirectory() as tmp:
+        calibration = Path(tmp) / "calibration.synthetic.json"
+        artefact = CalibrationArtefact.model_validate(
+            {
+                "provenance": "synthetic",  # invented numbers: forces is_mock=true (ADR-008 §B)
+                "forecaster": {"name": "mock-persistence", "version": "0.1.0"},
+                "residuals_sha256": "0" * 64,
+                "folds_sha256": "0" * 64,
+                "sigma_m": dict.fromkeys(pressure, 0.1),
+                "k": 0.5,
+                "h": 8.0,
+                "n_min": 3,
+                "c": 2.0,
+                "h_close": 4.0,
+            }
+        )
+        write_artefact(artefact, calibration)
+        regions = Path(tmp) / "regions.synthetic.json"
+        regions.write_text(
+            json.dumps(
+                {"regions": {"R-SYN-A": list(pressure[:half]), "R-SYN-B": list(pressure[half:])}}
+            )
+        )
+        settings = Settings(
+            audit_sink="memory",
+            sensor_registry_path=OFFICIAL_REGISTRY,
+            detector="cusum",
+            detector_calibration_path=calibration,
+            detector_regions_path=regions,
+        )
+        client = TestClient(create_app(settings, build_pipeline(settings)))
+        rng = random.Random(7)
+        ramp_at, leaking = 200, pressure[:3]
+        for i in range(288):
+            drop = 0.2 * (i - ramp_at + 1) if i >= ramp_at else 0.0
+            window = window_payload(
+                DAY + i * STEP, registry, drop_m=drop, drop_sensors=leaking, rng=rng
+            )
+            client.post("/v1/windows", json=window)
+        page = client.get("/v1/alerts", params={"limit": 500}).json()
+        alerts = [Alert.model_validate(a) for a in reversed(page["items"])]
+        return alerts, client.get("/v1/status").text
 
 
 def edge_variants(base: Alert) -> list[Alert]:
@@ -120,6 +177,17 @@ def main(argv: list[str] | None = None) -> int:
         empty,
         status,
         "Fixture: mock backend on a synthetic day without a step. Not a model run.",
+    )
+    cusum_alerts, cusum_status = replay_cusum()
+    if not cusum_alerts:
+        raise SystemExit("the CUSUM ramp produced no alert")
+    write(
+        out / "fixture-cusum",
+        "fixture-cusum",
+        cusum_alerts,
+        cusum_status,
+        "Fixture: CUSUM detector with an INVENTED synthetic calibration and region mapping, mock "
+        "forecaster, synthetic day with a ramp on 3 sensors. Not a calibration or model result.",
     )
     broken = alerts[0].model_dump(mode="json", exclude={"models"})
     broken["alert_id"] = alerts[0].alert_id.rsplit("-", 1)[0] + "-99"

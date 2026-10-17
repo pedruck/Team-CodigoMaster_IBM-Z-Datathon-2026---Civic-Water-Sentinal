@@ -50,6 +50,10 @@ contract versions are tracked separately (`schema_version`).
   since hh:mm" with back-off up to 60 s; contract mismatch hides the data; the page reruns when
   the simulated time or the alerts change; warning when more than 500 alerts arrive in one
   poll. Paginated history with time-range and region filters.
+- Dashboard checked against the real CUSUM detector (P6): playback run `fixture-cusum` generated
+  by `CusumDetector` with an invented synthetic calibration and region mapping (`is_mock=true`)
+  fills `region`, `cusum`, `since` and an onset before the alert; 4 headless tests. The
+  SIMULATED banner now says "a mock model or a non-final calibration".
 - ADR-009 (dashboard, `Proposed`) and P6 cross-team questions Q-UI-07, Q-AUD-06, Q-AUD-07,
   Q-DET-07, Q-DOC-01/02; Q-DET-04 lifecycle fields proposed; DEP-UI-03, DEP-DET-06 added
   (UI-006). ADR-007/008 and Q-UI-05/06, Q-DET-06 belong to the detection owner (BE-012).
