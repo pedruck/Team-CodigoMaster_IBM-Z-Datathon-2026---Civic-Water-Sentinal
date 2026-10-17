@@ -1,4 +1,4 @@
-"""Loading the CUSUM calibration artefact (ADR-008 §B; BE-012a slice).
+"""Loading the CUSUM calibration artefact (ADR-008 §B; BE-012a/b slices).
 
 The calibration numbers below are invented for the tests; they are not results.
 """
@@ -19,6 +19,8 @@ ARTEFACT: dict[str, Any] = {
     "k": 0.5,
     "h": 8.0,
     "n_min": 1,
+    "c": 2.0,
+    "h_close": 4.0,
 }
 
 
@@ -61,6 +63,12 @@ def without(key: str) -> dict[str, Any]:
         pytest.param({**ARTEFACT, "n_min": True}, id="n-boolean"),
         pytest.param({**ARTEFACT, "n_min": 3}, id="n-above-sensor-count"),
         pytest.param({**ARTEFACT, "cap": 2.0}, id="unknown-field"),
+        pytest.param(without("c"), id="no-numeric-default-for-c"),
+        pytest.param(without("h_close"), id="no-numeric-default-for-h-close"),
+        pytest.param({**ARTEFACT, "c": 1.0}, id="cap-not-above-h"),
+        pytest.param({**ARTEFACT, "c": float("inf")}, id="cap-infinite"),
+        pytest.param({**ARTEFACT, "h_close": 0.0}, id="h-close-zero"),
+        pytest.param({**ARTEFACT, "h_close": 8.5}, id="h-close-above-h"),
     ],
 )
 def test_invalid_artefact_is_rejected_at_load(tmp_path: Path, artefact: dict[str, Any]) -> None:
