@@ -37,7 +37,7 @@ waits for Q-PLAT-02 (`gcc`), model measurements wait for BE-011/012.
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
-P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures); UI-003..007 and EV-001..003 TODO, spec and tickets in
+P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003 DONE (recent alerts); UI-004..007 and EV-001..003 TODO, spec and tickets in
 `.scratch/p6-dashboard-evaluation/`; EV-003 gated on the real detector by 2026-10-17 22:00.
 
 ## External dependencies
@@ -76,6 +76,7 @@ Integrate the real forecaster/detector/audit as they arrive (BE-011/012/013) on 
 
 | Command | Result |
 |---|---|
+| UI-003 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 74 files · **169 passed, 8 skipped** (P1 data tests) |
 | UI-002 gates (x86, Python 3.12): `ruff format`, `ruff check`, `mypy`, `pytest` | ruff OK · mypy: no issues in 72 files · **160 passed, 8 skipped** (P1 data tests) |
 | UI-001 gates (x86, Python 3.12, `uv sync --locked --group dashboard`): `ruff format`, `ruff check`, `mypy`, `pytest` over src tests scripts dashboard | ruff OK · mypy: no issues in 70 files · **133 passed, 8 skipped** (P1 data tests, no `$SENTINEL_DATA_DIR`) |
 | UI-001 smoke: SSH tunnel `-L 8000:172.17.0.2:8000 linux1@148.100.99.103`, dashboard `AppTest` + `streamlit run --server.headless` | header: API online, simulated time 2019-12-31 23:55 UTC, mock-persistence/mock-threshold, SIMULATED badge; `/_stcore/health` ok |

@@ -35,6 +35,11 @@ contract versions are tracked separately (`schema_version`).
   `fixture-empty`, `fixture-malformed`) generated from the mock backend by
   `scripts/make_playback_fixtures.py` (`just playback-fixtures`). `AlertQuery` enforces the
   API bounds (`limit` 1–500, `offset` ≥ 0).
+- Dashboard "Recent alerts" (UI-003, P6): table newest first with alert ID, window end, region
+  ("region not available"), deviating-sensor count, strongest deviation and its z ("not
+  provided" when null), estimated onset, age on the simulated clock (`status.last_timestamp`
+  minus `window_end`) and a per-alert SIMULATED badge; empty state, loading spinner and a
+  contract-mismatch state for alerts. Works with the HTTP and playback sources.
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM

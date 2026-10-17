@@ -46,7 +46,7 @@ Details and acceptance criteria are in each ticket file.
 |---|---|---|---|---|---|---|---|
 | UI-001 | 01 | Tracer: dashboard shows the live API status (HTTP adapter, contract parsing, label guard) | P0 | DONE | — | P6 | S |
 | UI-002 | 02 | Playback adapter + contract fixtures, RECORDED REPLAY banner | P0 | DONE | UI-001 | P6 | S |
-| UI-003 | 03 | "Recent alerts" list (null-safe, simulated clock, SIMULATED badge) | P0 | TODO | UI-002 | P6 | S |
+| UI-003 | 03 | "Recent alerts" list (null-safe, simulated clock, SIMULATED badge) | P0 | DONE | UI-002 | P6 | S |
 | UI-004 | 04 | Alert detail with structured evidence | P0 | TODO | UI-003 | P6 | S |
 | UI-005 | 05 | Polling, dedup, failure states, paginated history with filters | P1 | TODO | UI-003 | P6 | M |
 | UI-006 | 06 | Cross-team proposals (Q-UI-05, Q-AUD-06/07, Q-DET-04/06) + ADR-007 | P1 | TODO | — | P6 | S |

@@ -2,9 +2,15 @@
 
 import streamlit as st
 
+from dashboard.alert_list import alert_row
 from dashboard.config import source_from_env
 from dashboard.header import build_header
-from dashboard.source import ContractMismatchError, SourceError, SourceUnavailableError
+from dashboard.source import (
+    AlertQuery,
+    ContractMismatchError,
+    SourceError,
+    SourceUnavailableError,
+)
 from sentinel.schemas.api import StatusResponse
 
 st.set_page_config(page_title="CivicWater Sentinel", layout="wide")
@@ -49,3 +55,23 @@ else:
 cols[1].metric("Simulated time", header.simulated_time)
 cols[2].metric("Forecaster", header.forecaster)
 cols[3].metric("Detector", header.detector)
+
+st.subheader("Recent alerts")
+st.caption(
+    "Newest first. Alerts are never closed by the detector yet: this is not an 'active' list."
+)
+if status is not None:
+    try:
+        with st.spinner("Loading alerts…"):
+            page = source.list_alerts(AlertQuery())
+    except ContractMismatchError as exc:
+        st.error(f"Contract mismatch: alerts do not match the contract. {exc}")
+    except SourceError as exc:
+        st.error(f"Could not load alerts ({source.name}): {exc}")
+    else:
+        if page.items:
+            now = status.last_timestamp
+            st.dataframe([alert_row(a, now) for a in page.items], hide_index=True, width="stretch")
+            st.caption(f"{len(page.items)} of {page.total} alerts.")
+        else:
+            st.info("No alerts in this period.")

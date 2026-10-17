@@ -9,6 +9,7 @@ import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -166,3 +167,24 @@ def test_app_shows_unavailable_when_backend_is_down(monkeypatch: pytest.MonkeyPa
     assert not app.exception
     assert any("API unavailable" in e.value for e in app.error)
     assert {m.label: m.value for m in app.metric}["API"] == "offline"
+
+
+def test_app_lists_alerts_through_the_http_adapter(
+    stub: Stub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    run = Path(__file__).resolve().parents[1] / "dashboard" / "playback" / "fixture-edge-cases"
+    lines = (run / "alerts.jsonl").read_text().splitlines()
+    page = {"items": [json.loads(x) for x in reversed(lines)], "total": len(lines)}
+    stub.routes = {
+        "/health": (200, b'{"status": "ok", "version": "0.1.0"}'),
+        "/v1/status": (200, (run / "status.json").read_bytes()),
+        "/v1/alerts": (200, json.dumps({**page, "limit": 50, "offset": 0}).encode()),
+    }
+    monkeypatch.setenv("SENTINEL_DASHBOARD_API_URL", stub.url)
+
+    app = testing.AppTest.from_file("../dashboard/app.py").run()
+
+    assert not app.exception
+    assert len(app.dataframe[0].value) == len(lines)
+    assert {m.label: m.value for m in app.metric}["API"] == "online"
