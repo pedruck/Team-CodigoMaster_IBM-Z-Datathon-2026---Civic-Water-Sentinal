@@ -6,6 +6,9 @@ residual file and of the fold definition they were estimated from, sigma per sen
 ``h``, ``n_min`` (N), ``c`` (cap ``c*h``) and ``h_close``.
 """
 
+import math
+import statistics
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -16,6 +19,8 @@ from sentinel.schemas.windows import SensorId
 
 Provenance = Literal["synthetic", "dev-baseline-2018", "battledim-2018-oof"]
 FINAL_PROVENANCE: Provenance = "battledim-2018-oof"  # the only one that is not a mock (ADR-008 §B)
+
+MAD_TO_SIGMA = 1.4826  # 1 / Phi^-1(3/4): the MAD of a normal series times this is its sigma
 
 PositiveFiniteFloat = Annotated[FiniteFloat, Field(gt=0)]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -73,3 +78,54 @@ def canonical_bytes(artefact: CalibrationArtefact) -> bytes:
 
 def write_artefact(artefact: CalibrationArtefact, path: Path) -> None:
     path.write_bytes(canonical_bytes(artefact))
+
+
+def calibrate(
+    residuals: Mapping[str, Sequence[float]],
+    *,
+    provenance: Provenance,
+    forecaster: ForecasterIdentity,
+    residuals_sha256: str,
+    folds_sha256: str,
+    sigma_floor_m: float,
+    k: float,
+    h: float,
+    n_min: int,
+    c: float,
+    h_close: float,
+) -> CalibrationArtefact:
+    """Estimate sigma per sensor and wrap it with the parameters chosen elsewhere (ADR-008 §C).
+
+    ``residuals``: out-of-fold residuals in metres (observed - expected) per pressure sensor;
+    the sensor order of the artefact is the order of this mapping. Sigma is
+    ``max(sigma_floor_m, 1.4826 * MAD)`` per sensor, the median absolute deviation from the
+    median, so a leak inside the series barely moves it. ``k``, ``h``, ``n_min``, ``c`` and
+    ``h_close`` come from the pre-registered sweep, the hashes from the files the residuals and
+    folds were read from: nothing here has a default (ADR-008 §B). Raises ``ValueError`` for no
+    sensors, an empty or non-finite series, or a floor that is not a positive finite number.
+    """
+    if not (math.isfinite(sigma_floor_m) and sigma_floor_m > 0):
+        raise ValueError(f"sigma_floor_m must be positive and finite, got {sigma_floor_m}")
+    if not residuals:
+        raise ValueError("no residual series to calibrate")
+    sigma: dict[str, float] = {}
+    for sensor, series in residuals.items():
+        if len(series) == 0:
+            raise ValueError(f"empty residual series for sensor {sensor!r}")
+        if not all(math.isfinite(r) for r in series):
+            raise ValueError(f"non-finite residual for sensor {sensor!r}")
+        centre = statistics.median(series)
+        mad = statistics.median(abs(r - centre) for r in series)
+        sigma[sensor] = max(sigma_floor_m, MAD_TO_SIGMA * mad)
+    return CalibrationArtefact(
+        provenance=provenance,
+        forecaster=forecaster,
+        residuals_sha256=residuals_sha256,
+        folds_sha256=folds_sha256,
+        sigma_m=sigma,
+        k=k,
+        h=h,
+        n_min=n_min,
+        c=c,
+        h_close=h_close,
+    )

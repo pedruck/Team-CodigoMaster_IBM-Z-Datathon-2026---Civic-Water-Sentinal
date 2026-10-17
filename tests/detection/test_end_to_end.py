@@ -4,6 +4,9 @@ BE-012a: one step opens one ``is_mock`` alert. BE-012b: concurrent alerts on dis
 groups, release after a step is removed, states and onset (ADR-007 §4-6). BE-012c: a
 calibration that does not match the registry fails detection, not ingestion.
 
+BE-012d: the artefact is written by ``calibrate()`` + ``write_artefact()`` and the server starts
+with ``CusumDetector.for_pipeline``.
+
 Synthetic signal, placeholder sensor IDs and an invented calibration: this exercises the
 mechanics only and is not evidence of leak detection. The detector is injected through
 ``build_pipeline``; selecting it with ``SENTINEL_DETECTOR=cusum`` is not wired yet.
@@ -21,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from sentinel.audit.sinks import NullAuditSink
 from sentinel.config import DEFAULT_REGISTRY_PATH, Settings
+from sentinel.detection.calibration import ForecasterIdentity, calibrate, write_artefact
 from sentinel.detection.cusum import CusumDetector
 from sentinel.main import build_pipeline, create_app
 from sentinel.schemas.common import ModelInfo
@@ -28,13 +32,20 @@ from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
 from sentinel.sensors import SensorRegistry
 from sentinel.synthetic import window_payload
 from tests.conftest import INTERVAL, ts
-from tests.detection.artefacts import FORECASTER_NAME, FORECASTER_VERSION, artefact_fields
+from tests.detection.artefacts import (
+    FORECASTER_NAME,
+    FORECASTER_VERSION,
+    INVENTED_FOLDS_SHA256,
+    INVENTED_RESIDUALS_SHA256,
+    artefact_fields,
+)
+from tests.detection.residuals import synthetic_residuals
 
 REGISTRY = SensorRegistry.load(Path(__file__).parents[2] / DEFAULT_REGISTRY_PATH)
 # sigma 0.1 m: a 0.5 m step gives d = 5, so S grows by 4.5 per window and crosses h = 8 on the
 # second stepped window; cap c*h = 16; release when S < 4. The default settings score from
 # window 144 on.
-CALIBRATION = {"k": 0.5, "h": 8.0, "n_min": 3, "c": 2.0, "h_close": 4.0}
+CALIBRATION: dict[str, Any] = {"k": 0.5, "h": 8.0, "n_min": 3, "c": 2.0, "h_close": 4.0}
 STEP_M = 0.5
 GROUP_A = ("P05", "P12", "P20")
 GROUP_B = ("P01", "P02", "P03")
@@ -79,18 +90,55 @@ def replay_day(
     noise_m: float,
     indices: Sequence[int] = range(288),
     settings: Settings | None = None,
+    calibrated: bool = False,
 ) -> Day:
     """Replay the windows ``indices`` (default: one day); ``stepped(i)`` names the sensors
-    reading ``STEP_M`` low at window i. ``states`` follow the order of ``indices``."""
+    reading ``STEP_M`` low at window i. ``states`` follow the order of ``indices``.
+
+    By default the artefact has sigma 0.1 m for every sensor and is loaded with ``from_file``.
+    With ``calibrated`` it is the output of ``calibrate()`` on synthetic residuals (true sigma
+    about 0.1 m), written by ``write_artefact`` and started as the server does."""
     artefact = tmp_path_factory.mktemp("calibration") / "calibration.synthetic.json"
-    fields = artefact_fields(dict.fromkeys(REGISTRY.pressure, 0.1), **CALIBRATION)
-    artefact.write_text(json.dumps(fields), encoding="utf-8")
     settings = settings or Settings()
+    forecaster = ProfileForecaster(REGISTRY)
+    if calibrated:
+        residuals = synthetic_residuals(
+            dict.fromkeys(REGISTRY.pressure, 0.1),
+            windows=10 * 288,
+            seed=11,
+            phi=0.9,
+            amplitude=0.0,
+            common_scale=0.0,
+        )
+        write_artefact(
+            calibrate(
+                residuals,
+                provenance="synthetic",
+                forecaster=ForecasterIdentity(
+                    name=forecaster.info.name, version=forecaster.info.version
+                ),
+                residuals_sha256=INVENTED_RESIDUALS_SHA256,
+                folds_sha256=INVENTED_FOLDS_SHA256,
+                sigma_floor_m=0.01,
+                **CALIBRATION,
+            ),
+            artefact,
+        )
+        detector = CusumDetector.for_pipeline(
+            artefact,
+            interval=INTERVAL,
+            pressure_sensors=REGISTRY.pressure,
+            forecaster=forecaster.info,
+        )
+    else:
+        fields = artefact_fields(dict.fromkeys(REGISTRY.pressure, 0.1), **CALIBRATION)
+        artefact.write_text(json.dumps(fields), encoding="utf-8")
+        detector = CusumDetector.from_file(artefact, interval=INTERVAL)
     pipeline = build_pipeline(
         settings,
         registry=REGISTRY,
-        forecaster=ProfileForecaster(REGISTRY),
-        detector=CusumDetector.from_file(artefact, interval=INTERVAL),
+        forecaster=forecaster,
+        detector=detector,
         audit_sink=NullAuditSink(),
     )
     rng = random.Random(1)
@@ -151,6 +199,32 @@ def test_detector_is_normal_before_the_step_and_in_alarm_after_the_alert(one_ste
     assert states[:144] == [None] * 144  # insufficient history: not scored
     assert set(states[144 : STEP_AT + 1]) == {"normal"}
     assert set(states[STEP_AT + 1 :]) == {"alarm"}
+
+
+@pytest.fixture(scope="module")
+def calibrated_step(tmp_path_factory: pytest.TempPathFactory) -> Day:
+    return replay_day(
+        tmp_path_factory,
+        lambda i: GROUP_A if i >= STEP_AT else (),
+        noise_m=0.01,
+        calibrated=True,
+    )
+
+
+def test_artefact_from_calibrate_serves_a_step_as_exactly_one_alert(calibrated_step: Day) -> None:
+    (alert,) = calibrated_step.alerts
+    assert alert["window_end"] == iso(STEP_AT + 1)
+    assert sensors(alert) == sorted(GROUP_A)
+    assert alert["cusum"]["threshold"] == 8.0
+
+
+def test_calibrated_server_labels_the_alert_with_the_hash_of_the_written_file(
+    calibrated_step: Day,
+) -> None:
+    (alert,) = calibrated_step.alerts
+    version = f"0.1.0+{calibrated_step.artefact_sha256[:8]}"
+    assert alert["models"]["detector"] == {"name": "cusum", "version": version, "is_mock": True}
+    assert alert["is_mock"] is True
 
 
 # --------------------------------------------------------------------------- BE-012b

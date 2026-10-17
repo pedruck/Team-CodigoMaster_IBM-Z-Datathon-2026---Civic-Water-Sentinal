@@ -14,16 +14,24 @@ import pytest
 from pydantic import ValidationError
 
 from sentinel.config import ConfigError
-from sentinel.detection.calibration import CalibrationArtefact, write_artefact
+from sentinel.detection.calibration import (
+    CalibrationArtefact,
+    ForecasterIdentity,
+    calibrate,
+    write_artefact,
+)
 from sentinel.detection.cusum import CusumDetector
 from sentinel.schemas.common import ModelInfo
 from tests.conftest import INTERVAL, ts
 from tests.detection.artefacts import (
     FORECASTER_NAME,
     FORECASTER_VERSION,
+    INVENTED_FOLDS_SHA256,
+    INVENTED_RESIDUALS_SHA256,
     artefact_fields,
     make_artefact,
 )
+from tests.detection.residuals import robust_scale, synthetic_residuals
 
 ARTEFACT: dict[str, Any] = artefact_fields({"P1": 0.1, "P2": 0.2})
 
@@ -192,3 +200,137 @@ def test_forecaster_other_than_the_calibrated_one_fails_startup(
         ConfigError, match=f"{FORECASTER_NAME} {FORECASTER_VERSION}.*{name} {version}"
     ):
         for_pipeline(tmp_path, forecaster=served)
+
+
+# ------------------------------------------------------------------ calibrate() (ADR-008 §C)
+
+# Invented scales, in metres, deliberately not sorted. AR(1) phi 0.9, a +-50% diurnal swing of the
+# noise scale and a common-mode component: harder than the signal is expected to be.
+SCALES = {"P2": 0.05, "P1": 0.2, "P3": 0.1}
+SWING, COMMON_M, PHI = 0.5, 0.03, 0.9
+CALIBRATION_ARGS: dict[str, Any] = {
+    "provenance": "synthetic",
+    "forecaster": ForecasterIdentity(name=FORECASTER_NAME, version=FORECASTER_VERSION),
+    "residuals_sha256": INVENTED_RESIDUALS_SHA256,
+    "folds_sha256": INVENTED_FOLDS_SHA256,
+    "sigma_floor_m": 0.001,
+    "k": 0.5,
+    "h": 8.0,
+    "n_min": 2,
+    "c": 2.0,
+    "h_close": 4.0,
+}
+
+
+def calibrate_with(residuals: dict[str, list[float]], **overrides: Any) -> CalibrationArtefact:
+    return calibrate(residuals, **{**CALIBRATION_ARGS, **overrides})
+
+
+def test_sigma_is_1_4826_times_the_mad_of_each_sensor() -> None:
+    # median 3, |r - 3| = 2 1 0 1 97, MAD = 1; the outlier does not move it
+    artefact = calibrate_with({"P1": [1.0, 2.0, 3.0, 4.0, 100.0]}, n_min=1)
+
+    assert artefact.sigma_m == {"P1": pytest.approx(1.4826)}
+
+
+def test_recovers_the_known_sigma_of_autocorrelated_heteroscedastic_residuals() -> None:
+    residuals = synthetic_residuals(
+        SCALES, windows=40 * 288, seed=7, phi=PHI, amplitude=SWING, common_scale=COMMON_M
+    )
+
+    artefact = calibrate_with(residuals)
+
+    for sensor, scale in SCALES.items():
+        truth = robust_scale(scale, amplitude=SWING, common_scale=COMMON_M)
+        assert artefact.sigma_m[sensor] == pytest.approx(truth, rel=0.10), sensor
+
+
+def test_sensors_keep_the_order_of_the_input_mapping() -> None:
+    artefact = calibrate_with({"P3": [1.0, -1.0], "P1": [2.0, -2.0], "P2": [3.0, -3.0]})
+
+    assert list(artefact.sigma_m) == ["P3", "P1", "P2"]
+
+
+def test_sigma_never_falls_below_the_floor() -> None:
+    flat = [0.0] * 10  # MAD = 0
+    tiny = [0.001, -0.001] * 5  # 1.4826 * 0.001 < floor
+    artefact = calibrate_with({"P1": flat, "P2": tiny}, sigma_floor_m=0.05)
+
+    assert artefact.sigma_m == {"P1": 0.05, "P2": 0.05}
+
+
+def test_the_remaining_parameters_are_copied_into_the_artefact_unchanged() -> None:
+    artefact = calibrate_with(
+        {"P1": [1.0, -1.0, 2.0], "P2": [1.0, -1.0, 2.0]},
+        provenance="dev-baseline-2018",
+        forecaster=ForecasterIdentity(name="other", version="9.9.9"),
+        residuals_sha256="ab" * 32,
+        folds_sha256="cd" * 32,
+        k=0.25,
+        h=11.0,
+        n_min=2,
+        c=3.0,
+        h_close=2.5,
+    )
+
+    assert (artefact.k, artefact.h, artefact.n_min, artefact.c, artefact.h_close) == (
+        0.25,
+        11.0,
+        2,
+        3.0,
+        2.5,
+    )
+    assert artefact.provenance == "dev-baseline-2018"
+    assert artefact.is_mock
+    assert (artefact.forecaster.name, artefact.forecaster.version) == ("other", "9.9.9")
+    assert (artefact.residuals_sha256, artefact.folds_sha256) == ("ab" * 32, "cd" * 32)
+
+
+@pytest.mark.parametrize(
+    ("residuals", "overrides"),
+    [
+        pytest.param({"P1": [1.0, float("nan")]}, {}, id="nan-residual"),
+        pytest.param({"P1": [1.0, float("inf")]}, {}, id="infinite-residual"),
+        pytest.param({"P1": [1.0, 2.0], "P2": [-float("inf"), 1.0]}, {}, id="one-bad-sensor"),
+        pytest.param({"P1": []}, {}, id="empty-series"),
+        pytest.param({"P1": [1.0, 2.0], "P2": []}, {}, id="one-empty-series"),
+        pytest.param({}, {}, id="no-sensors"),
+        pytest.param({"P1": [1.0, 2.0]}, {"sigma_floor_m": 0.0}, id="floor-zero"),
+        pytest.param({"P1": [1.0, 2.0]}, {"sigma_floor_m": -0.1}, id="floor-negative"),
+        pytest.param({"P1": [1.0, 2.0]}, {"sigma_floor_m": float("nan")}, id="floor-nan"),
+        pytest.param({"P1": [1.0, 2.0]}, {"sigma_floor_m": float("inf")}, id="floor-infinite"),
+    ],
+)
+def test_invalid_residuals_or_floor_are_rejected(
+    residuals: dict[str, list[float]], overrides: dict[str, Any]
+) -> None:
+    with pytest.raises(ValueError):
+        calibrate_with(residuals, **overrides)
+
+
+def test_parameters_have_no_numeric_default() -> None:
+    for name in CALIBRATION_ARGS:
+        args = {k: v for k, v in CALIBRATION_ARGS.items() if k != name}
+        with pytest.raises(TypeError, match=name):
+            calibrate({"P1": [1.0, 2.0]}, **args)
+
+
+def test_calibrated_artefact_written_and_loaded_has_the_same_version_and_id_as_in_memory(
+    tmp_path: Path,
+) -> None:
+    artefact = calibrate_with({"P2": [0.1, -0.2, 0.3, 0.0], "P1": [1.0, -1.0, 0.5, -0.5]})
+    path = tmp_path / "calibration.synthetic.json"
+
+    write_artefact(artefact, path)
+    in_memory = CusumDetector(artefact, interval=INTERVAL)
+    from_file = CusumDetector.from_file(path, interval=INTERVAL)
+
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert in_memory.info == from_file.info
+    assert from_file.info.version == f"0.1.0+{digest[:8]}"
+    observed = expected = {"P1": 50.0, "P2": 50.0}
+    ids = {
+        d.evaluate(observed, expected, ts(0)).diagnostics["calibration_id"]
+        for d in (in_memory, from_file)
+    }
+    assert ids == {digest}
