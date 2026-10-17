@@ -14,7 +14,7 @@ and the answers to the ML questions in `docs/questions-for-team.md`.
 | 3 | GRU, all 33 sensors | `forecasting/gru.py` | `notebooks/p2_forecast/03_gru_keras_zdnn.ipynb` | TensorFlow + `ibm-zdnn-plugin` (organisers' image); ONNX for zDLC |
 
 Every step must beat the previous one on the 2018 validation period (Nov–Dec); 2019 is never
-read by P2 (`p2lib.load_scada` refuses it).
+read by P2 (`training.load_scada` refuses it).
 
 The notebooks follow the organisers' examples (`Loan_Approval_Demo`, `Churn_Scikit_PyTorch`,
 `Fraud_LSTM_Keras_TF`, `Digit_Class_TensorFlow`): pandas from CSV → train → evaluate → export a
@@ -23,28 +23,46 @@ portable format → accelerator check (`ibm-zdnn-plugin`, `_z_ops.so`, NNPA) →
 
 ## Features (single source)
 
-`forecasting/features.py` defines the features once. The notebooks build them vectorised
-(`notebooks/p2_forecast/p2lib.py`) and **assert row by row that both give the same numbers**
-before training, so training and inference cannot drift apart.
+`forecasting/features.py` defines the features once. `forecasting/training.py` builds them
+vectorised with pandas for the notebooks, which **assert row by row that both give the same
+numbers** before training, so training and inference cannot drift apart. `training.py` is
+type-checked and tested in CI (`tests/test_forecasting_training.py`); inference never imports it.
 
 - **XGBoost** (per target sensor): inlet/pump flows, tank level, hour, day of week and the
   *other* 32 pressure sensors at the same instant. Never the target's own reading.
 - **GRU** (per timestep): all pressures, flows, tank level, cyclic calendar (sin/cos of hour and
   of week). Reads `request.history` only, never the window being scored.
 
-Sensor IDs are the data owner's column names (`Pressure_n1`, `Flow_p227`, `Level_T1`), the same
-IDs the backend reads from `data/vN/sensors.csv`.
+## Sensor IDs: two spellings, one model
+
+The project currently has two valid registries for the same 37 sensors:
+
+| Registry | IDs | Who points to it |
+|---|---|---|
+| `config/sensors.battledim.json` | `n1`, `p227`, `PUMP_1`, `T1` | P1, `docs/data.md` §4 (official, DEP-DATA-01) |
+| `$SENTINEL_DATA_DIR/v1/sensors.csv` | `Pressure_n1`, `Flow_p227`, `Level_T1` | backend `.env.example` |
+
+Training reads the same variable as the API (`SENTINEL_SENSOR_REGISTRY`, default the official
+JSON) and stores those IDs in the model. At inference `IdTranslator` maps the request's spelling
+onto the model's, so a model works whichever registry the API uses. **The team should still
+pick one** so alerts, the dashboard and P4's sensor → region map use the same names.
 
 ## Training choices
 
-- **Leak-aware training**: windows inside a leak of the 2018 report (`leaks_2018.csv`,
-  `start ≤ t ≤ end`) are excluded (baseline, XGBoost) or weighted 0 (GRU).
+- **Leak-aware training with P1's mask** (`sentinel.data.clean_mask`, `docs/data.md` §7), default
+  policy `reparados` (43.5% of 2018 on the real data): the periods of the 10 leaks repaired in
+  2018 are excluded; the 4 unrepaired incipient leaks stay, as part of the "normal" state.
+  Excluding every active leak (`todos`) would leave 2.1% of the year. The GRU only learns from
+  targets whose whole input window is clean (`training.sequence_weights`).
 - **Split**: fit Jan–Oct 2018, early-stop / validate Nov–Dec 2018, then refit on all leak-free
   2018 windows (baseline, XGBoost).
 - **σ per sensor** (`sigma_m` in every model's metadata): 1.4826·MAD of the validation residuals.
   This is the σ of `z = (expected − observed) / σ` for P4.
-- **Leak contrast** (in every model's metadata): mean |z| inside known 2018 leaks divided by mean
-  |z| outside, on validation. Higher means leaks stand out more. It is reported next to MAE
+- **Low-variance sensors**: `n215` and `n740` barely move (`docs/data.md` §11), so a tiny σ
+  inflates z. The notebooks list sensors with σ < 0.02 m (`training.low_variance_sensors`) so P4
+  can floor σ for them.
+- **Leak contrast** (in every model's metadata): mean |z| in windows the mask marks as
+  leak-affected divided by mean |z| in clean windows, on validation. Higher means leaks stand out more. It is reported next to MAE
   because a lower MAE alone can mean the model *follows* the leak (see risks).
 
 ## Artefacts (outside git)
@@ -99,6 +117,7 @@ numpy, xgboost, snapml and tensorflow are installed.
 | Q-ML-04 | Same process as FastAPI, VM image Python. No onnxruntime wheel exists for s390x; TensorFlow is in the organisers' image. |
 | Q-ML-05 | Measured by Part B of notebooks 02/03 and stored in `meta.json` per machine; all far below the 300 s window. |
 | Q-ML-06 | baseline 1, XGBoost 1, GRU `window + horizon − 1` (143 + horizon with the 12 h default; ≤ 288). |
+| DEP-ML (data) | Mask, registry and v1 files consumed exactly as documented by P1 (`docs/data.md`). |
 
 ## Risks
 

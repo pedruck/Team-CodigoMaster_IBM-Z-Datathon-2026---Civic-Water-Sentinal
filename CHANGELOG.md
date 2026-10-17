@@ -19,8 +19,9 @@ contract versions are tracked separately (`schema_version`).
 ### Added
 - Forecasting (ML owner): hour-of-week baseline, per-sensor XGBoost served with Snap ML (with
   TreeSHAP contributions) and a 33-sensor GRU (TensorFlow, ONNX export with a fused `GRU` node);
-  shared feature definitions, `load_forecaster` registry, training notebooks in
-  `notebooks/p2_forecast/` and `docs/p2-forecasting.md`. Snap ML import of XGBoost 3.x JSON fixed
+  shared feature definitions, `load_forecaster` registry, training helpers
+  (`forecasting/training.py`, P1's clean mask), notebooks in `notebooks/p2_forecast/` and
+  `docs/p2-forecasting.md`. Forecasters accept both sensor ID spellings (`n1` / `Pressure_n1`). Snap ML import of XGBoost 3.x JSON fixed
   (`portable_booster_json`). ML tests skip where numpy/xgboost/tensorflow are absent.
 - Sensor registry loaded from the data owner's `data/vN/sensors.csv` (official IDs and units,
   shown in `/v1/status`); `scripts/validate_v1_ingestion.py` runs a full year of the export
