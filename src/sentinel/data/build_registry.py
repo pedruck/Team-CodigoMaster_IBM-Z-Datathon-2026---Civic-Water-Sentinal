@@ -5,10 +5,14 @@ Uso: python -m sentinel.data.build_registry --version v1
 Os IDs são os elementos da rede L-Town (nó n<N>, cano p<N>, bomba PUMP_1, tanque T1),
 lidos de $SENTINEL_DATA_DIR/<versão>/sensors.csv, na mesma ordem das colunas do SCADA.
 """
+
+from __future__ import annotations
+
 import argparse
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -17,7 +21,7 @@ from sentinel.sensors import SensorRegistry
 TIPOS = {"pressao": "pressure", "vazao": "flow", "nivel": "tank_level"}
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--version", default="v1")
     ap.add_argument("--data-dir", default=os.environ.get("SENTINEL_DATA_DIR"))
@@ -27,13 +31,15 @@ def main(argv=None) -> int:
         raise SystemExit("Defina SENTINEL_DATA_DIR ou passe --data-dir.")
 
     sensors = pd.read_csv(Path(args.data_dir).expanduser() / args.version / "sensors.csv")
-    registro = {
+    registro: dict[str, Any] = {
         "provisional": False,
-        "note": (f"IDs oficiais do BattLeDIM L-Town (elemento da rede), gerados de "
-                 f"data/{args.version}/sensors.csv. Unidades: pressão m, vazão m3/h, nível m."),
-        **{campo: sensors.loc[sensors["tipo"] == tipo, "elemento_rede"].tolist()
-           for tipo, campo in TIPOS.items()},
+        "note": (
+            "IDs oficiais do BattLeDIM L-Town (elemento da rede), gerados de "
+            f"data/{args.version}/sensors.csv. Unidades: pressão m, vazão m3/h, nível m."
+        ),
     }
+    for tipo, campo in TIPOS.items():
+        registro[campo] = sensors.loc[sensors["tipo"] == tipo, "elemento_rede"].tolist()
     args.out.write_text(json.dumps(registro, indent=2, ensure_ascii=False) + "\n")
 
     reg = SensorRegistry.load(args.out)

@@ -18,43 +18,61 @@ Políticas:
 margem_janelas: janelas extras excluídas depois de cada reparo (padrão 0).
 Só usa leaks_2018.csv (ano de treino). Nunca lê o gabarito de 2019.
 """
+
+from __future__ import annotations
+
 import argparse
 import os
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 POLITICAS = ("reparados", "reparados+crescimento", "todos")
 
 
-def carregar_vazamentos(data_dir=None, version="v1") -> pd.DataFrame:
+def carregar_vazamentos(data_dir: str | None = None, version: str = "v1") -> pd.DataFrame:
     base = Path(data_dir or os.environ["SENTINEL_DATA_DIR"]).expanduser()
     return pd.read_csv(base / version / "leaks_2018.csv", parse_dates=["start", "end", "peak"])
 
 
-def _alinhar(t: pd.Timestamp, index: pd.DatetimeIndex) -> pd.Timestamp:
-    return t.tz_localize("UTC") if index.tz is not None and t.tzinfo is None else t
+def _alinhar(t: Any, index: pd.DatetimeIndex) -> pd.Timestamp:
+    ts = pd.Timestamp(t)
+    if index.tz is not None and ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts
 
 
-def mascara_limpa(index: pd.DatetimeIndex, vazamentos: pd.DataFrame,
-                  politica: str = "reparados", margem_janelas: int = 0) -> pd.Series:
+def mascara_limpa(
+    index: pd.DatetimeIndex,
+    vazamentos: pd.DataFrame,
+    politica: str = "reparados",
+    margem_janelas: int = 0,
+) -> pd.Series[bool]:
     """True = janela limpa (pode treinar); False = afetada por vazamento."""
     if politica not in POLITICAS:
         raise ValueError(f"política desconhecida: {politica}; use uma de {POLITICAS}")
-    limpo = pd.Series(True, index=index, name="limpo")
+    limpo: pd.Series[bool] = pd.Series(True, index=index, name="limpo")
     margem = pd.Timedelta(minutes=5 * margem_janelas)
-    for v in vazamentos.itertuples():
-        inicio = _alinhar(v.start, index)
-        if v.repaired_in_2018:
-            limpo[inicio:_alinhar(v.end, index) + margem] = False
+    linhas = zip(
+        vazamentos["start"],
+        vazamentos["end"],
+        vazamentos["peak"],
+        vazamentos["repaired_in_2018"],
+        strict=True,
+    )
+    for inicio, fim, pico, reparado in linhas:
+        ini = _alinhar(inicio, index)
+        if reparado:
+            limpo[ini : _alinhar(fim, index) + margem] = False
         elif politica == "todos":
-            limpo[inicio:_alinhar(v.end, index)] = False
+            limpo[ini : _alinhar(fim, index)] = False
         elif politica == "reparados+crescimento":
-            limpo[inicio:_alinhar(v.peak, index)] = False
+            limpo[ini : _alinhar(pico, index)] = False
     return limpo
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--version", default="v1")
     ap.add_argument("--data-dir", default=os.environ.get("SENTINEL_DATA_DIR"))

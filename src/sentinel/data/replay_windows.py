@@ -10,6 +10,9 @@ Os IDs vêm do registro oficial de sensores. Nenhum rótulo de vazamento é lido
 O BattLeDIM não tem fuso: o horário simulado é tratado como UTC. O timestamp marca o fim
 da janela de 5 min.
 """
+
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -23,7 +26,7 @@ from sentinel.sensors import SensorRegistry
 PREFIXO = {"pressures": "Pressure_", "flows": "Flow_", "tank_levels": "Level_"}
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--year", type=int, default=2019)
     ap.add_argument("--version", default="v1")
@@ -41,15 +44,23 @@ def main(argv=None) -> int:
     if reg.provisional:
         raise SystemExit(f"{args.registry} é provisório; use o registro oficial.")
 
-    df = pd.read_csv(base / args.version / f"scada_{args.year}.csv.gz",
-                     index_col="timestamp", parse_dates=True)
-    df.index = df.index.tz_localize("UTC")
+    df = pd.read_csv(
+        base / args.version / f"scada_{args.year}.csv.gz",
+        index_col="timestamp",
+        parse_dates=True,
+    )
+    df.index = pd.DatetimeIndex(df.index).tz_localize("UTC")
     if args.start:
-        df = df.loc[pd.Timestamp(args.start, tz="UTC"):]
+        df = df.loc[pd.Timestamp(args.start, tz="UTC") :]
     if args.end:
-        df = df.loc[:pd.Timestamp(args.end, tz="UTC") + pd.Timedelta("23h55min")]
+        df = df.loc[: pd.Timestamp(args.end, tz="UTC") + pd.Timedelta("23h55min")]
+    idx = pd.DatetimeIndex(df.index)
 
-    grupos = {"pressures": reg.pressure, "flows": reg.flow, "tank_levels": reg.tank_level}
+    grupos: dict[str, tuple[str, ...]] = {
+        "pressures": reg.pressure,
+        "flows": reg.flow,
+        "tank_levels": reg.tank_level,
+    }
     colunas = {campo: [PREFIXO[campo] + sid for sid in ids] for campo, ids in grupos.items()}
     faltando = [c for cs in colunas.values() for c in cs if c not in df.columns]
     if faltando:
@@ -66,18 +77,21 @@ def main(argv=None) -> int:
 
     valores = {campo: df[cols].to_numpy() for campo, cols in colunas.items()}
     with saida.open("w", encoding="utf-8") as f:
-        for i, ts in enumerate(df.index):
+        for i, ts in enumerate(idx):
+            leituras = {
+                campo: dict(zip(grupos[campo], map(float, valores[campo][i]), strict=True))
+                for campo in grupos
+            }
             janela = {
                 "schema_version": "1.0",
                 "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                **{campo: dict(zip(grupos[campo], map(float, valores[campo][i])))
-                   for campo in grupos},
+                **leituras,
                 "source": source,
             }
             SensorWindow.model_validate(janela)
             f.write(json.dumps(janela, separators=(",", ":")) + "\n")
 
-    print(f"{saida} | {len(df)} janelas | {df.index.min()} a {df.index.max()}")
+    print(f"{saida} | {len(df)} janelas | {idx.min()} a {idx.max()}")
     return 0
 
 
