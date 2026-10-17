@@ -8,13 +8,14 @@ This module receives each window, validates it, keeps the rolling 12–24 h hist
 forecaster and the detector through stable interfaces, stores alerts, emits audit events and
 serves results to the dashboard.
 
-> **State:** the backend runs end to end with a **mock** forecaster and, by default, a **mock**
+> **State:** by default the backend runs end to end with a **mock** forecaster and a **mock**
 > detector; it validates the real BattLeDIM sensor set from the data owner's `data/v1` export.
-> The CUSUM detector can be selected at startup (`SENTINEL_DETECTOR=cusum`, see
+> The ML owner's XGBoost forecaster can be selected at startup (`SENTINEL_FORECASTER=xgboost`,
+> see [Running with a real forecaster](#running-with-a-real-forecaster)). The CUSUM detector can
+> be selected too (`SENTINEL_DETECTOR=cusum`, see
 > [Running with the CUSUM detector](#running-with-the-cusum-detector)), but no real calibration
-> exists yet, so its output is still `is_mock=true`. Real models, a real calibration, the
-> region mapping of L-Town, the audit log and LinuxONE runs are pending other members — see
-> [`docs/status.md`](docs/status.md).
+> exists yet, so its output is still `is_mock=true`. A real calibration, the region mapping of
+> L-Town and the audit log are pending other members — see [`docs/status.md`](docs/status.md).
 
 ## Quick start
 
@@ -66,6 +67,21 @@ Main ones: `SENTINEL_HISTORY_CAPACITY` (288), `SENTINEL_MIN_HISTORY_WINDOWS` (14
 official registry, for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`), `SENTINEL_DETECTOR`
 (`mock` | `cusum`, below). Invalid values fail at startup. State is **in memory** and lost on
 restart (ADR-003).
+
+## Running with a real forecaster
+
+| Variable | Meaning |
+|---|---|
+| `SENTINEL_FORECASTER` | `mock` (default), `baseline`, `xgboost` or `gru` |
+| `SENTINEL_FORECASTER_PATH` | artefact of the ML owner (`docs/p2-forecasting.md`). **Required** unless `mock` |
+| `SENTINEL_FORECASTER_CONTRIBUTIONS` | XGBoost TreeSHAP contributions in alerts (`true`, default) or not (`false`, long replays) |
+| `SENTINEL_FORECASTER_ENGINE` | `snapml` (default) or `xgboost` |
+| `SENTINEL_FORECASTER_TREE_FORMAT` | Snap ML: `auto` (default; NNPA on LinuxONE), `compress_trees` or `zdnn_tensors` |
+
+The model is loaded once at startup; if it cannot be loaded the server does not start (it never
+falls back to the mock). XGBoost needs numpy, xgboost and snapml, which come from the LinuxONE
+image (`/opt/venv`), not from `uv sync`. On the VM: `docs/runbook-vm.md`. A CUSUM calibration
+names the forecaster it was made for and must match the one served.
 
 ## Running with the CUSUM detector
 

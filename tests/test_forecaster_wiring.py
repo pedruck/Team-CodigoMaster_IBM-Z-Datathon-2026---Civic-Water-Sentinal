@@ -8,10 +8,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from sentinel.config import ConfigError, Settings
+from sentinel.config import DEFAULT_REGISTRY_PATH, ConfigError, Settings
+from sentinel.detection.calibration import write_artefact
 from sentinel.forecasting.baseline import SLOTS
 from sentinel.main import create_app
 from sentinel.sensors import SensorRegistry
+from tests.detection.artefacts import make_artefact
 
 OFFICIAL = Path("config/sensors.battledim.json")
 T0 = datetime(2019, 1, 1, 0, 5, tzinfo=UTC)
@@ -149,3 +151,40 @@ def test_api_loads_xgboost_with_contributions_switch(tmp_path: Path) -> None:
         result = client.post("/v1/windows", json=_window(reg, 1)).json()
         assert result["status"] == "scored", result["issues"]
         assert result["issues"] == []
+
+
+def _cusum_with_baseline_env(tmp_path: Path, calibrated_for: dict[str, str]) -> dict[str, str]:
+    """Real baseline forecaster + CUSUM detector, both selected from the environment. The
+    calibration is invented (``provenance = synthetic``); only the startup check matters."""
+    reg = SensorRegistry.load(DEFAULT_REGISTRY_PATH)
+    calibration = tmp_path / "calibration.synthetic.json"
+    artefact = make_artefact(dict.fromkeys(reg.pressure, 0.1), forecaster=calibrated_for)
+    write_artefact(artefact, calibration)
+    return {
+        "SENTINEL_FORECASTER": "baseline",
+        "SENTINEL_FORECASTER_PATH": str(_baseline_artefact(tmp_path, reg.pressure)),
+        "SENTINEL_DETECTOR": "cusum",
+        "SENTINEL_DETECTOR_CALIBRATION": str(calibration),
+        "SENTINEL_MIN_HISTORY_WINDOWS": "1",
+    }
+
+
+def test_cusum_starts_with_the_real_forecaster_it_was_calibrated_for(tmp_path: Path) -> None:
+    env = _cusum_with_baseline_env(tmp_path, {"name": "baseline-hourofweek", "version": "0.0.1"})
+    reg = SensorRegistry.load(DEFAULT_REGISTRY_PATH)
+    client = TestClient(create_app(Settings.from_env(env)))
+
+    status = client.get("/v1/status").json()
+    assert status["forecaster"]["name"] == "baseline-hourofweek"
+    assert status["detector"]["name"] == "cusum"
+    client.post("/v1/windows", json=_window(reg, 0))
+    result = client.post("/v1/windows", json=_window(reg, 1)).json()
+    assert result["status"] == "scored", result["issues"]
+    assert result["detector"]["name"] == "cusum"
+
+
+def test_cusum_calibrated_for_another_forecaster_stops_startup(tmp_path: Path) -> None:
+    # Calibrated on the persistence mock's residuals, served with the baseline: refused.
+    env = _cusum_with_baseline_env(tmp_path, {"name": "mock-persistence", "version": "0.1.0"})
+    with pytest.raises(ConfigError, match="forecaster"):
+        create_app(Settings.from_env(env))
