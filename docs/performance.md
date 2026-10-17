@@ -122,6 +122,25 @@ Jupyter kernels open, idle).
 | audit backlog after the run | 0 events |
 | API log size | 26.5 MB for the year (one INFO line per window) |
 
+### Full 2019 over HTTP into the shared API with the real XGBoost forecaster (2026-10-17)
+
+Same procedure, `main` @ `333b1bd`, `SENTINEL_FORECASTER=xgboost` (`xgboost-33@0.1.0`,
+`SENTINEL_FORECASTER_CONTRIBUTIONS=false`, `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees`),
+mock detector, `SENTINEL_LOG_LEVEL=WARNING`, client `nice -n 10` in the same container.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 × `201` · error rate 0 · 144 `insufficient_history`, 104 976 `scored` · 0 alerts |
+| wall time / client throughput | 246.99 s / 425.6 windows/s |
+| client latency p50 / p99 / max | 1.96 / 11.17 / 204.514 ms |
+| server `http_post_windows` p50 / p95 / p99 / max (last 10 000) | 1.5679 / 2.532 / 5.8296 / 84.6257 ms |
+| pipeline `total` p50 / p95 / p99 (last 10 000) | 0.9355 / 1.1867 / 1.5438 ms |
+| `forecast` / `detection` p50 (last 10 000) | 0.6903 / 0.0921 ms |
+| audit backlog after the run | 0 events |
+
+The forecast stage matches the in-process run (0.651 ms p50, `compress_trees`); the extra
+~0.67 ms of `total` p50 over the mock run is the model. One run, shared VM, not a benchmark.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
