@@ -12,9 +12,9 @@ confirmar. Nada aqui foi rodado com dados reais do BattLeDIM nem contra o watson
 | Validação do texto gerado | `src/sentinel/narrative/check.py` |
 | LLM injetável + fallback | `src/sentinel/narrative/explain.py` |
 | Granite no watsonx.ai | `src/sentinel/narrative/watsonx.py` — `WatsonxNarrator` |
-| Granite na própria LinuxONE (GGUF via llama.cpp) | `src/sentinel/narrative/local.py` — `LocalGraniteNarrator` |
+| Granite na própria LinuxONE (GGUF via llama.cpp) | `src/sentinel/narrative/local.py` — `LlamaCppNarrator` (no processo) e `LocalGraniteNarrator` (servidor) |
 | Notebook para a VM (descoberta + Granite local) | `notebooks/p5_audit/p5_linuxone_granite.ipynb` |
-| Explicar um alerta pela linha de comando | `src/sentinel/narrative/__main__.py` — `python -m sentinel.narrative [--watsonx]` |
+| Explicar um alerta pela linha de comando | `src/sentinel/narrative/__main__.py` — `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
 | API com a cadeia ligada (temporário, até BE-013) | `src/sentinel/audit/devserver.py` |
 | Alerta inventado para testes/notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
 | Testes | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_watsonx.py` |
@@ -129,40 +129,41 @@ associado.
 
 ## Granite na própria LinuxONE (sem nuvem)
 
-A VM da equipe tem o arquivo `~/granite-4.0-h-350m-base-be.f16.gguf` (653 MB): formato GGUF do
-llama.cpp, big-endian (`-be`, obrigatório no s390x), pesos f16, Granite 4.0 H 350M
-**base**, um modelo pequeno e **não** ajustado para instruções.
+O que a VM da equipe tem (seção 1 de `p5_linuxone_granite.ipynb`, 2026-10-17):
 
-`LocalGraniteNarrator` conversa com um servidor de completions compatível com OpenAI
-(`POST {LOCAL_LLM_URL}/v1/completions`, resposta em `choices[0].text`). Esse servidor pode ser o
-`llama-server` do llama.cpp ou o `python -m llama_cpp.server`. Como o modelo é *base*, o prompt
-traz dois exemplos inventados e os fatos do alerta (`prompt_for`). Se o modelo copiar um exemplo
-ou inventar algo, `check_narrative` recusa e entra o template.
+| Item | Resultado |
+|---|---|
+| Máquina | s390x, 3 CPUs, 8,2 GB de RAM (3,2 GB livres no momento), NNPA (Telum) visível |
+| Modelo | `~/granite-4.0-h-350m-base-be.f16.gguf`, 685 MB, GGUF v3 big-endian |
+| Runtime | `llama_cpp` (llama-cpp-python) **instalado no kernel do Jupyter**; sem `llama-server`; `gcc` e `cmake` presentes |
+| Exemplo da IBM | `~/Loan_Approval_Demo.ipynb` menciona o Granite |
+
+O modelo é o Granite 4.0 H 350M **base**: pequeno e **não** ajustado para instruções. Por isso o
+prompt traz dois exemplos inventados e depois os fatos do alerta (`prompt_for`). Se o modelo
+copiar um exemplo ou inventar algo, `check_narrative` recusa e entra o template.
+
+**Caminho principal: `LlamaCppNarrator`.** Carrega o GGUF dentro do processo Python com o
+`llama_cpp`, uma vez, e serializa as chamadas. `close()` libera a memória.
 
 | Variável | Padrão |
 |---|---|
-| `LOCAL_LLM_URL` | `http://127.0.0.1:8080` |
-| `LOCAL_LLM_MODEL` | `granite-4.0-h-350m-base` (só o nome que aparece em `generator`) |
-| `LOCAL_LLM_TIMEOUT_S` | 60 |
+| `LOCAL_LLM_MODEL_PATH` | `~/granite-4.0-h-350m-base-be.f16.gguf` |
+| `LOCAL_LLM_THREADS` | 1 (3 vCPUs para a equipe) |
+| `LOCAL_LLM_CTX` | 2048 tokens |
 
-Servidor (num terminal do Jupyter; 1 thread, porque a VM tem 3 vCPUs para a equipe):
+Teste: `python -m sentinel.narrative --llamacpp`. A saída 0 significa texto aceito, e o
+resultado mostra `model_load_s` e `elapsed_s`. O notebook `p5_linuxone_granite.ipynb` carrega o
+modelo, explica um alerta inventado e um do pipeline (en/pt) e libera a memória.
 
-```bash
-llama-server -m ~/granite-4.0-h-350m-base-be.f16.gguf --host 127.0.0.1 --port 8080 -t 1 -c 4096
-```
+**Alternativa com servidor: `LocalGraniteNarrator`.** Usa `POST {LOCAL_LLM_URL}/v1/completions`
+(`LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`, `LOCAL_LLM_TIMEOUT_S`) com um `llama-server` ou
+`python -m llama_cpp.server`. Serve para quando o modelo precisar ficar fora do processo da
+API. Hoje a VM não tem `llama-server`.
 
-Teste: `python -m sentinel.narrative --local` (saída 0 = texto aceito). O notebook
-`p5_linuxone_granite.ipynb` faz a descoberta, confere o servidor e mostra aceito × recusado.
-
-**Ponto em aberto:** a VM não tem `gcc`/`cmake` e o llama.cpp não publica binário para s390x
-(o caminho oficial é compilar; o guia s390x do llama.cpp pede OpenBLAS e, para o NNPA,
-`-DGGML_ZDNN=ON`). É preciso descobrir com quem pôs o modelo na VM qual runtime usar. A seção 1
-do notebook mostra se já existe `llama-server`, o pacote `llama_cpp` ou um contêiner.
-
-Comparação: o 350M base roda localmente, sem chave e sem rede, mas deve ter taxa de aceitação
-menor. O `ibm/granite-4-h-small` no watsonx é maior e ajustado para instruções, mas depende de
-rede e de credenciais. As duas opções passam pela mesma validação; a escolha final depende da
-taxa de aceitação e do tempo medidos na VM.
+**Comparação:** o 350M base roda localmente, sem chave e sem rede, mas deve ter taxa de
+aceitação menor. O `ibm/granite-4-h-small` no watsonx é maior e ajustado para instruções, mas
+depende de rede e de credenciais. As duas opções passam pela mesma validação; a escolha final
+depende da taxa de aceitação e dos tempos medidos na VM.
 
 ## Como testar no notebook local (Windows, PowerShell)
 
@@ -278,11 +279,15 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 |---|---|
 | `ruff format --check` + `ruff check` (`src tests scripts`) | ok |
 | `mypy` (configuração do projeto, 69 arquivos) | sem problemas |
-| `pytest` (suíte inteira) | 182 passed (89 do backend + 93 da P5) |
+| `pytest` (suíte inteira) | 186 passed (89 do backend + 97 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
-| Granite GGUF real na VM | **NOT_RUN** (runtime llama.cpp na VM ainda não identificado) |
+| `p5_linuxone_granite.ipynb` (versão `llama_cpp` no kernel) executado no Windows com um `llama_cpp` falso | 0 erros; carrega, aceita o texto válido, recusa o exemplo copiado (en/pt), descarrega |
+| Granite GGUF real na VM (`--llamacpp`) | **NOT_RUN** — runtime identificado (`llama_cpp` no kernel), execução pendente |
+| LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
 | `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
 | Ponta a ponta local: `devserver` + `make_synthetic` + `replay` + `verify --alert` + `sentinel.narrative --alert` | 1 alerta mock; cadeia 289 registros ok; alerta ok; template |
 | `foundation_model_specs` (público) por região | Granite de chat só em us-south e eu-de (`ibm/granite-4-h-small`) |
-| Python 3.12 (versão da CI), LinuxONE (s390x), dados reais, watsonx.ai com credenciais | **NOT_RUN** |
+| LinuxONE VM (s390x): `p5_auditoria_narrativa.ipynb` completo no Jupyter da VM | todas as seções ok: cadeia de 289 registros válida, adulterações detectadas, alerta `A-20190314T1640Z-1` (mesmo ID e mesmos desvios do x86) ligado ao registro seq 200, LLM falso aceito/recusado como esperado |
+| Paridade x86 × s390x do JSON canônico | `payload_sha256` de `{"i": 1, "status": "scored"}` = `993ee9cc…20d79f` nas duas plataformas |
+| `p5_linuxone_granite.ipynb` e API ponta a ponta na VM, dados reais, watsonx.ai com credenciais | **NOT_RUN** |

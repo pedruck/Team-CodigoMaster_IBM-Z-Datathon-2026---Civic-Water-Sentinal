@@ -3,11 +3,13 @@ network here: the real model on the LinuxONE was not run by these tests."""
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 
 from sentinel.narrative import (
+    LlamaCppNarrator,
     LocalGraniteNarrator,
     LocalLLMConfig,
     LocalLLMError,
@@ -125,3 +127,99 @@ def test_cli_local(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixtur
 
     with pytest.raises(SystemExit):
         cli_main(["--local", "--watsonx"])
+
+
+# ------------------------------------------------- in-process llama_cpp (LlamaCppNarrator)
+
+
+class FakeLlama:
+    """Stands in for ``llama_cpp.Llama``: records the load and every completion."""
+
+    instances: ClassVar[list["FakeLlama"]] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self.prompts: list[str] = []
+        self.closed = False
+        FakeLlama.instances.append(self)
+
+    def create_completion(self, prompt: str, **kwargs: Any) -> Any:
+        self.prompts.append(prompt)
+        self.completion_kwargs = kwargs
+        return {"choices": [{"text": " " + GOOD}]}
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_llamacpp_loads_once_with_safe_defaults(tmp_path: Path) -> None:
+    model = tmp_path / "granite-be.f16.gguf"
+    model.write_bytes(b"GGUF")
+    FakeLlama.instances.clear()
+    n = LlamaCppNarrator(model, llama_factory=FakeLlama)
+    assert isinstance(n, Narrator) and n.name == "llamacpp:granite-be.f16.gguf"
+    assert not n.loaded
+
+    alert = mock_alert()
+    for _ in range(2):
+        e = explain(alert, n)
+        assert e.source == "llm" and e.text == GOOD
+    (llm,) = FakeLlama.instances  # loaded once, reused
+    assert llm.kwargs == {
+        "model_path": str(model),
+        "n_ctx": 2048,
+        "n_threads": 1,
+        "seed": 0,
+        "verbose": False,
+    }
+    assert llm.prompts[0] == build_completion_prompt(alert)
+    assert llm.completion_kwargs["temperature"] == 0.0
+    assert "\n\n" in llm.completion_kwargs["stop"]
+
+    n.close()
+    assert llm.closed and not n.loaded
+
+
+def test_llamacpp_from_env(tmp_path: Path) -> None:
+    with pytest.raises(LocalLLMError, match="model file not found"):
+        LlamaCppNarrator.from_env({"LOCAL_LLM_MODEL_PATH": str(tmp_path / "missing.gguf")})
+    model = tmp_path / "m.gguf"
+    model.write_bytes(b"GGUF")
+    n = LlamaCppNarrator.from_env(
+        {"LOCAL_LLM_MODEL_PATH": str(model), "LOCAL_LLM_THREADS": "2", "LOCAL_LLM_CTX": "1024"}
+    )
+    assert (n.model_path, n.n_threads, n.n_ctx) == (model, 2, 1024)
+    with pytest.raises(LocalLLMError, match="integers"):
+        LlamaCppNarrator.from_env({"LOCAL_LLM_MODEL_PATH": str(model), "LOCAL_LLM_THREADS": "x"})
+
+
+def test_llamacpp_load_failure_falls_back(tmp_path: Path) -> None:
+    def broken(**kwargs: Any) -> Any:
+        raise ValueError("unknown model architecture: 'granitehybrid'")
+
+    model = tmp_path / "m.gguf"
+    model.write_bytes(b"GGUF")
+    e = explain(mock_alert(), LlamaCppNarrator(model, llama_factory=broken))
+    assert e.source == "template" and e.fallback_reason is not None
+    assert "granitehybrid" in e.fallback_reason
+
+
+def test_cli_llamacpp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    model = tmp_path / "m.gguf"
+    model.write_bytes(b"GGUF")
+    monkeypatch.setattr(
+        LlamaCppNarrator,
+        "from_env",
+        classmethod(lambda cls: cls(model, llama_factory=FakeLlama)),
+    )
+    assert cli_main(["--llamacpp"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["source"] == "llm" and out["generator"] == "llamacpp:m.gguf"
+    assert "model_load_s" in out and "elapsed_s" in out
+
+    monkeypatch.setattr(
+        LlamaCppNarrator, "from_env", classmethod(lambda cls: cls(tmp_path / "x.gguf"))
+    )
+    assert cli_main(["--llamacpp"]) == 2  # llama_cpp missing here, or the file does not exist

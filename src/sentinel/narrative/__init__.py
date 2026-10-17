@@ -11,7 +11,12 @@ from sentinel.narrative.explain import (
     explain,
 )
 from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language, alert_facts, render_text
-from sentinel.narrative.local import LocalGraniteNarrator, LocalLLMConfig, LocalLLMError
+from sentinel.narrative.local import (
+    LlamaCppNarrator,
+    LocalGraniteNarrator,
+    LocalLLMConfig,
+    LocalLLMError,
+)
 from sentinel.narrative.watsonx import WatsonxConfig, WatsonxError, WatsonxNarrator
 
 __all__ = [
@@ -19,6 +24,7 @@ __all__ = [
     "Explanation",
     "FunctionNarrator",
     "Language",
+    "LlamaCppNarrator",
     "LocalGraniteNarrator",
     "LocalLLMConfig",
     "LocalLLMError",

@@ -6,19 +6,26 @@ that is not instruction-tuned. So the prompt here is few-shot completion (worked
 then the alert), not a chat with rules. Whatever it writes still goes through
 ``check_narrative`` and falls back to the template when it invents anything.
 
-The model is served by an OpenAI-compatible completions endpoint started separately, e.g.
-llama.cpp's ``llama-server -m <file>.gguf --host 127.0.0.1 --port 8080 -t 1``. Standard
-library only. Configuration (environment):
+Two ways to run it:
+
+- ``LlamaCppNarrator``: loads the GGUF in this Python process with llama-cpp-python, which the
+  team VM's Jupyter kernel already has. No server.
+- ``LocalGraniteNarrator``: talks to an OpenAI-compatible completions endpoint started
+  separately (llama.cpp's ``llama-server`` or ``python -m llama_cpp.server``). Standard library
+  only. Configuration (environment):
 
     LOCAL_LLM_URL        default http://127.0.0.1:8080
     LOCAL_LLM_MODEL      name reported in Explanation.generator, default granite-4.0-h-350m-base
     LOCAL_LLM_TIMEOUT_S  default 60 (CPU inference on a shared 3-vCPU VM)
 """
 
+import importlib
 import json
 import os
-from collections.abc import Mapping
+import threading
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language, alert_facts
@@ -28,6 +35,8 @@ from sentinel.schemas.alerts import Alert
 
 DEFAULT_URL = "http://127.0.0.1:8080"
 DEFAULT_MODEL = "granite-4.0-h-350m-base"
+DEFAULT_MODEL_PATH = Path("~/granite-4.0-h-350m-base-be.f16.gguf")
+STOP = ("\n\n", "\nRecord:", "\nRegistro:")
 
 
 class LocalLLMError(Exception):
@@ -182,7 +191,7 @@ class LocalGraniteNarrator:
             "prompt": prompt,
             "max_tokens": self.config.max_tokens,
             "temperature": 0,
-            "stop": ["\n\n", "\nRecord:", "\nRegistro:"],
+            "stop": list(STOP),
         }
         data = self._post(
             f"{self.config.url}/v1/completions",
@@ -190,11 +199,107 @@ class LocalGraniteNarrator:
             json.dumps(body).encode("utf-8"),
             self.config.timeout_s,
         )
+        return _completion_text(data)
+
+
+class LlamaCppNarrator:
+    """Same few-shot prompt, with the GGUF loaded in this Python process by llama-cpp-python
+    (``llama_cpp``, already installed in the team VM's Jupyter kernel): no server to start.
+
+    The model is loaded on the first explanation and kept; ``close()`` frees the memory (the
+    VM is shared). Calls are serialised: a llama.cpp context is not thread-safe. Environment:
+
+        LOCAL_LLM_MODEL_PATH  default ~/granite-4.0-h-350m-base-be.f16.gguf
+        LOCAL_LLM_THREADS     default 1 (3 vCPUs for the whole team)
+        LOCAL_LLM_CTX         default 2048 tokens (prompt + answer)
+    """
+
+    def __init__(
+        self,
+        model_path: Path | str = DEFAULT_MODEL_PATH,
+        *,
+        n_threads: int = 1,
+        n_ctx: int = 2048,
+        max_tokens: int = 160,
+        llama_factory: Callable[..., Any] | None = None,
+    ) -> None:
+        self.model_path = Path(model_path).expanduser()
+        self.n_threads = n_threads
+        self.n_ctx = n_ctx
+        self.max_tokens = max_tokens
+        self._factory = llama_factory
+        self._llm: Any = None
+        self._lock = threading.Lock()
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "LlamaCppNarrator":
+        e = os.environ if env is None else env
+        path = Path(e.get("LOCAL_LLM_MODEL_PATH", str(DEFAULT_MODEL_PATH))).expanduser()
+        if not path.is_file():
+            raise LocalLLMError(f"model file not found: {path} (set LOCAL_LLM_MODEL_PATH)")
         try:
-            text = str(data["choices"][0]["text"]).strip()
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LocalLLMError("unexpected completion response: no choices[0].text") from exc
-        # Cut a sentence left unfinished by max_tokens.
-        if "." in text and not text.endswith("."):
-            text = text[: text.rfind(".") + 1]
-        return text
+            threads = int(e.get("LOCAL_LLM_THREADS", "1"))
+            ctx = int(e.get("LOCAL_LLM_CTX", "2048"))
+        except ValueError as exc:
+            raise LocalLLMError("LOCAL_LLM_THREADS and LOCAL_LLM_CTX must be integers") from exc
+        return cls(path, n_threads=threads, n_ctx=ctx)
+
+    @property
+    def name(self) -> str:
+        return f"llamacpp:{self.model_path.name}"
+
+    @property
+    def loaded(self) -> bool:
+        return self._llm is not None
+
+    def prompt_for(self, alert: Alert, language: Language) -> str:
+        return build_completion_prompt(alert, language)
+
+    def load(self) -> Any:
+        """Load the model now (otherwise the first explanation does it)."""
+        with self._lock:
+            return self._load()
+
+    def generate(self, prompt: str) -> str:
+        with self._lock:
+            out = self._load().create_completion(
+                prompt, max_tokens=self.max_tokens, temperature=0.0, stop=list(STOP)
+            )
+        return _completion_text(out)
+
+    def close(self) -> None:
+        with self._lock:
+            llm, self._llm = self._llm, None
+        if llm is not None and hasattr(llm, "close"):
+            llm.close()
+
+    def _load(self) -> Any:
+        if self._llm is None:
+            factory = self._factory
+            if factory is None:
+                try:  # optional dependency, present on the team VM only
+                    factory = importlib.import_module("llama_cpp").Llama
+                except ImportError as exc:
+                    raise LocalLLMError("llama_cpp (llama-cpp-python) is not installed") from exc
+            try:
+                self._llm = factory(
+                    model_path=str(self.model_path),
+                    n_ctx=self.n_ctx,
+                    n_threads=self.n_threads,
+                    seed=0,
+                    verbose=False,
+                )
+            except Exception as exc:  # llama.cpp raises ValueError/RuntimeError on bad files
+                raise LocalLLMError(f"could not load {self.model_path}: {exc}") from exc
+        return self._llm
+
+
+def _completion_text(data: Any) -> str:
+    try:
+        text = str(data["choices"][0]["text"]).strip()
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LocalLLMError("unexpected completion response: no choices[0].text") from exc
+    # Cut a sentence left unfinished by max_tokens.
+    if "." in text and not text.endswith("."):
+        text = text[: text.rfind(".") + 1]
+    return text
