@@ -62,6 +62,8 @@ class Settings:
     history_capacity: int = 288
     min_history_windows: int = 144
     require_aligned_timestamps: bool = True
+    # Timestamps without timezone: "UTC" = interpret as UTC, "reject" = 422 (ADR-004).
+    naive_timestamp_tz: str = "UTC"
     result_capacity: int = 2016
     alert_capacity: int = 10_000
     sensor_registry_path: Path = DEFAULT_REGISTRY_PATH
@@ -70,6 +72,8 @@ class Settings:
     forecaster: str = "mock"
     detector: str = "mock"
     audit_sink: str = "null"
+    # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
+    audit_pending_capacity: int = 2016
     mock_detector_sigma_m: float = 1.0
     mock_detector_z_threshold: float = 3.0
     mock_detector_min_sensors: int = 2
@@ -92,6 +96,7 @@ class Settings:
             history_capacity=_int(e, "SENTINEL_HISTORY_CAPACITY", 288),
             min_history_windows=_int(e, "SENTINEL_MIN_HISTORY_WINDOWS", 144),
             require_aligned_timestamps=_bool(e, "SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS", True),
+            naive_timestamp_tz=_choice(e, "SENTINEL_NAIVE_TIMESTAMP_TZ", "UTC", {"UTC", "reject"}),
             result_capacity=_int(e, "SENTINEL_RESULT_CAPACITY", 2016),
             alert_capacity=_int(e, "SENTINEL_ALERT_CAPACITY", 10_000),
             sensor_registry_path=Path(
@@ -100,6 +105,7 @@ class Settings:
             forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", {"mock"}),
             detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock"}),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
+            audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),
             mock_detector_z_threshold=_float(e, "SENTINEL_MOCK_DETECTOR_Z_THRESHOLD", 3.0),
             mock_detector_min_sensors=_int(e, "SENTINEL_MOCK_DETECTOR_MIN_SENSORS", 2),

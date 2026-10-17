@@ -42,14 +42,15 @@ class ThresholdMockDetector:
         residuals = {
             s: SensorResidual(
                 residual_m=observed[s] - expected[s],
-                z=(observed[s] - expected[s]) / self._sigma,
+                # Q-DET-02: z = (expected - observed) / sigma, positive on a pressure drop.
+                z=(expected[s] - observed[s]) / self._sigma,
             )
             for s in expected
         }
         low = [
             DeviatingSensor(sensor=s, deviation_m=r.residual_m, z=r.z)
             for s, r in residuals.items()
-            if r.z is not None and r.z <= -self._threshold
+            if r.z is not None and r.z >= self._threshold
         ]
         alarm = len(low) >= self._min_sensors
         alerts: tuple[AlertCandidate, ...] = ()

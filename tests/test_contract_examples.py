@@ -30,10 +30,23 @@ def test_valid_window_example_is_accepted(app_client: TestClient) -> None:
     assert app_client.post("/v1/windows", json=load("window.valid.json")).status_code == 201
 
 
+def test_naive_timestamp_example_is_read_as_utc_by_default(app_client: TestClient) -> None:
+    r = app_client.post("/v1/windows", json=load("window.naive-timestamp.json"))
+    assert r.status_code == 201
+    assert r.json()["timestamp_tz_assumed"] is True
+    assert r.json()["timestamp"].endswith("Z")
+
+
+def test_naive_timestamp_example_is_rejected_with_reject_policy() -> None:
+    client = TestClient(create_app(Settings(naive_timestamp_tz="reject")))
+    r = client.post("/v1/windows", json=load("window.naive-timestamp.json"))
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "timestamp_without_timezone"
+
+
 @pytest.mark.parametrize(
     ("name", "code"),
     [
-        ("window.invalid.naive-timestamp.json", "validation_error"),
         ("window.invalid.string-value.json", "validation_error"),
         ("window.invalid.unknown-field.json", "validation_error"),
         ("window.invalid.missing-sensor.json", "sensor_set_mismatch"),

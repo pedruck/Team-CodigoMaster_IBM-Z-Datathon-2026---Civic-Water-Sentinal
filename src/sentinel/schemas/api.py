@@ -9,7 +9,7 @@ from sentinel.schemas.common import ContractModel, ModelInfo, UtcDatetime
 from sentinel.schemas.detections import DetectorState
 
 ProcessingStatus = Literal["scored", "insufficient_history", "forecast_failed", "detection_failed"]
-AuditStatus = Literal["recorded", "disabled", "failed", "not_applicable"]
+AuditStatus = Literal["recorded", "pending", "disabled"]
 IssueStage = Literal["forecast", "detection", "audit"]
 
 
@@ -30,6 +30,10 @@ class WindowResult(ContractModel):
     """Outcome of ingesting one window. Stored and returned again for idempotent resends."""
 
     timestamp: UtcDatetime
+    timestamp_tz_assumed: bool = Field(
+        default=False,
+        description="True if the window came without timezone and UTC was assumed (ADR-004).",
+    )
     status: ProcessingStatus
     duplicate: bool = False
     gap_windows: int = Field(ge=0, description="Missing intervals right before this window.")
@@ -71,6 +75,8 @@ class StatusResponse(ContractModel):
     forecaster: ModelInfo
     detector: ModelInfo
     audit_sink: str
+    audit_pending_events: int = Field(description="Audit events waiting for the sink.")
+    audit_pending_alerts: int = Field(description="Alerts withheld until audited (fail-closed).")
     mocks_active: bool
     counters: dict[str, int]
     latency: dict[str, LatencySummary]

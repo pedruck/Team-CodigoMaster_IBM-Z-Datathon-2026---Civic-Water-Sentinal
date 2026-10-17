@@ -43,12 +43,12 @@ def test_duplicate_returns_200_and_same_result(client: TestClient, payload: Payl
     assert r.json()["latency_ms"] == first["latency_ms"]
 
 
-def test_naive_timestamp_returns_422_envelope(client: TestClient, payload: Payload) -> None:
-    r = client.post("/v1/windows", json={**payload(0), "timestamp": "2019-01-01T00:00:00"})
+def test_unparseable_timestamp_returns_422_envelope(client: TestClient, payload: Payload) -> None:
+    r = client.post("/v1/windows", json={**payload(0), "timestamp": "14/03/2019 12:30"})
     assert r.status_code == 422
     err = r.json()["error"]
     assert err["code"] == "validation_error"
-    assert err["details"][0]["type"] == "timezone_aware"
+    assert err["details"][0]["loc"][-1] == "timestamp"
 
 
 def test_nan_in_raw_json_is_rejected(client: TestClient, payload: Payload) -> None:

@@ -8,8 +8,8 @@ This module receives each window, validates it, keeps the rolling 12–24 h hist
 forecaster and the detector through stable interfaces, stores alerts, emits audit events and
 serves results to the dashboard.
 
-> **State:** the backend runs end to end with **mock** forecaster/detector and
-> **placeholder** sensor IDs. Real models, sensor IDs, audit log and LinuxONE runs are pending
+> **State:** the backend runs end to end with **mock** forecaster/detector; it validates the
+> real BattLeDIM sensor set from the data owner's `data/v1` export. Real models, sensor IDs, audit log and LinuxONE runs are pending
 > other members — see [`docs/status.md`](docs/status.md).
 
 ## Quick start
@@ -57,7 +57,9 @@ Contracts: [`docs/integration-contracts.md`](docs/integration-contracts.md); Ope
 
 Environment variables `SENTINEL_*`, all with defaults — see [`.env.example`](.env.example).
 Main ones: `SENTINEL_HISTORY_CAPACITY` (288), `SENTINEL_MIN_HISTORY_WINDOWS` (144),
-`SENTINEL_SENSOR_REGISTRY`, `SENTINEL_AUDIT_SINK` (`null` | `memory`). Invalid values fail at
+`SENTINEL_NAIVE_TIMESTAMP_TZ` (`UTC`: timestamps without timezone are read as UTC; `reject`),
+`SENTINEL_SENSOR_REGISTRY` (placeholder JSON by default; the data owner's `data/vN/sensors.csv`
+for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`). Invalid values fail at
 startup. State is **in memory** and lost on restart (ADR-003).
 
 ## Layout

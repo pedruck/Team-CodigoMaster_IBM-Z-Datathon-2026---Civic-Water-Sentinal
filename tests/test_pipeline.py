@@ -203,17 +203,19 @@ def test_audit_records_alert_and_every_window(
     assert "audit" not in raised.payload
 
 
-def test_audit_failure_keeps_alert_and_reports_failed(
+def test_audit_failure_withholds_alert_and_keeps_events_pending(
     make_pipeline: Callable[..., Pipeline], window: Win
 ) -> None:
     p = make_pipeline(audit_sink=FailingAuditSink())
-    feed(p, window, 5)
+    first = p.ingest(window(0)).result
+    feed(p, window, 5, start=1)
     r = p.ingest(window(5, drop_m=5.0, drop_sensors=("P1", "P2"))).result
-    assert r.audit == "failed"
-    assert len(r.alert_ids) == 1 and p.alerts.get(r.alert_ids[0]) is not None
-    assert any(i.stage == "audit" for i in r.issues)
-    # 6 window events (one per accepted window) + 1 alert event, all failed.
-    assert p.metrics.counters()["audit_failures"] == 7
+    assert first.audit == "pending" and any(i.stage == "audit" for i in first.issues)
+    assert r.audit == "pending"
+    assert len(r.alert_ids) == 1 and p.alerts.get(r.alert_ids[0]) is None  # fail-closed
+    # 6 window events + 1 alert event waiting; 1 failed append + 5 failed retries.
+    assert p.audit_pending == {"events": 7, "alerts": 1}
+    assert p.metrics.counters()["audit_failures"] == 6
 
 
 def test_disabled_audit_is_reported(pipeline: Pipeline, window: Win) -> None:
@@ -267,3 +269,16 @@ def test_concurrent_distinct_windows_never_corrupt_order(pipeline: Pipeline, win
     assert stamps == sorted(stamps)
     rejected = pipeline.metrics.counters().get("windows_rejected_out_of_order", 0)
     assert len(accepted) + rejected == 40
+
+
+def test_pressure_drop_has_negative_deviation_and_positive_z(
+    pipeline: Pipeline, window: Win
+) -> None:
+    # Q-DET-02: deviation_m = observed - expected (< 0), z = (expected - observed)/sigma (> 0).
+    feed(pipeline, window, 5)
+    r = pipeline.ingest(window(5, drop_m=5.0, drop_sensors=("P1", "P2"))).result
+    alert = pipeline.alerts.get(r.alert_ids[0])
+    assert alert is not None
+    for d in alert.deviating_sensors:
+        assert d.deviation_m < 0
+        assert d.z is not None and d.z > 0

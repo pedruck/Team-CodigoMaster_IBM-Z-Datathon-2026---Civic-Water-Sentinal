@@ -33,6 +33,16 @@ class TemporalConflictError(SentinelError):
         self.code = code
 
 
+class ServiceUnavailableError(SentinelError):
+    """The window cannot be accepted right now (e.g. audit backlog full); retry later."""
+
+    status_code = 503
+
+    def __init__(self, code: str, message: str, details: dict[str, Any] | None = None):
+        super().__init__(message, details)
+        self.code = code
+
+
 class NotFoundError(SentinelError):
     status_code = 404
     code = "not_found"

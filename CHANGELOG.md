@@ -5,7 +5,21 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Changed
+- Audit is fail-closed (team decision Q-AUD-03): alerts are served only after their audit
+  event is recorded; failed events wait in an ordered pending queue retried before each window;
+  503 `audit_backlog_full` when `SENTINEL_AUDIT_PENDING_CAPACITY` is reached. Window `audit`
+  is now `recorded | pending | disabled`; `/v1/status` reports the backlog.
+- z sign convention (Q-DET-02): `z = (expected − observed)/σ`, positive on a pressure drop;
+  `deviation_m` stays observed − expected. Mock detector and examples updated.
+- Timestamps without timezone are read as UTC (`SENTINEL_NAIVE_TIMESTAMP_TZ=UTC`, default) and
+  flagged with `timestamp_tz_assumed` in the result and audit event; `reject` restores the 422.
+  The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
+
 ### Added
+- Sensor registry loaded from the data owner's `data/vN/sensors.csv` (official IDs and units,
+  shown in `/v1/status`); `scripts/validate_v1_ingestion.py` runs a full year of the export
+  through the pipeline.
 - First LinuxONE (s390x) baseline: tests, benchmark, HTTP replay and x86/s390x hash parity
   (`docs/performance.md`).
 - GitHub Actions CI running `just ci` on pull requests and pushes to `main`.

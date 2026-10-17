@@ -15,12 +15,12 @@ Priority: **P0** blocks real data or models, **P1** blocks a correct evaluation,
 
 | ID | P | Question | Proposed default (implemented) | Why it matters |
 |---|---|---|---|---|
-| Q-DATA-01 | P0 | Units of pressure, flow and tank level in the exported SCADA series? | pressure and tank level in metres; flow unit unknown | alert evidence is in metres (`deviation_m`) |
-| Q-DATA-02 | P0 | Is each timestamp the **end** of its 5-min interval, in UTC, on an exact 300 s grid, without DST? | yes to all; misaligned timestamps rejected (422) | windows off-grid would be rejected |
-| Q-DATA-03 | P0 | Are there missing timestamps or NaN values in 2018/2019? How many? | `null`/NaN rejected; a gap resets contiguity → no scoring for 12 h after it | one gap blinds the system for `min_history` windows |
+| Q-DATA-01 | P0 | Units of pressure, flow and tank level in the exported SCADA series? | **Answered by `data/v1/sensors.csv`:** pressure m, flow m³/h, tank level m | alert evidence is in metres (`deviation_m`) |
+| Q-DATA-02 | P1 | v1 timestamps are naive (`2019-01-01 00:00:00`), on an exact 300 s grid, without DST artefacts. Confirm they are UTC and mark the **end** of the interval | backend reads naive timestamps as UTC (implemented; the replay can send the CSV value as is) | if the export were local time, every window would be shifted |
+| Q-DATA-03 | P0 | Are there missing timestamps or NaN values in 2018/2019? How many? | **Answered by profiling `data/v1`:** none (105 120 rows/year, 0 gaps, 0 NaN) | one gap blinds the system for `min_history` windows |
 | Q-DATA-04 | P1 | Can the replay emit JSONL in the window contract (one window per line, in order)? | `scripts/replay.py` consumes exactly that | avoids a second format |
 | Q-DATA-05 | P1 | Confirm labels (leak start/pipe) never enter the API and live only in the evaluation step | unknown fields are rejected | prevents label leakage |
-| Q-DATA-06 | P0 | Official sensor IDs (33 + 3 + 1) and their canonical order | placeholders `P01..`, registry order = array order | forecaster arrays and region mapping depend on it |
+| Q-DATA-06 | P0 | Official sensor IDs (33 + 3 + 1) and their canonical order | **Answered by `data/v1/sensors.csv`;** registry order = file order = array order | forecaster arrays and region mapping depend on it |
 
 ## ML forecasting
 
@@ -38,7 +38,7 @@ Priority: **P0** blocks real data or models, **P1** blocks a correct evaluation,
 | ID | P | Question | Proposed default | Why |
 |---|---|---|---|---|
 | Q-DET-01 | P0 | Accept the `Detector` contract (§3), stateful single instance, atomic `evaluate`? | as implemented | CUSUM state correctness |
-| Q-DET-02 | P0 | Sign convention: design doc §3 says `z = (expected − observed)/σ`, but the §6 example has `deviation_m −0.9` with `z −4.1`. Which one? | `residual_m = observed − expected`, `z` same sign | alert evidence consistency |
+| Q-DET-02 | P0 | Sign convention: design doc §3 says `z = (expected − observed)/σ`, but the §6 example has `deviation_m −0.9` with `z −4.1`. Which one? | **Decided (team-workflow):** `deviation_m = observed − expected` (< 0 on a drop), `z = (expected − observed)/σ` (> 0 on a drop) — implemented | alert evidence consistency |
 | Q-DET-03 | P1 | What should CUSUM do after a gap or a restart: reset or continue? | backend sends nothing special; detector sees non-consecutive timestamps | false alarms / missed leaks after gaps |
 | Q-DET-04 | P1 | Alert lifecycle: does an alert ever close (S falls below h)? Re-open as new alert? | only "opened" alerts are emitted; no closing | dashboard "open alerts" view |
 | Q-DET-05 | P1 | Region IDs and sensor → region mapping location | owned by detector; `region` null until then | `/v1/alerts?region=` |
@@ -49,9 +49,9 @@ Priority: **P0** blocks real data or models, **P1** blocks a correct evaluation,
 |---|---|---|---|---|
 | Q-AUD-01 | P0 | Accept the `AuditSink` port and event types (`window.scored`, `window.not_scored`, `alert.raised`)? | as implemented | integration |
 | Q-AUD-02 | P1 | Persistence of the log (file/DB) and its location on the VM | not implemented here | durability |
-| Q-AUD-03 | P0 | If the audit append fails: keep the alert (fail-open) or reject/stop (fail-closed)? | fail-open, `audit="failed"` reported | availability vs traceability |
+| Q-AUD-03 | P0 | If the audit append fails: keep the alert (fail-open) or reject/stop (fail-closed)? | **Decided (team-workflow): fail-closed** — alert withheld until audited, events queued, 503 when the queue is full — implemented (ADR-006) | availability vs traceability |
 | Q-AUD-04 | P2 | Is a `GET /v1/audit` read endpoint needed, for whom, with what auth? | not created | scope |
-| Q-AUD-05 | P1 | Circularity in design doc §6: the alert carries `audit_seq` and the record carries `payload_sha256` of the alert. Hash the alert **without** the audit field? | yes (`exclude={"audit"}`) | verifiable chain |
+| Q-AUD-05 | P1 | Circularity in design doc §6: the alert carries `audit_seq` and the record carries `payload_sha256` of the alert. Hash the alert **without** the audit field? | **Decided (team-workflow):** yes (`exclude={"audit"}`) — implemented | verifiable chain |
 
 ## Dashboard & evaluation
 
