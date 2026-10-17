@@ -128,7 +128,46 @@ Jupyter kernels open, idle).
 `7fc91e5ac9bb54402ce4577df7f97f1df636ad01c84005f7de2b0ec5189717fa` on both x86_64 and
 s390x. Same alert ID and status sequence for the same synthetic replay. This covers the
 backend only; the model parity test (same predictions on both platforms) is still open
-(DEP-ML-03).
+(DEP-ML-03): the first real model was trained on the VM itself, see the next section.
+
+## Forecaster on the LinuxONE VM — `xgboost-33@0.1.0` (P2, 2026-10-17)
+
+Model: 33 per-sensor XGBoost models (at most 600 trees each, early-stopped on Nov–Dec 2018),
+trained on the VM (s390x) on the real `data/v1` 2018 export, branch `feat/p2-forecasting`.
+Measured by Part B of `notebooks/p2_forecast/02_xgboost_snapml.ipynb` with
+`training.benchmark` (3 warm-up calls, then 100 timed calls) and stored in the model's
+`meta.json`. Thread limits of the kernel were not recorded.
+
+**One forecast = one window, 33 sensors** (`XGBoostForecaster.predict`, what the API calls):
+
+| Engine | p50 ms | p99 ms | best ms |
+|---|---|---|---|
+| xgboost native (CPU) | 7.088 | 8.197 | 6.836 |
+| Snap ML `compress_trees` (CPU) | **0.637** | 0.812 | 0.628 |
+| Snap ML `zdnn_tensors` (NNPA, Telum) | 1.345 | 2.256 | 1.326 |
+| Snap ML `auto` + TreeSHAP contributions (API default) | 134.472 | 140.015 | 125.819 |
+
+With `tree_format="auto"` Snap ML picked `zdnn_tensors` on the VM.
+
+**Batch throughput, one sensor model, 1000 rows** (20 timed calls, p50):
+
+| Engine | ms / 1000 rows | rows/s |
+|---|---|---|
+| xgboost native (CPU) | 2.62 | 381 574 |
+| Snap ML `compress_trees` (CPU) | **1.20** | 830 138 |
+| Snap ML `zdnn_tensors` (NNPA) | 5.44 | 183 859 |
+| Snap ML `auto` (= `zdnn_tensors`; no TreeSHAP in this test) | 5.45 | 183 466 |
+
+Readings:
+- Snap ML on CPU is 11× faster than native XGBoost per window and 2.2× in batch.
+- The NNPA path is slower than Snap ML on CPU for this model, both per window and for 1000
+  rows. Larger batches were not tested.
+- TreeSHAP (native XGBoost `pred_contribs`; Snap ML has none) is ~127 of the ~134 ms.
+  Estimate, not measured: a full-year replay (105 120 windows) spends ≈ 3.9 h in the
+  forecaster with contributions and ≈ 67 s without them (`compress_trees`).
+- Everything is far below the 300 s interval.
+- Parity: the parity sample was produced on s390x too, so `meta.json` → `parity` compares the
+  VM with itself. The x86 → s390x check needs Part A run off-platform (Colab).
 
 Caveats: single runs, shared VM, no warm-up control; x86 numbers come from a laptop with
 other processes running. The two baselines are **not** a fair platform comparison and must
@@ -236,6 +275,8 @@ measured).
 
 | 4 | Over HTTP, `validation` p50 0.0422 ms vs 0.0093 ms in process | full-year HTTP vs in-process runs above | `normalize_window` re-validates the whole window when turning `SensorWindowIn` into `SensorWindow` — **not profiled** | build the internal model without re-validating the readings (`model_construct` with the already validated fields) if it ever matters | not applied (0.03 ms vs a 300 s interval) |
 | 5 | One spike: `detection` max 141.6 ms, client max 144 ms, during the full-year replay | full-year HTTP run | GC pause or contention with other members' kernels on 3 shared vCPUs — **not investigated** | none; watch p99 on real-model runs | — |
+| 6 | TreeSHAP dominates the real forecaster: p50 134 ms per window vs 0.64 ms without it | `xgboost-33@0.1.0` on the VM, above | 33 `pred_contribs` calls on the native booster, one row each | `load_forecaster(..., with_contributions=False)` for long replays; keep contributions for the live demo (BE-011 decides how to expose it) | option added on `feat/p2-forecasting`; not wired |
+| 7 | Snap ML on the NNPA is slower than on CPU for this model (1.35 vs 0.64 ms per window; 5.4 vs 1.2 ms per 1000 rows) | same | transfer/setup cost dominates for small trees and few rows — **not profiled** | serve with `tree_format="compress_trees"`, or keep `auto` to show the accelerator; test larger batches before deciding for bulk replays | open (ML owner) |
 
 No Rust/C++ optimisation is justified: there is no measured backend bottleneck relative to
 the 300 s interval. Revisit only with LinuxONE measurements of the real models.

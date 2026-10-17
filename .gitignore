@@ -43,3 +43,7 @@ htmlcov/
 *.csv.gz
 /models/
 /logs/
+
+# Training checkpoints written by the forecasting notebooks
+checkpoints/
+*.weights.h5

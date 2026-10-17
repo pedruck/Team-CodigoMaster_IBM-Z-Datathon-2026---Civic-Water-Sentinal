@@ -52,6 +52,16 @@ contract versions are tracked separately (`schema_version`).
 - Documentation: end-to-end check of the CUSUM selection against the real server with synthetic
   data (`docs/testing.md`) and its timings (`docs/performance.md`); ADR-007/008, contract §3,
   architecture, dependencies and plan updated. No schema change.
+- Forecasting (ML owner): hour-of-week baseline, per-sensor XGBoost served with Snap ML (with
+  TreeSHAP contributions) and a 33-sensor GRU (TensorFlow, ONNX export with a fused `GRU` node);
+  shared feature definitions, `load_forecaster` registry, training helpers
+  (`forecasting/training.py`, P1's clean mask), notebooks in `notebooks/p2_forecast/` and
+  `docs/p2-forecasting.md`. Forecasters accept both sensor ID spellings (`n1` / `Pressure_n1`). Snap ML import of XGBoost 3.x JSON fixed
+  (`portable_booster_json`). ML tests skip where numpy/xgboost/tensorflow are absent.
+  Validation reports MAE on clean windows and a one-sided (pressure-drop) leak contrast
+  (`metrics_version` 2); sensors with σ = 0 are left out of the contrast.
+  XGBoost chosen and measured on the LinuxONE VM (`docs/performance.md`); `load_forecaster`
+  takes `engine`, `tree_format` and `with_contributions` for it.
 - `scripts/validate_replay_ingestion.py`: runs a replay JSONL (e.g. the data owner's
   `windows_2019.jsonl`) through the pipeline in process.
 - `scripts/shared_api.sh` and `docs/runbook-vm.md`: the shared integration API on the VM
