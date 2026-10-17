@@ -1,0 +1,21 @@
+{
+  "timestamp": "2019-03-14T12:30:00Z",
+  "expected_pressures": {
+    "P01": 61.8,
+    "P02": 60.4
+  },
+  "model": {
+    "name": "xgboost-33",
+    "version": "1.0.0",
+    "is_mock": false
+  },
+  "contributions": {
+    "P01": {
+      "base": 60.2,
+      "inlet_flow": 1.1,
+      "tank_level": 0.4,
+      "hour_of_week": -0.3,
+      "other_sensors": 0.4
+    }
+  }
+}
