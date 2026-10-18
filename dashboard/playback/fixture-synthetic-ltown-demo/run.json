@@ -1,0 +1,5 @@
+{
+  "run_id": "fixture-synthetic-ltown-demo",
+  "recorded_at": "2026-10-18",
+  "note": "SYNTHETIC, hand-authored, not a detector output: six invented alerts placed on official L-Town region, sensor and pipe IDs to demonstrate the network map. Values are invented; mock forecaster and detector identities; status counters copied from fixture-cusum."
+}
