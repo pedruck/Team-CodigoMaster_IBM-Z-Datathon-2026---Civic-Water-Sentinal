@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from sentinel.schemas.alerts import Alert
+from sentinel.schemas.alerts import Alert, AuditRef
 from sentinel.schemas.common import ContractModel, ModelInfo, UtcDatetime
 from sentinel.schemas.detections import DetectorState
 
@@ -103,6 +103,23 @@ class StatusResponse(ContractModel):
     throughput_windows_per_s: float
     error_rate: float
     persistence: Literal["memory"] = "memory"
+
+
+class ExplanationStatus(ContractModel):
+    """``GET /v1/alerts/{id}/explanation`` (Q-AUD-07): the audit owner's stored explanation.
+    Produced by ``sentinel.narrative.store``; here so readers (the dashboard) depend only on
+    the contract models. ``language`` is ``sentinel.narrative.facts.Language``."""
+
+    status: Literal["ready", "pending"]
+    alert_id: str
+    language: Literal["en"]
+    alert_payload_sha256: str
+    source: Literal["template", "llm"]
+    text: str  # pending: the deterministic text, shown until the generated one is ready
+    generator: str | None
+    generated_at: UtcDatetime | None
+    fallback_reason: str | None
+    record: AuditRef | None  # the explanation's record in the explanations log
 
 
 class HealthResponse(ContractModel):

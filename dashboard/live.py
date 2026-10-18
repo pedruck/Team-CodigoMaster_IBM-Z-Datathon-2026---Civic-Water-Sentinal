@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import streamlit as st
 
-from dashboard.alert_list import alert_row, fmt_time
+from dashboard.alert_list import alert_row
 from dashboard.refresh import PollState, backoff_s, needs_full_rerun, poll
 from dashboard.source import AlertSource
 from sentinel.schemas.alerts import Alert
@@ -72,6 +72,9 @@ def _recent_alerts(source: AlertSource, refresh_s: float) -> None:
         st.info("No alerts in this period. The map shows the whole network.")
 
 
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
 def queue_label(alert: Alert) -> str:
     """Two short lines per alert; the full record stays in the evidence and the table."""
     strongest = max(alert.deviating_sensors, key=lambda d: abs(d.deviation_m), default=None)
@@ -81,7 +84,11 @@ def queue_label(alert: Alert) -> str:
     if strongest is not None:  # the largest deviation; its sensor is on the map and beside it
         second += f" · {signed_m(strongest.deviation_m)}"
     # Markdown label: escape the characters that would change its meaning.
-    return f"**{_md(region)}** · {fmt_time(alert.window_end)[11:16]}  \n{_md(second)}"
+    # Date and time: the queue spans days (a replay of a year shows weeks of alerts). English
+    # month names whatever the process locale (``%b`` follows ``LC_TIME``).
+    end = alert.window_end
+    when = f"{MONTHS[end.month - 1]} {end:%d %H:%M}"
+    return f"**{_md(region)}** · {_md(when)}  \n{_md(second)}"
 
 
 def signed_m(value: float) -> str:
