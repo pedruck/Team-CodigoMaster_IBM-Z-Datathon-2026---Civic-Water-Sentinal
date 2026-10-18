@@ -25,9 +25,11 @@ no access log, one worker, BLAS threads = 1. Override with the variables listed 
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
 The forecaster and the detector are the mocks unless set (ADR-005). **Current shared API
-(2026-10-17):** the real XGBoost below with `SENTINEL_FORECASTER_CONTRIBUTIONS=false` and
-`SENTINEL_FORECASTER_TREE_FORMAT=compress_trees`, mock detector, 2019 replayed. Restart it with
-the same variables to keep that configuration. Real XGBoost (ML owner's artefact):
+(2026-10-18, `main` @ `45f733d`):** no mocks: XGBoost (`compress_trees`, contributions
+`on_alert`), CUSUM with `config/calibration.xgboost-33.json`, regions and pipe network, audit chain
+run `replay-2019-1018` (the full command is under "Regions and pipe network" plus
+`SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=replay-2019-1018`), 2019 replayed. Restart it with
+the same variables to keep that configuration, and a **new** run name if you replay again. Real XGBoost (ML owner's artefact):
 
 ```bash
 SENTINEL_FORECASTER=xgboost \
@@ -150,7 +152,7 @@ Send it from the Jupyter terminal (same container, so `127.0.0.1` works):
 nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" --url http://127.0.0.1:8000
 ```
 
-Measured 2026-10-17: 105 120 × `201` in 145 s with the mocks; 247 s with XGBoost (TreeSHAP off, `compress_trees`) (`docs/performance.md`). It loads the shared
+Measured 2026-10-17: 105 120 × `201` in 145 s with the mocks; 247 s with XGBoost (TreeSHAP off, `compress_trees`); 2026-10-18: 338 s with XGBoost + CUSUM + audit chain on `~/shared` (`docs/performance.md`). It loads the shared
 VM: announce it and avoid running it during someone's latency measurement. Expected: every window `201` (or `200` if re-sent), 144
 `insufficient_history`, the rest `scored`; mock alerts until the real models are wired.
 
