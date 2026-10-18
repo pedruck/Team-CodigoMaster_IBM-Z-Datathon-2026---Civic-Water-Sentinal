@@ -16,7 +16,7 @@ here has been run on real BattLeDIM data or against the real watsonx.ai service.
 | Granite on the LinuxONE itself (GGUF through llama.cpp) | `src/sentinel/narrative/local.py`: `LlamaCppNarrator` (in process), `LocalGraniteNarrator` (server) |
 | Explanations generated in the background, stored and audited | `src/sentinel/narrative/store.py`: `ExplanationService`, `ExplanationStore` |
 | Explain one alert from the command line | `src/sentinel/narrative/__main__.py`: `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
-| API with the chain and the explanations wired in (temporary, until BE-013 / Q-AUD-07) | `src/sentinel/audit/devserver.py` |
+| API with the chain and the explanations wired in | `SENTINEL_AUDIT_SINK=chain` in `sentinel.main` since BE-013 (README); `src/sentinel/audit/devserver.py` only keeps the earlier command working; the wrapper and `narrator_for` live in `src/sentinel/narrative/runtime.py` |
 | Invented alert for tests and notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
 | Tests | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_local_granite.py`, `tests/test_watsonx.py`, `tests/test_explanation_store.py` |
 | Walk-through | `notebooks/p5_audit/p5_audit_narrative.ipynb` |
@@ -432,7 +432,9 @@ failed (see `fallback_reason` and `check`); 2 = missing configuration.
 
 ## What depends on other owners
 
-- **P3 (backend), BE-013:**
+- **P3 (backend), BE-013 — done 2026-10-18:** `SENTINEL_AUDIT_SINK=chain` with
+  `SENTINEL_AUDIT_RUN` / `SENTINEL_AUDIT_DIR` / `SENTINEL_NARRATOR`, `GET /v1/audit`,
+  `/v1/audit/head` and `/v1/alerts/{id}/explanation` (contracts §4–5). Original request:
   - accept `SENTINEL_AUDIT_SINK=chain` and a path or run name (`SENTINEL_AUDIT_PATH` or
     `SENTINEL_AUDIT_RUN`) in `config.py`;
   - create the sink in `main.build_pipeline`, e.g. `HashChainAuditSink(audit_path_for(run))`

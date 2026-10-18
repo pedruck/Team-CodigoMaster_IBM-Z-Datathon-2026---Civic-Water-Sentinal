@@ -20,7 +20,7 @@ scripts/shared_api.sh stop
 ```
 
 Defaults: official registry `config/sensors.battledim.json`, in-memory audit sink
-(`SENTINEL_AUDIT_SINK=memory`, until the audit owner delivers the real sink), log level INFO,
+(`SENTINEL_AUDIT_SINK=memory`; `chain` for the hash-chained log, below), log level INFO,
 no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
@@ -47,8 +47,9 @@ and prints the log: the API never falls back to the mock. `status` shows `foreca
 The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION`,
 `SENTINEL_DETECTOR_REGIONS` and `SENTINEL_DETECTOR_NETWORK` (only the variables that are set). The CUSUM detector refuses to start
 with a calibration made for another forecaster ([README](../README.md#running-with-the-cusum-detector),
-ADR-008); no calibration for `xgboost-33@0.1.0` exists yet (DEP-DET-05), so with XGBoost keep
-the mock detector, which raises no alerts with millimetre residuals (`docs/performance.md`).
+ADR-008): `config/calibration.xgboost-33.json` is for `xgboost-33@0.1.0`, so it needs
+`SENTINEL_FORECASTER=xgboost` in the **same** command. The mock detector raises no alerts with
+the millimetre residuals of XGBoost (`docs/performance.md`).
 
 ### Regions and pipe network for the CUSUM detector (ADR-011)
 
@@ -60,6 +61,9 @@ forecaster served, `config/calibration.xgboost-33.json` (v1, sha256 `fad6ec0b…
 neighbours; `docs/p4-calibration.md` §7), the shared API is started with (announce before restarting it):
 
 ```bash
+SENTINEL_FORECASTER=xgboost \
+SENTINEL_FORECASTER_PATH=/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0 \
+SENTINEL_FORECASTER_TREE_FORMAT=compress_trees \
 SENTINEL_DETECTOR=cusum \
 SENTINEL_DETECTOR_CALIBRATION=config/calibration.xgboost-33.json \
 SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json \
@@ -86,6 +90,19 @@ file in place none of them is skipped, `test_topology_files.py` pins its hash, a
 `test_detector_network_startup.py` starts the server from environment variables only (official
 registry, regions, `l-town.json`) and localises a synthetic ramp. If the file is missing they are
 skipped, not failed, so check the summary line for `skipped`.
+
+### Audit chain and explanations (BE-013)
+
+Add `SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=<run>` to the start command to record every
+window in the audit owner's hash chain, `~/shared/civicwater/audit/<run>.jsonl` (inside the
+container: `/home/ibm-user/shared/civicwater/audit/`), with the explanations of the alerts in
+`<run>.explanations.jsonl`. Pick a new run name per replay (e.g. `replay-2019-<date>`): a
+restart with the same name **continues** that chain (seq goes on) but the replay starts again
+from January, so the log would hold the year twice. `SENTINEL_NARRATOR=llamacpp` loads Granite in
+the API process (`LOCAL_LLM_*` are forwarded); `watsonx` is not forwarded on purpose, its key would
+be visible in `ps`. `status` then prints the chain head; keep that `seq`/`hash` outside the VM and
+verify with `python -m sentinel.audit.verify <file> --anchor-seq … --anchor-hash …`. Every
+record is fsynced: time a short replay with the chain before a demo (`docs/audit-and-narrative.md`).
 
 Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
 ≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).

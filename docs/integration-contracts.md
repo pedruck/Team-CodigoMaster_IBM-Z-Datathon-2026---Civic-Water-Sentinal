@@ -274,9 +274,23 @@ returning; raise `AuditError` when the event was **not** stored. The backend is
 is recorded; failed events wait in an ordered pending queue, retried before every new window;
 a full queue (`SENTINEL_AUDIT_PENDING_CAPACITY`) answers 503 `audit_backlog_full`. The sink
 therefore receives events strictly in window order, possibly late, never twice after a
-successful append. Shipped sinks: `NullAuditSink` (disabled: alerts served, `audit="disabled"`)
-and `InMemoryAuditSink` (dev only, no hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
-contract and who may read it (DEP-AUD-02).
+successful append. Shipped sinks: `NullAuditSink` (disabled: alerts served, `audit="disabled"`),
+`InMemoryAuditSink` (dev only, no hash, lost on restart) and the audit owner's
+`HashChainAuditSink` (`SENTINEL_AUDIT_SINK=chain`, BE-013): one canonical-JSON line per event in
+`<dir>/<run>.jsonl`, fsynced before `append` returns, verified at startup (a broken file stops
+the API) and extended across restarts.
+
+Chain record (v1.0, `docs/audit-and-narrative.md` Contract D): `{record_version, seq,
+recorded_at, type, window_end, alert_id, payload, payload_sha256, prev_hash, hash}`.
+Canonical JSON = `json.dumps(sort_keys=True, separators=(",", ":"), allow_nan=False)`, ASCII;
+`payload_sha256 = SHA-256(canonical(payload))`; `hash = SHA-256(prev_hash ‖ canonical(record
+without prev_hash and hash))`; the first `prev_hash` is 64 zeros. The backend serves the records
+read-only and **never** says "verified": clients check them (`python -m sentinel.audit.verify`,
+`sentinel.audit.verify_records`) against an anchor (`seq` + `hash`) kept outside the VM.
+
+With the chain, every recorded `alert.raised` is queued for an explanation (audit owner's
+`ExplanationService`, background, one at a time); the result is a record of type
+`explanation.generated` in `<dir>/<run>.explanations.jsonl`, same chain format.
 
 ## 5. Read API for the dashboard
 
@@ -286,6 +300,9 @@ contract and who may read it (DEP-AUD-02).
 | `GET /v1/status` | `StatusResponse` | history, registry (provisional flag, units), models (`mocks_active`), `audit_pending_events`, `audit_pending_alerts`, counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
 | `GET /v1/alerts` | `AlertPage {items, total, limit, offset}` | newest first; `limit` 1–500 (50), `offset`, `since`/`until` (TZ required, on `window_end`, inclusive), `region` |
 | `GET /v1/alerts/{id}` | `Alert` | 404 `not_found` |
+| `GET /v1/alerts/{id}/explanation` | `ExplanationStatus {status: pending \| ready, alert_id, language, alert_payload_sha256, source: template \| llm, text, generator, generated_at, fallback_reason, record}` | Q-AUD-07. `pending` carries the deterministic text until the stored one exists; `record` = `{seq, hash}` in the explanations log. 404 `not_found` for an unknown alert or when the audit sink is not `chain` |
+| `GET /v1/audit` | `AuditRecordPage {items, after_seq, limit, next_after_seq}` | Q-AUD-06. Records with `seq > after_seq` (default −1), `seq` order, exactly as stored; `limit` 1–1000 (100); `next_after_seq` null on the last page. 404 `not_found` unless the audit sink is `chain` |
+| `GET /v1/audit/head` | `AuditHead {seq, hash}` | last record (`null`s for an empty log); 404 unless `chain` |
 
 Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
 `validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
