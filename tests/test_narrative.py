@@ -6,6 +6,7 @@ are fakes returning fixed strings.
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,7 @@ from sentinel.narrative import (
     render_text,
 )
 from sentinel.narrative.mock import mock_alert
+from sentinel.schemas.alerts import Alert
 from sentinel.schemas.windows import SensorWindow
 from sentinel.services.pipeline import Pipeline
 
@@ -316,3 +318,44 @@ def test_rejected_model_text_is_kept_for_diagnosis() -> None:
     e = explain(mock_alert(), fixed(bad))
     assert e.source == "template" and e.model_text == bad
     assert explain(mock_alert()).model_text is None
+
+
+# ------------------------------------------------- alert 1.1: candidate pipe (ADR-011)
+
+OFFICIAL_CUSUM_EXAMPLE = Path("docs/examples/alert.cusum-synthetic.json")
+
+
+@pytest.mark.parametrize("lang", ["en", "pt"])
+def test_candidate_pipe_is_shown_as_a_candidate(lang: str) -> None:
+    alert = mock_alert(candidate_pipe="p147")
+    text = render_text(alert, lang)  # type: ignore[arg-type]
+    expected = {
+        "en": "Candidate pipe (not a confirmed location): p147.",
+        "pt": "Tubo candidato (não é uma localização confirmada): p147.",
+    }[lang]
+    assert expected in text
+    assert check_narrative(text, alert).ok
+    assert alert_facts(alert)["candidate_pipe"] == "p147"
+    assert "Candidate pipe" not in render_text(mock_alert())  # absent when null
+
+
+def test_generated_text_may_name_the_pipe_but_not_another_one() -> None:
+    alert = mock_alert(candidate_pipe="p147")
+    base = GOOD_EN + " The candidate pipe is p147."
+    assert check_narrative(base, alert).ok
+    check = check_narrative(base.replace("p147", "p148"), alert)
+    assert not check.ok and check.unknown_references == ("p148",)
+
+
+def test_official_cusum_example_alert_is_explained() -> None:
+    """The backend's v1.1 example: official sensor ID, L-Town region, candidate pipe."""
+    alert = Alert.model_validate_json(OFFICIAL_CUSUM_EXAMPLE.read_text(encoding="utf-8"))
+    text = render_text(alert)
+    assert "region Z3-R1" in text and "p147" in text and "n215 -0.50 m (z 5.00)" in text
+    assert check_narrative(text, alert).ok
+    faithful = (
+        f"Alert {alert.alert_id} reports a suspected leak in region Z3-R1. Sensor n215 read "
+        "0.5 m below the expected pressure since 2019-01-01 16:35 UTC. The candidate pipe is p147."
+    )
+    e = explain(alert, fixed(faithful))
+    assert e.source == "llm" and e.text.startswith("[SIMULATION] ")

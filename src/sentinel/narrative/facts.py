@@ -46,6 +46,7 @@ def alert_facts(alert: Alert) -> dict[str, Any]:
         "is_mock": alert.is_mock,
         "window_end": _iso(alert.window_end),
         "region": alert.region,
+        "candidate_pipe": alert.candidate_pipe,  # alert 1.1: a candidate, not a location
         "suspected_onset": _iso(alert.suspected_onset),
         "hours_since_onset": alert.hours_since_onset,
         "cusum": alert.cusum.model_dump() if alert.cusum else None,
@@ -76,6 +77,7 @@ _TEXT: dict[Language, dict[str, str]] = {
         "head": "Alerta {id}: suspeita de vazamento",
         "region": " na região {region}.",
         "no_region": " (região não estimada).",
+        "pipe": "Tubo candidato (não é uma localização confirmada): {pipe}.",
         "window": "Janela avaliada: {date} {time} UTC.",
         "onset": "Início estimado do desvio: {date} {time} UTC",
         "hours": ", {hours} h antes da janela.",
@@ -95,6 +97,7 @@ _TEXT: dict[Language, dict[str, str]] = {
         "head": "Alert {id}: suspected leak",
         "region": " in region {region}.",
         "no_region": " (region not estimated).",
+        "pipe": "Candidate pipe (not a confirmed location): {pipe}.",
         "window": "Evaluated window: {date} {time} UTC.",
         "onset": "Estimated deviation onset: {date} {time} UTC",
         "hours": ", {hours} h before the window.",
@@ -126,6 +129,8 @@ def render_text(alert: Alert, lang: Language = DEFAULT_LANGUAGE) -> str:
     head = t["head"].format(id=alert.alert_id)
     head += t["region"].format(region=alert.region) if alert.region else t["no_region"]
     lines.append(head)
+    if alert.candidate_pipe:
+        lines.append(t["pipe"].format(pipe=alert.candidate_pipe))
     we = alert.window_end
     lines.append(t["window"].format(date=f"{we:%Y-%m-%d}", time=f"{we:%H:%M}"))
     if alert.suspected_onset:

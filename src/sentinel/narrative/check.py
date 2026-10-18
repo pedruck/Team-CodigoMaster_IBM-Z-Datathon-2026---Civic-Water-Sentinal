@@ -91,6 +91,8 @@ class _Allowed:
         literals |= {f"{m.name}@{m.version}" for m in models}
         if alert.region:
             literals.add(alert.region)
+        if alert.candidate_pipe:  # alert 1.1 (ADR-011)
+            literals.add(alert.candidate_pipe)
         for sensor, features in (alert.forecast_contributions_m or {}).items():
             literals.add(sensor)
             literals.update(features)

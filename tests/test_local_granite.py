@@ -251,3 +251,9 @@ def test_cli_llamacpp(
         LlamaCppNarrator, "from_env", classmethod(lambda cls: cls(tmp_path / "x.gguf"))
     )
     assert cli_main(["--llamacpp"]) == 2  # llama_cpp missing here, or the file does not exist
+
+
+def test_small_model_prompt_leaves_the_candidate_pipe_out() -> None:
+    alert = mock_alert(candidate_pipe="p147")
+    assert "p147" not in build_completion_prompt(alert)
+    assert "candidate_pipe" not in prompt_facts(alert)

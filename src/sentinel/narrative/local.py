@@ -161,10 +161,10 @@ def _drop_empty(value: Any) -> Any:
 
 def prompt_facts(alert: Alert) -> dict[str, Any]:
     """What the small model sees: the core of the alert, rounded to 2 decimals, without empty
-    fields. Contributions, the detector summary, model names, the audit seq and ``is_mock``
-    stay out: on the VM the 350M model passed contributions off as deviations, echoed the
-    summary and ignored the simulation rule (``explain`` adds that notice itself). They remain
-    in the evidence table and in the template."""
+    fields. Contributions, the detector summary, model names, the audit seq, ``is_mock`` and
+    the candidate pipe stay out: on the VM the 350M model passed contributions off as
+    deviations, echoed the summary and ignored the simulation rule (``explain`` adds that
+    notice itself). They remain in the evidence table and in the template."""
     facts = alert_facts(alert)
     core: dict[str, Any] = {
         key: facts[key] for key in ("alert_id", "window_end", "region", "suspected_onset")

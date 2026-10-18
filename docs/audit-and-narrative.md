@@ -33,6 +33,24 @@ arquivos do backend não foram alterados.
 | Q-AUD-02 onde fica o log | `~/shared/civicwater/audit/<run>.jsonl` na VM, fora dos clones do Git (`audit_path_for(run)`) |
 | Idioma da explicação | **inglês** por padrão (`DEFAULT_LANGUAGE = "en"`); `language="pt"` continua disponível |
 | Q-DET-02 sinal do z | `deviation_m = observado − esperado` (negativo numa queda) e `z = (esperado − observado)/σ` (positivo numa queda). O alerta inventado e os exemplos do prompt da P5 seguem essa convenção; a validação compara valores absolutos. |
+| Alerta 1.1 (ADR-011, P4) | Novo campo opcional `candidate_pipe` (ID de tubo, por exemplo `p147`). Regiões reais do L-Town (por exemplo `Z3-R1`). A P5 mostra o tubo como "Candidate pipe (not a confirmed location)" / "Tubo candidato (não é uma localização confirmada)"; a validação aceita esse ID e recusa outro tubo. O prompt do modelo pequeno não inclui o tubo (mesmo motivo das contribuições). |
+
+## Quando o `[SIMULATION]` some
+
+Um alerta só deixa de ser simulado quando o previsor **e** o detector são reais (`is_mock=false`).
+Situação em 2026-10-18, depois do merge da `main`:
+
+| Peça | Situação |
+|---|---|
+| Previsor real (P2) | **Existe:** XGBoost em `~/shared/civicwater/models/xgboost-33@0.1.0` na VM (`SENTINEL_FORECASTER=xgboost`), `is_mock=false`. |
+| Dados reais de 2019 (P1) | **Existem:** o replay inteiro de 2019 passa na validação (`docs/runbook-vm.md`). |
+| Regiões e rede de tubos (P4) | **Existem:** `config/regions.battledim.json` e `l-town.json` no diretório de dados. |
+| Calibração do CUSUM (P4) | **Falta.** O detector só deixa de ser mock com `provenance = "battledim-2018-oof"`, calibrado com os resíduos fora da amostra de 2018 **do mesmo previsor** (DEP-DET-05). Para o `xgboost-33@0.1.0` essa calibração não existe; as que existem são `synthetic` ou `dev-baseline-2018`, que forçam `is_mock=true`. |
+
+Ou seja, falta o P2 entregar os resíduos fora da amostra de 2018 do XGBoost, e o P4 rodar a
+calibração e commitar `config/calibration.<previsor>.json`. Com o XGBoost e o detector mock, nenhum
+alerta é gerado (σ de 1 m contra resíduos de milímetros). Quando a calibração existir, a P5 não
+muda nada: o aviso some sozinho, e esse caminho já está testado.
 
 Uma versão anterior deste documento registrava fail-open, porque era o que o backend fazia na
 época. A `main` apontou a contradição (Q-DOC-01); este documento agora segue a `main`.
@@ -428,7 +446,8 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 | testes da P5 (`test_audit_chain`, `test_narrative`, `test_local_granite`, `test_watsonx`) | 107 passed |
 | Explicações em segundo plano (2026-10-18): `pytest` suíte inteira | **770 passed**, 20 skipped, 3 failed (as mesmas 3 do P6, só no Windows); P5: 120 passed |
 | Ponta a ponta com `uvicorn` real (`devserver`, `SENTINEL_NARRATOR=none`, IDs oficiais do BattLeDIM), 288 janelas | 288 × 201; 1 alerta; `GET .../explanation` `ready` em en e pt; cadeia de auditoria ok (289 registros) e de explicações ok (2) |
-| Explicações com o Granite no processo da API na VM (`SENTINEL_NARRATOR=llamacpp`) | **NOT_RUN** |
+| Explicações com o Granite no processo da API na VM (`SENTINEL_NARRATOR=llamacpp`) | rodado pelo P5; `verify_explanation` do último registro contra o `alert.raised`: **"explicação ligada ao alerta: OK"** (JSON da explicação não registrado aqui) |
+| **2º merge da `main` (2026-10-18)**: alerta 1.1 (`candidate_pipe`), regiões do L-Town | merge sem conflito; P5: 125 passed (com o exemplo oficial `alert.cusum-synthetic.json`); formatação e lint ok; suíte inteira **849 passed, 34 skipped, 4 failed**. As 4 falhas só acontecem no Windows e estão fora da P5: as 3 de `test_eval_run.py` (P6) e `test_topology_files.py::test_the_committed_regions_file_is_the_one_that_was_fixed` (P4: hash de `config/regions.battledim.json`, que o Git do Windows grava com CRLF, 428 bytes em vez de 415). |
 | Antes do merge: `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
