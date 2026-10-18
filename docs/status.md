@@ -209,6 +209,10 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| branch `zanetti/ingest-hardening` (BE-024, x86-64): `just check` | ruff format/lint OK · mypy: no issues in 185 files · **1096 passed, 40 skipped** (29 new: `tests/test_ingest_hardening.py`, `test_artefact_integrity.py`, `test_replay_integrity.py`) |
+| same commit `896f785` on the VM (s390x, P3 clone): `python -m pytest -q` | **1068 passed, 14 skipped** |
+| VM: `replay_windows --year 2019` on the official v1 files (MANIFEST checked) into a temporary directory | 105 120 windows; sidecar sha256 `0df9df009ecd…`; **byte-identical** to the shared `replay/v1/windows_2019.jsonl` |
+| VM: private API 127.0.0.1:8003, XGBoost + `SENTINEL_FORECASTER_SHA256` + CUSUM v1 + regions + network + chain + token file | wrong pin: startup refused; served version `0.1.0+808746bc`; no token → 401; 4 sensors at −1000 m + 1 at 10⁹ m → 422 `reading_out_of_range`; 2099 window → 422 `timestamp_in_future`; full 2019 with `--token-file`: 105 120 × `201` in 328 s (no real window outside the limits), 895 alerts; `replay_check` chain vs file: 105 120 / 105 120 matched, ok |
 | shared API restarted on `main` @ `45f733d` with XGBoost + CUSUM v1 + regions + network + chain `replay-2019-1018`; full 2019 replayed (`scripts/replay.py`) | 105 120 × `201` in 338 s, `mocks_active: false`, 895 alerts, chain 106 015 records and 895 explanations `verify_file` ok; anchor in `docs/performance.md` |
 | branch `zanetti/be-013-audit-chain` (x86-64, CPython 3.14.7): `just ci` (ruff format --check, ruff check, mypy, pytest) | 170 files formatted · ruff OK · mypy: no issues in 170 files · **1042 passed, 40 skipped** (`tests/test_audit_wiring.py`: 15 new) |
 | local integration `main` + PR #18 + BE-013 (`e8be180`): `just ci` | 180 files formatted · ruff OK · mypy: no issues in 179 files · **1067 passed, 40 skipped** |
