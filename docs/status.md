@@ -10,6 +10,11 @@
 
 ## Summary
 
+**Render deploy (BE-028, 2026-10-18, branch `feat/be-028-render-deploy`):** `render.yaml`
+(Blueprint, option 1 of ADR-013) and the steps in `docs/external-dashboard.md`. Build and start
+commands checked locally against the shared API; the gateway and tunnel on the VM and the
+Render service itself are NOT_RUN (they need the Render account owner and Q-OPS-01).
+
 **Dashboard off the VM (BE-026, 2026-10-18, branch `feat/be-026-external-dashboard`):** code for
 both options of the external-dashboard plan: a read-only gateway behind an outbound tunnel, and
 snapshots pushed to pre-signed URLs; the dashboard reads either, shows a snapshot's age and falls
