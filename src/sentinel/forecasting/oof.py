@@ -51,6 +51,11 @@ CSV_CHUNK_ROWS = 16_384
 SUMMARY_POLICIES = ("reparados", "reparados+crescimento")
 
 
+def _log(message: str) -> None:
+    """Flushed at once: under ``nohup ... > log`` stdout is block-buffered."""
+    print(message, flush=True)
+
+
 def _xgboost() -> Any:
     return importlib.import_module("xgboost")  # offline only, absent from backend CI
 
@@ -161,13 +166,14 @@ def oof_expected(
     *,
     sensors: Sequence[str] | None = None,
     cache_dir: Path | None = None,
-    progress: Callable[[str], None] = print,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, pd.Series[int]]:
     """Out-of-fold expected pressures of every window (index of ``df``) and their fold.
 
     With ``cache_dir``, each finished fold is stored there and reused by a later run with the
     same arguments, so an interrupted run resumes instead of starting over.
     """
+    progress = progress or _log
     sensors = list(sensors or layout.pressure)
     folds = month_folds(pd.DatetimeIndex(df.index))
     parts = []
@@ -281,9 +287,10 @@ def run(
     variants: Sequence[str] = VARIANTS,
     sensors: Sequence[str] | None = None,
     fast: bool = False,
-    progress: Callable[[str], None] = print,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Path]:
     """Generate the out-of-fold residuals of each variant; return the folder of each."""
+    progress = progress or _log
     meta = training.read_json(model_dir / "meta.json")
     layout = SensorLayout.from_dict(meta["layout"])
     policy = str(meta.get("mask_policy", training.DEFAULT_MASK_POLICY))
