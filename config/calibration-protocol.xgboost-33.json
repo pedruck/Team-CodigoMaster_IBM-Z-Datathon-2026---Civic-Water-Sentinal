@@ -1,0 +1,45 @@
+{
+  "protocol": "cusum-calibration/1",
+  "exploration": {
+    "registered": "2026-10-17",
+    "sigma": {
+      "mask_policy": "none",
+      "floor": "quantization step / sqrt(12) of the coarsest sensor",
+      "rationale": "ADR-008 §C: sigma is the robust scale (1.4826 MAD) of every 2018 out-of-fold window, documented as conservative; the leak masks (reparados, reparados+crescimento recommended by P1, todos) are reported as sensitivity only, because they keep only 2-43 % of the year, concentrated in a few months. The floor is the rounding noise of the measurement (step/sqrt(12)) of the coarsest sensor: below it sigma would measure the display resolution, not the forecaster."
+    },
+    "persistence": {
+      "baseline_hours": 24,
+      "initial_hours": 1,
+      "remaining_after_hours": 24,
+      "n_top": 3,
+      "median_at_least": 0.5,
+      "minimum_at_least": 0.25,
+      "rationale": "Operational definition of ADR-008 §D (sentinel.detection.offline.persistence), fixed before any XGBoost residual is read. Displacement = mean z over a span minus the sensor's mean over the 24 h before the start (removes the offset of the other active leaks; a full day, so no diurnal bias). Initial span (start, start+1h]; remaining span (start+24h, start+25h], the same hours of the day. Affected sensors = the 3 with the largest initial displacement (the middle of the N grid 1..5). Persistence = sum of remaining / sum of initial. Thresholds as proposed on 2026-10-17 (PR #16): median >= 50 % and no leak < 25 % over the 6 abrupt leaks of 2018; an undefined ratio counts as 0."
+    },
+    "delta": {
+      "sustained_hours": 24,
+      "max_rank": 5,
+      "k_decimals": 2,
+      "rationale": "Amends the PR #16 proposal (delta = 1 sigma). delta_N = the smallest, over the 6 abrupt leaks of 2018, of the N-th largest sustained displacement (mean z over (start, start+24h] minus the 24 h before): the shift the CUSUM must see on N sensors to detect the weakest abrupt leak. k_N = delta_N / 2 rounded to 2 decimals, for the cells with that N (the CUSUM is tuned to the shift it must find on the N sensors that open the alert). An N with k_N <= 0 leaves the grid. Fixed before any detection result; the sweep never chooses k."
+    }
+  },
+  "inputs": {
+    "with-neighbours": {
+      "forecaster": {
+        "name": "xgboost-33",
+        "version": "0.1.0"
+      },
+      "residuals_sha256": "4878bb7cf43590a0a6d30317d43f7635264ed1d98819af7c59bdb2092a464a1a",
+      "folds_sha256": "3e04574f8ab22de9804c7ffe123e428e83b780ffa7487f837855555366c2ba9d"
+    },
+    "without-neighbours": {
+      "forecaster": {
+        "name": "xgboost-33-without-neighbours",
+        "version": "candidate"
+      },
+      "residuals_sha256": "a7f46f421ab0629242d33ba45bbf52fe85f619ab9b220cec4ddcfb06c33d85f6",
+      "folds_sha256": "3e04574f8ab22de9804c7ffe123e428e83b780ffa7487f837855555366c2ba9d"
+    }
+  },
+  "sweep": "not yet registered"
+}
