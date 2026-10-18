@@ -11,7 +11,7 @@ import pytest
 
 from dashboard.map_embed import map_image
 from dashboard.network_map import DEFAULT_MAP, REGION, load_map, map_svg, parse_map
-from dashboard.network_map_view import NETWORK_ONLY, NetworkMapView
+from dashboard.network_map_view import NETWORK_ONLY, STATIC, NetworkMapView
 from dashboard.source import PlaybackAlertSource
 from sentinel.schemas.alerts import Alert
 
@@ -131,7 +131,12 @@ def test_jupyter_view_walks_the_alerts(tmp_path: Path) -> None:
     view.refresh()
     assert view.slider.options[0] == NETWORK_ONLY
     assert len(view.slider.options) == len(view.alerts) + 1
+    assert view.map.value.startswith("<iframe")  # interactive by default
+    assert "&quot;selected&quot;:&quot;A-20190314T1705Z-1&quot;" in view.map.value
     view.slider.value = NETWORK_ONLY
+    assert "&quot;selected&quot;:null" in view.map.value
+    view.renderer.value = STATIC  # fallback when the notebook does not run iframe scripts
+    assert view.map.value.startswith("<svg")
     assert "Suspected leak" not in view.map.value
     out = view.save_svg(tmp_path / "map.svg")
     assert out.read_text(encoding="utf-8").startswith("<svg")

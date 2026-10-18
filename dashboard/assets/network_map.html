@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L-Town network map</title>
+<style>/*__STYLES__*/</style>
+</head>
+<body>
+<div class="map" data-variant="__VARIANT__">
+  <div class="toolbar" role="toolbar" aria-label="Map controls">
+    <div class="tabs" role="tablist" aria-label="Map mode">
+      <button class="tab" role="tab" id="tab-alert" aria-selected="true" aria-controls="stage">Alert</button>
+      <button class="tab" role="tab" id="tab-regions" aria-selected="false" aria-controls="stage" tabindex="-1">Regions</button>
+    </div>
+    <span class="badge" id="mock-badge" hidden>SIMULATED</span>
+    <div class="tools">
+      <button class="tool" id="focus" type="button" aria-label="Focus the alert on the map" title="Focus alert (F)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>
+        <span class="label">Focus alert</span>
+      </button>
+    </div>
+  </div>
+  <div class="stage" id="stage" tabindex="0" role="group" aria-roledescription="network map"
+       aria-label="L-Town network map. Drag or use the arrow keys to pan, scroll or press plus and minus to zoom, 0 fits the network, F focuses the alert, Escape closes details."
+       aria-describedby="map-summary">
+    <svg id="svg" aria-hidden="false" role="presentation">
+      <g id="camera">
+        <g id="pipes"></g>
+        <g id="hits"></g>
+        <g id="candidate-layer"></g>
+        <g id="landmarks"></g>
+        <g id="sensors"></g>
+      </g>
+    </svg>
+    <div class="labels" id="labels" aria-hidden="true"></div>
+    <div class="zoom-tools" role="group" aria-label="Zoom">
+      <button class="tool" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in (+)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="tool" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out (−)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+      </button>
+      <button class="tool" id="fit" type="button" aria-label="Fit the whole network" title="Whole network (0)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18l5-7 4 4 3-5 4 8z"/><circle cx="16" cy="6" r="1.6"/></svg>
+        <span class="label">Whole network</span>
+      </button>
+    </div>
+    <ul class="warnings" id="warnings" role="status" hidden></ul>
+    <div class="panel tooltip" id="tooltip" hidden></div>
+    <section class="panel detail" id="detail" aria-labelledby="detail-title" hidden>
+      <button class="close" id="detail-close" type="button" aria-label="Close details">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <h2 id="detail-title" tabindex="-1"></h2>
+      <p class="kind" id="detail-kind"></p>
+      <dl id="detail-facts"></dl>
+      <p class="note" id="detail-note" hidden></p>
+    </section>
+    <section class="panel card" id="card" aria-live="polite" aria-labelledby="card-title" hidden>
+      <div class="card-head"><h2 id="card-title"></h2><span class="badge" id="card-badge" hidden>SIMULATED</span></div>
+      <p class="when mono" id="card-when"></p>
+      <dl id="card-facts"></dl>
+      <p class="pipe-line" id="card-pipe"></p>
+      <p class="card-end" id="card-end" hidden></p>
+      <p class="replay-note" id="replay-note" hidden></p>
+      <button class="tool exit" id="card-exit" type="button">Back to selected alert</button>
+    </section>
+    <div class="legend" id="legend" role="group" aria-label="Legend"></div>
+    <p class="attrib" id="attrib"></p>
+    <p class="sr-only" id="map-summary"></p>
+  </div>
+  <div class="replay" id="replay" role="group" aria-label="Replay of the alerts in time order">
+    <button class="play" id="play" type="button" aria-label="Play replay">
+      <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a.8.8 0 0 0 1.2.7l10.4-6.5a.8.8 0 0 0 0-1.4L9.2 4.8A.8.8 0 0 0 8 5.5z"/></svg>
+      <svg id="pause-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><rect x="6.5" y="5" width="4" height="14" rx="1"/><rect x="13.5" y="5" width="4" height="14" rx="1"/></svg>
+      <span id="play-label">Replay</span>
+    </button>
+    <output class="clock mono" id="clock" aria-live="off"></output>
+    <div class="track">
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+      <input type="range" id="scrub" min="0" max="1" step="1" value="0" aria-label="Simulated time">
+    </div>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+<script type="application/json" id="map-data">__PAYLOAD__</script>
+<script>/*__SCRIPT__*/</script>
+</body>
+</html>
