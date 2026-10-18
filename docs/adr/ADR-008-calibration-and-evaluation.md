@@ -67,12 +67,32 @@ and `provenance ∈ {synthetic, dev-baseline-2018, battledim-2018-oof}`. Field n
   `h_close`, the floor and the hashes are parameters without defaults. The 2018
   labels are used only as a sensitivity analysis (mask the windows with an active leak and
   report how σ changes). σ is documented as conservative; 2018 is never called "clean normal".
+  *Floor rule (BE-012j):* the rounding noise of the measurement, `Δ/√12` of the coarsest
+  sensor, where `Δ` is the smallest non-zero step between distinct observed values (below it σ
+  would measure the display resolution, not the forecaster). Sensitivity: false alarms per
+  week per sensor with `N = 1` for the floors `Δ/√12`, `Δ`, 5, 10 and 20 mm.
 - `k` is fixed a priori from the smallest standardised shift δ worth detecting
   (`k = δ/2`); δ and its rationale are registered in the pre-registration record below
-  *before* any calibration runs.
+  *before* any calibration runs. *Rule (BE-012j, amends the δ = 1σ proposal of 2026-10-17):*
+  `δ_N` = the smallest, over the 6 abrupt leaks of 2018, of the `N`-th largest sustained
+  displacement of `z` (mean over the 24 h after `start` minus the mean over the 24 h before),
+  measured on the out-of-fold residuals before anything is replayed; `k_N = δ_N/2` for the
+  cells with that `N`. `k` ∈ {`δ/4`, `δ`} is reported as a sensitivity, never used to choose.
 - `h` and `N` come from one joint sweep for the false-alarm budget (Q-TEAM-03).
   `c` and `h_close` are chosen for the recovery time after a repair, from the same sweep.
   Few parameters are tuned, and the sweep is validated leaving one labelled leak out at a time.
+  *Selection rule (BE-012j):* among the cells with at most `B` false alarms per week, the most
+  leaks detected, then the smallest median delay from `start`; ties go to the larger `h`, then
+  the larger `N`. *Leave-one-leak-out:* for each leak, the rule is re-run on the other 13 (the
+  openings inside the held-out window are dropped and the period shrinks by it) and the held-out
+  leak is looked up in the chosen cell; the report gives n/14 held out against n/14 in sample
+  and the number of distinct cells. If the choice is unstable, the most conservative of the
+  chosen cells (largest `h`, then `N`) is kept. *Cap and release:* at the chosen `(k, h, N)`,
+  `c` ∈ {1.5, 2, 3} × `h_close/h` ∈ {0.25, 0.5, 0.75}: within the budget, most leaks, most
+  repaired leaks whose alert sensors fall below `h_close` within the registered target, smallest
+  median recovery, fewest repeat openings; the chosen cell is re-evaluated (the cap changes the
+  false alarms, §E). Code: `offline/{oof,persistence,selection,experiment}.py`; protocol and
+  values: `config/calibration-protocol.xgboost-33.json`; method and results: `docs/p4-calibration.md`.
 - "False alarm" cannot be "an alert with no leak active" (one is almost always active). It is
   an alert opened outside the matching window of every labelled leak (G).
 
@@ -130,10 +150,10 @@ produces results labelled "exploratory" in every table.
 
 | Field | Value | Owner |
 |---|---|---|
-| δ (→ `k = δ/2`) and rationale | not yet registered | detection |
-| Persistence-test acceptance criterion | not yet registered | detection |
-| False-alarm budget (alerts per week) | not yet registered (Q-TEAM-03) | team |
-| Matching rule and tolerance per leak type | not yet registered (Q-UI-06) | evaluation |
+| δ (→ `k = δ/2`) and rationale | **registered 2026-10-17** (amends the δ = 1σ proposal of PR #16): rule of §C, `δ_N` from the weakest abrupt leak of 2018, `k_N = δ_N/2` rounded to 0.01; rule committed in `config/calibration-protocol.xgboost-33.json` (`exploration`, commit `ae93951`) before any XGBoost residual was read; values copied from phase A into its `sweep` section before any replay: `with-neighbours` k₁..k₅ = 6.34, 1.72, 1.08, 0.45, 0.27; `without-neighbours` 4.21, 1.58, 1.49, 0.96, 0.60 | detection |
+| Persistence-test acceptance criterion | **registered 2026-10-17:** over the 6 abrupt leaks of 2018, median persistence ≥ 50 % and none < 25 % (undefined counts as 0); operational definition in `offline/persistence.py` and the protocol (`exploration.persistence`, commit `ae93951`, before any XGBoost residual was read): displacement against the 24 h before `start`, initial = first hour, remaining = the hour 24 h later, 3 most displaced sensors, ratio of sums. Result (phase A): `with-neighbours` median 0.957, minimum 0.539 (p538) **PASS**; `without-neighbours` median 0.962, minimum 0.434 (p183) **PASS** | detection |
+| False-alarm budget (alerts per week) | not yet registered (Q-TEAM-03). Candidates registered for the 2018 sweep: 0.5, 1, 2, 4 per week; the detection owner proposes **1 per week** (primary in the protocol) | team |
+| Matching rule and tolerance per leak type | not yet registered (Q-UI-06). The 2018 calibration uses the operator view of ADR-010 (`max_delay` 7 days for both types), so its false alarms compare with those of 2019 | evaluation |
 | Sensor → region mapping and pipe network (rule, D, files) | registered by ADR-011 §1–2: `config/regions.battledim.json` sha256 `ca365b7074d2bb3df2cec38d69768850ca1d37b9a717db62a9f95a71a25fe57d`, built from the data owner's `network/v1/l-town.json` sha256 `ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59` (model `L-TOWN.inp` sha256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`) | detection |
 | Pipe → region table (2019 labels) | not yet registered (Q-UI-06) | evaluation |
 | Calibration artefact hash | not yet registered | detection |
