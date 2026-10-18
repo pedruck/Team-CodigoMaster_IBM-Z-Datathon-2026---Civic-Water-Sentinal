@@ -199,8 +199,7 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Start the shared API with `SENTINEL_DETECTOR=cusum` and `config/calibration.xgboost-33.json` (runbook, announce
-first) so the integration shows a real detector; the team confirms the budget (Q-TEAM-03) and P2 exports the variant without
+The shared API runs the real detector and the audit chain with 2019 loaded (2026-10-18); the team confirms the budget (Q-TEAM-03) and P2 exports the variant without
 neighbours (Q-ML-07), which is the planned upgrade; P6 can run 2019 (EV-003); run that replay with `SENTINEL_AUDIT_SINK=chain` (BE-013, runbook) and keep the head outside the VM; then p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
 
@@ -208,6 +207,7 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| shared API restarted on `main` @ `45f733d` with XGBoost + CUSUM v1 + regions + network + chain `replay-2019-1018`; full 2019 replayed (`scripts/replay.py`) | 105 120 × `201` in 338 s, `mocks_active: false`, 895 alerts, chain 106 015 records and 895 explanations `verify_file` ok; anchor in `docs/performance.md` |
 | branch `zanetti/be-013-audit-chain` (x86-64, CPython 3.14.7): `just ci` (ruff format --check, ruff check, mypy, pytest) | 170 files formatted · ruff OK · mypy: no issues in 170 files · **1042 passed, 40 skipped** (`tests/test_audit_wiring.py`: 15 new) |
 | local integration `main` + PR #18 + BE-013 (`e8be180`): `just ci` | 180 files formatted · ruff OK · mypy: no issues in 179 files · **1067 passed, 40 skipped** |
 | same commit on the VM (s390x, `/opt/venv`, P3 clone): `python -m pytest -q` | **1039 passed, 14 skipped** |

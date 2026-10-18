@@ -166,6 +166,30 @@ false alarms is the layer-2 evaluation's job (EV-003, ADR-010); the repeated ale
 episode are a question for the detection owner (Q-DET-09). The slowdown versus the mock run is not
 broken down (no per-stage numbers were captured in this run). One run, shared VM, not a benchmark.
 
+### Full 2019 into the shared API with the real stack and the audit chain (2026-10-18)
+
+`main` @ `45f733d` in `~/shared/civicwater/main`, started by `scripts/shared_api.sh` with the
+configuration of the run above (XGBoost `compress_trees` / `on_alert`, CUSUM v1, regions, network)
+and `SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=replay-2019-1018`: the chain is on `~/shared`
+(fsync per record). Client `scripts/replay.py`, `nice -n 10`, same container.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 × `201` · 144 `insufficient_history`, 104 976 `scored` · audit backlog 0 |
+| wall time / client throughput | 338.04 s / 310.97 windows/s |
+| client latency p50 / p99 / max | 2.921 / 7.242 / 72.126 ms |
+| server `http_post_windows` p50 / p95 / p99 (last 10 000) | 2.462 / 2.9244 / 21.3441 ms |
+| pipeline `total` p50 / p95 / p99 (last 10 000) | 1.8279 / 2.1888 / 20.6283 ms |
+| `forecast` / `detection` / `audit` p50 (last 10 000) | 0.6989 / 0.1752 / 0.7918 ms |
+| `explain` (TreeSHAP for the deviating sensors, 895 alert windows) p50 / p95 / p99 | 17.805 / 29.3036 / 39.1651 ms |
+| alerts / audit records / explanations | 895 / 106 015 / 895 — the same counts as the private run above; both files `verify_file` ok |
+
+The fsync of the chain on `~/shared` costs 0.79 ms p50 per window, about the forecast's cost;
+the p99 of `total` (~20 ms) follows the alert windows, where `explain` runs. Chain anchor at the
+end of the run: seq 106 014, hash
+`96fa38333d56681f5de7aa09e0ce46d42977e712869b7ed951cb02c6a15b0856` (explanations: seq 894,
+`2c93bfe6c39709e3faae9b704607b1dd917ea02079c3efbb5ee393edbed97b03`). One run, shared VM.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
