@@ -122,7 +122,8 @@ Playwright script, installed Chrome). It checked 1536×1080, 390×844, 360×800,
 1440×900; the last used reduced motion. All layouts stayed within the available page
 width. Evidence navigation, raw audit/sensor disclosures, history filtering/reset and
 manual refresh passed. All local assets loaded; **0 page errors**, **0 external asset
-requests**, and **0 GSAP tweens** with reduced motion. No performance score is claimed.
+requests**, and **0 GSAP tweens** with reduced motion. A further check of **Source & models**
+confirmed that full model names and versions wrap without ellipses. No performance score is claimed.
 
 Review captures from `fixture-cusum`:
 

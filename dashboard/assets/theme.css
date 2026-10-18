@@ -91,7 +91,7 @@
 [data-testid="stSidebar"] [data-testid="stExpander"] { border: 1px solid var(--cw-line); border-radius: 7px; }
 [data-testid="stSidebar"] [data-testid="stExpander"] p { font-size: .72rem; }
 [data-testid="stSidebar"] [data-testid="stMetricValue"] { font-size: .79rem; overflow-wrap: anywhere; }
-[data-testid="stSidebar"] [data-testid="stMetricValue"] > div { white-space: normal; }
+[data-testid="stSidebar"] [data-testid="stMetricValue"] :is(div, p) { white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; -webkit-line-clamp: unset; }
 [data-testid="stSidebar"] [data-testid="stMetricLabel"] p { font-size: .65rem; color: var(--cw-muted); }
 .sidebar-footer { display: flex; gap: .65rem; align-items: center; border-top: 1px solid var(--cw-line); padding-top: 1.25rem; margin-top: 2rem; font-size: .72rem; }
 .sidebar-footer small { display: block; margin-top: 4px; font-size: .63rem; color: var(--cw-muted); }
