@@ -22,7 +22,7 @@ def run_app(monkeypatch: pytest.MonkeyPatch, run: Path, alert_id: str | None = N
     app = testing.AppTest.from_file("../dashboard/app.py").run()
     assert not app.exception
     if alert_id is not None:
-        app = app.selectbox(key=SELECT_KEY).select(alert_id).run()
+        app = app.radio(key=SELECT_KEY).set_value(alert_id).run()
         assert not app.exception
     return app
 
@@ -49,13 +49,10 @@ def texts(app: Any) -> list[str]:
 def test_detail_defaults_to_the_newest_alert_on_the_page(monkeypatch: pytest.MonkeyPatch) -> None:
     app = run_app(monkeypatch, EDGE)
 
-    assert app.selectbox(key=SELECT_KEY).value == "A-20190314T1640Z-93"
-    assert app.selectbox(key=SELECT_KEY).options == [
-        "A-20190314T1640Z-93",
-        "A-20190314T1640Z-92",
-        "A-20190314T1640Z-91",
-        "A-20190314T1640Z-1",
-    ]
+    queue = app.radio(key=SELECT_KEY)
+    assert queue.value == "A-20190314T1640Z-93"
+    assert len(queue.options) == 4  # newest first: -93, -92, -91, -1 (labels are summaries)
+    assert queue.options[0].startswith("**R\\-FIXTURE**")
     assert any("Alert detail" in h.value for h in app.header)
 
 
@@ -151,6 +148,6 @@ def test_created_at_appears_only_in_the_detail(monkeypatch: pytest.MonkeyPatch) 
 def test_no_detail_without_a_valid_alert_page(monkeypatch: pytest.MonkeyPatch, run: str) -> None:
     app = run_app(monkeypatch, PLAYBACK / run)
 
-    assert len(app.selectbox) == 0
+    assert len(app.radio) == 0
     assert len(app.table) == 0
     assert any("No alert to show" in c.value for c in app.caption)

@@ -1,5 +1,5 @@
 """Interactive network map (BE-024): the pure payload (``map_payload``), the self-contained
-document (``map_document``), and the synthetic demo playback.
+document (``map_document``), the synthetic demo playback, and both Streamlit pages headless.
 The small invented map gives exact answers; the real ``config/l-town-map.json`` only smoke
 tests and the demo fixture's IDs."""
 
@@ -193,6 +193,56 @@ def test_synthetic_demo_playback_is_labelled_and_uses_official_ids() -> None:
     views = map_payload(load_map(), None, alerts)["alerts"]
     assert all(v["region_known"] and not v["warnings"] for v in views)
     assert sum(v["candidate_known"] for v in views) == 5  # one alert names no pipe
+
+
+@pytest.mark.parametrize("run", [CUSUM, DEMO], ids=lambda p: p.name)
+@pytest.mark.parametrize("page", ["../dashboard/app.py", "../dashboard/pages/network_map_page.py"])
+def test_pages_run_headless(page: str, run: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("SENTINEL_DASHBOARD_PLAYBACK_DIR", str(run))
+
+    app: Any = testing.AppTest.from_file(page).run()
+
+    assert not app.exception
+    (frame,) = app.get("iframe")
+    payload = doc_payload(frame.proto.srcdoc)
+    assert payload["selected"] == "A-20190314T1705Z-1"
+    assert any("RECORDED REPLAY" in w.value for w in app.warning)
+    assert any("SIMULATED" in w.value for w in app.warning)
+    assert any(
+        c.value.startswith("Simulated data (BattLeDIM L-Town). Not validated") for c in app.caption
+    )
+
+
+def test_selected_alert_reaches_the_map_with_its_warnings(monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("SENTINEL_DASHBOARD_PLAYBACK_DIR", str(CUSUM))
+
+    app: Any = testing.AppTest.from_file("../dashboard/app.py").run()
+
+    view = doc_payload(app.get("iframe")[0].proto.srcdoc)["alerts"][0]
+    assert view["warnings"] == ["Region R-SYN-A is not in the map."]
+
+
+@pytest.mark.parametrize("page", ["../dashboard/app.py", "../dashboard/pages/network_map_page.py"])
+def test_recording_note_is_visible(page: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("SENTINEL_DASHBOARD_PLAYBACK_DIR", str(DEMO))
+
+    app: Any = testing.AppTest.from_file(page).run()
+
+    assert any("· Recording note: SYNTHETIC" in c.value for c in app.caption)
+
+
+def test_map_page_keeps_the_svg_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("SENTINEL_DASHBOARD_PLAYBACK_DIR", str(DEMO))
+
+    app: Any = testing.AppTest.from_file("../dashboard/pages/network_map_page.py").run()
+
+    assert not app.exception
+    (download,) = app.get("download_button")
+    assert download.proto.label == "Download SVG"
 
 
 def test_selection_without_alerts_list_still_returns_the_alert() -> None:

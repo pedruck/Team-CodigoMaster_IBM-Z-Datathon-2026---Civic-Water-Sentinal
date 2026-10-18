@@ -1,4 +1,5 @@
-"""Source-derived diagrams, safe markup and the operator's manual refresh (BE-021)."""
+"""Source-derived diagrams, safe markup, the operator's manual refresh (BE-021) and the
+queue | map | evidence workspace (BE-024)."""
 
 import base64
 import math
@@ -11,11 +12,12 @@ import pytest
 
 pytest.importorskip("streamlit")
 
+from dashboard.live import queue_label
 from dashboard.presentation import (
-    alert_preview,
     buffer_profile,
+    evidence_pane,
+    map_heading,
     processing_profile,
-    render_alert_snapshot,
     sensor_plot,
 )
 from dashboard.source import AlertQuery, PlaybackAlertSource
@@ -89,13 +91,13 @@ def test_source_strings_are_escaped_before_entering_html(monkeypatch: pytest.Mon
     html = sensor_plot(alert.model_copy(update={"deviating_sensors": (sensor,)}))
     assert "<img" not in html
     assert "&lt;img" in html
-    rendered: list[str] = []
-    monkeypatch.setattr("dashboard.presentation.st.html", rendered.append)
-
-    render_alert_snapshot(alert.model_copy(update={"region": "<script>alert(1)</script>"}))
-
-    assert "<script>" not in rendered[0]
-    assert "&lt;script&gt;" in rendered[0]
+    hostile = alert.model_copy(
+        update={"region": "<script>alert(1)</script>", "candidate_pipe": "<b>p1</b>"}
+    )
+    for rendered in (evidence_pane(hostile, "<i>x</i>"), map_heading(hostile)):
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+        assert "<b>p1" not in rendered
 
 
 def test_manual_refresh_recovers_without_waiting_for_the_old_backoff(
@@ -138,35 +140,50 @@ def test_offline_metrics_remain_unknown_instead_of_inventing_zero_counts(
     assert any("API unavailable" in error.value for error in app.error)
 
 
-def test_preview_explains_the_record_without_inventing_severity_or_lifecycle() -> None:
-    source = PlaybackAlertSource(RUN)
-    (alert,) = source.list_alerts(AlertQuery()).items
+def test_evidence_pane_states_the_record_without_inventing_severity_or_lifecycle() -> None:
+    (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
 
-    html = alert_preview(alert, source.status().last_timestamp)
+    html = evidence_pane(alert, "explanation unavailable")
 
     assert "R-SYN-A" in html
-    assert "Issued 2019-03-14 17:05 UTC" in html
-    assert "<strong>3</strong> deviating sensors" in html
-    assert "-0.205 m" in html
-    assert "6 h 50 min" in html
+    assert "A-20190314T1705Z-1" in html
+    assert "9.393" in html and "8.0" in html  # CUSUM and threshold as received
+    assert "2019-03-14 17:05 UTC" in html
+    assert html.count("<li>") == 3
+    assert "\u22120.21 m" in html
     assert "SIMULATED" in html
+    assert "Candidate pipe</dt><dd>not provided" in html
+    assert "explanation unavailable" in html
+    assert 'href="#alert-detail"' in html
     assert "critical" not in html.lower()
     assert "active" not in html.lower()
+    assert "confirmed" not in html.lower()
 
 
-def test_preview_handles_absent_region_and_sensors_and_escapes_received_strings() -> None:
+def test_evidence_pane_names_the_candidate_as_a_best_guess_and_handles_absences() -> None:
     (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
-    missing = alert.model_copy(update={"region": None, "deviating_sensors": (), "is_mock": False})
-    assert "Region not available" in alert_preview(missing, None)
-    assert "No deviating sensor reported" in alert_preview(missing, None)
-    assert "unknown" in alert_preview(missing, None)
-    assert "SIMULATED" not in alert_preview(missing, None)
-    untrusted = alert.model_copy(update={"region": '<img src=x onerror="x()">'})
-    assert "&lt;img" in alert_preview(untrusted, None)
-    assert "<img" not in alert_preview(untrusted, None)
+    with_pipe = alert.model_copy(update={"candidate_pipe": "p201"})
+    assert "<code>p201</code> <small>best guess</small>" in evidence_pane(with_pipe, "")
+    assert "candidate pipe p201 (best guess)" in map_heading(with_pipe)
+    missing = alert.model_copy(
+        update={"region": None, "deviating_sensors": (), "is_mock": False, "cusum": None}
+    )
+    html = evidence_pane(missing, "")
+    assert "Region not available" in html
+    assert "No deviating sensor." in html
+    assert "not provided" in html
+    assert "SIMULATED" not in html
+    assert "Whole network" in map_heading(None)
 
 
-def test_issued_alerts_come_before_technical_metrics_and_keep_the_full_fields(
+def test_queue_label_is_two_short_lines_with_escaped_markdown() -> None:
+    (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
+    assert queue_label(alert) == "**R\\-SYN\\-A** · 17:05  \n3 sensors · \u22120\\.21 m"
+    sneaky = alert.model_copy(update={"region": "*[x](javascript:y)*", "deviating_sensors": ()})
+    assert queue_label(sneaky).startswith("**\\*\\[x\\]\\(javascript:y\\)\\***")
+
+
+def test_workspace_puts_queue_map_and_evidence_before_technical_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     testing = pytest.importorskip("streamlit.testing.v1")
@@ -175,40 +192,47 @@ def test_issued_alerts_come_before_technical_metrics_and_keep_the_full_fields(
     app: Any = testing.AppTest.from_file("../dashboard/app.py").run()
 
     assert not app.exception
-    assert app.title[0].value == "Issued alerts"
-    assert [heading.value for heading in app.header][:3] == [
+    assert app.title[0].value == "Network & alerts"
+    assert [heading.value for heading in app.header][:4] == [
         "Recent alerts",
         "Alert detail",
         "History",
+        "System status",
     ]
     html = "".join(element.proto.body for element in app.get("html"))
-    assert html.index('class="alert-preview"') < html.index('class="stats-grid"')
+    assert html.index('class="map-heading"') < html.index('class="evidence"')
+    assert html.index('class="evidence"') < html.index('class="stats-grid"')
     assert 'role="status" aria-atomic="true"' in html
+    assert len(app.get("iframe")) == 1  # the interactive map
     assert "Age (simulated)" in app.dataframe[0].value.columns
     assert len(app.dataframe[0].value) == 1
     expanders = {expander.label: expander for expander in app.expander}
-    assert "All alert fields" in expanders
-    assert not expanders["System status · sensors, processing and history buffer"].proto.expanded
+    assert "All alert fields · 1 loaded records" in expanders
+    assert not expanders["Sensors, processing and history buffer"].proto.expanded
 
 
-def test_view_evidence_selects_the_clicked_alert(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_queue_selects_the_alert_shown_on_the_map_and_in_the_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     testing = pytest.importorskip("streamlit.testing.v1")
     monkeypatch.setenv("SENTINEL_DASHBOARD_PLAYBACK_DIR", str(EDGE))
     app: Any = testing.AppTest.from_file("../dashboard/app.py").run()
     assert not app.exception
-    assert app.selectbox(key="alert_detail_id").value == "A-20190314T1640Z-93"
+    assert app.radio(key="alert_detail_id").value == "A-20190314T1640Z-93"
 
-    app.button(key="inspect_alert_A-20190314T1640Z-1").click().run()
+    app.radio(key="alert_detail_id").set_value("A-20190314T1640Z-1").run()
 
     assert not app.exception
-    assert app.selectbox(key="alert_detail_id").value == "A-20190314T1640Z-1"
+    assert app.radio(key="alert_detail_id").value == "A-20190314T1640Z-1"
     facts = next(table.value for table in app.table if "Evidence" in table.value.columns)
     assert facts.loc[facts["Evidence"] == "Alert", "Value"].iloc[0] == "A-20190314T1640Z-1"
+    evidence = next(e.proto.body for e in app.get("html") if 'class="evidence"' in e.proto.body)
+    assert "A-20190314T1640Z-1" in evidence
+    frame = app.get("iframe")[0].proto
+    assert '"selected":"A-20190314T1640Z-1"' in frame.srcdoc
 
 
-def test_compact_feed_keeps_all_loaded_records_available(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_queue_keeps_every_loaded_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     testing = pytest.importorskip("streamlit.testing.v1")
     ids = {f"A-preview-{index}" for index in range(7)}
     run = write_run(
@@ -220,10 +244,7 @@ def test_compact_feed_keeps_all_loaded_records_available(
     app: Any = testing.AppTest.from_file("../dashboard/app.py").run()
 
     assert not app.exception
-    previews = [
-        element for element in app.get("html") if 'class="alert-preview"' in element.proto.body
-    ]
-    assert len(previews) == 5
     assert set(app.dataframe[0].value["Alert"]) == ids
-    assert set(app.selectbox(key="alert_detail_id").options) == ids
-    assert any("Showing 5 of 7" in caption.value for caption in app.caption)
+    queue = app.radio(key="alert_detail_id")
+    assert len(queue.options) == len(ids)
+    assert queue.value in ids

@@ -2,14 +2,13 @@
 
 import base64
 import math
-from datetime import datetime
 from functools import lru_cache
 from html import escape
 from pathlib import Path
 
 import streamlit as st
 
-from dashboard.alert_list import fmt_age, fmt_time
+from dashboard.alert_list import fmt_time
 from dashboard.header import Header
 from dashboard.source import AlertSource
 from sentinel.schemas.alerts import Alert
@@ -75,10 +74,10 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
             "<div><strong>L-Town network</strong><small>Simulation workspace</small></div></div>"
         )
         links = (
-            ("recent-alerts", "pulse", "Issued alerts"),
+            ("network-alerts", "squares-four", "Network & alerts"),
             ("alert-detail", "fingerprint", "Alert evidence"),
-            ("network-map", "squares-four", "Network map"),
             ("history", "clock-counter-clockwise", "History"),
+            ("system-status", "gauge", "System status"),
         )
         st.html(
             '<nav class="workspace-nav" aria-label="Workspace"><span>MONITORING</span>'
@@ -100,7 +99,7 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
         )
         state = "recorded" if source.recording else "online" if header.online else "offline"
         st.html(
-            f'<div class="source-card"><span class="eyebrow">DATA SOURCE</span>'
+            '<div class="source-card">'
             f'<strong><span class="state-dot {state}"></span>{mode}</strong>'
             f"<small>Refresh interval · {refresh_s:g} seconds</small></div>"
         )
@@ -121,38 +120,16 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
 
 
 def render_topbar(source: AlertSource, header: Header) -> None:
-    mode = "RECORDED REPLAY" if source.recording else "CONNECTED" if header.online else "OFFLINE"
-    st.html(
-        '<div class="topbar"><span>L-Town network</span>'
-        f'<span class="mode-label">{icon("broadcast")}{mode}</span></div>'
-    )
-    st.title("Issued alerts")
-    st.html(
-        '<div class="overview-subtitle">'
-        f"<span>Last simulated window: {escape(header.simulated_time)}</span></div>"
-    )
-
-
-def alert_preview(alert: Alert, now: datetime | None) -> str:
-    """Readable alert summary; the complete received record remains in the table/detail."""
-    strongest = max(alert.deviating_sensors, key=lambda item: abs(item.deviation_m), default=None)
-    count = len(alert.deviating_sensors)
-    difference = (
-        f"Largest difference: <strong>{strongest.deviation_m:+.3f} m</strong> "
-        f"at {escape(strongest.sensor)}"
-        if strongest
-        else "No deviating sensor reported."
-    )
-    badge = '<span class="alert-badge">SIMULATED</span>' if alert.is_mock else ""
-    return (
-        '<article class="alert-preview"><div class="alert-preview-heading">'
-        f"<h3>{escape(alert.region or 'Region not available')}</h3>{badge}</div>"
-        f'<p class="issued-at">Issued {escape(fmt_time(alert.window_end))}</p>'
-        f"<p><strong>{count}</strong> deviating {'sensor' if count == 1 else 'sensors'}"
-        f' <span class="fact-divider">·</span> {difference}</p>'
-        f'<p class="alert-age">Age on simulated clock: {escape(fmt_age(alert.window_end, now))}</p>'
-        "</article>"
-    )
+    # A recording says so in the notice strip below; the chip only names a live source's state.
+    mode = None if source.recording else "CONNECTED" if header.online else "OFFLINE"
+    chip = f'<span class="mode-label">{icon("broadcast")}{mode}</span>' if mode else ""
+    with st.container(key="title-row", horizontal=True, vertical_alignment="center"):
+        st.title("Network & alerts", anchor="network-alerts")
+        st.html(
+            f'<p class="title-meta">{chip}'
+            f"<span>Latest simulated window <strong>{escape(header.simulated_time)}</strong></span>"
+            "</p>"
+        )
 
 
 def _metric(label: str, value: str, note: str, glyph: str) -> str:
@@ -277,19 +254,85 @@ def render_profiles(status: StatusResponse | None) -> None:
     )
 
 
-def render_alert_snapshot(alert: Alert) -> None:
+def _signed(value: float, digits: int = 2) -> str:
+    return f"{value:+.{digits}f}".replace("-", "\u2212")
+
+
+def _score_bar(alert: Alert) -> str:
+    """The detector's own numbers on one scale: the alert exists because the score passed
+    the threshold. Nothing is computed beyond positioning the two received values."""
+    if alert.cusum is None or alert.cusum.threshold <= 0 or alert.cusum.statistic < 0:
+        return ""
+    stat, limit = alert.cusum.statistic, alert.cusum.threshold
+    scale = max(stat, limit) * 1.2
+    return (
+        f'<div class="score-bar" role="img" aria-label="Detection score {escape(str(stat))} '
+        f'against threshold {escape(str(limit))}">'
+        f'<span class="fill" style="width:{stat / scale * 100:.2f}%"></span>'
+        f'<span class="limit" style="left:{limit / scale * 100:.2f}%"></span></div>'
+        '<p class="score-note">The alert was raised when the score passed the threshold.</p>'
+    )
+
+
+def map_heading(alert: Alert | None) -> str:
+    """One line above the map naming what it shows; on phones it is the first thing read."""
+    if alert is None:
+        context = "Whole network · no alert selected"
+    else:
+        pipe = (
+            f"candidate pipe {alert.candidate_pipe} (best guess)"
+            if alert.candidate_pipe
+            else "candidate pipe not provided"
+        )
+        context = (
+            f"{alert.region or 'Region not available'} · {fmt_time(alert.window_end)} · {pipe}"
+        )
+    return (
+        '<div class="map-heading"><h2 id="network-map">Network map</h2>'
+        f"<p>{escape(context)}</p></div>"
+    )
+
+
+def evidence_pane(alert: Alert, explanation: str) -> str:
+    """The selected alert's key evidence beside the map. Values as received, rounded only for
+    reading; the exact values stay in the full record below."""
     region = escape(alert.region or "Region not available")
-    score = str(alert.cusum.statistic) if alert.cusum else "not provided"
-    threshold = str(alert.cusum.threshold) if alert.cusum else "not provided"
-    st.html(
-        '<div class="alert-snapshot"><span class="eyebrow">SELECTED RECORD</span>'
-        f"<h3>{region}</h3><code>{escape(alert.alert_id)}</code>"
-        '<div class="evidence-numbers"><div><span>Detection score (CUSUM)</span>'
-        f"<strong>{escape(score)}</strong></div><div><span>Threshold</span>"
-        f"<strong>{escape(threshold)}</strong></div></div>"
-        '<dl class="evidence-facts"><div><dt>Estimated onset</dt>'
-        f"<dd>{escape(fmt_time(alert.suspected_onset))}</dd></div>"
-        f"<div><dt>Window end</dt><dd>{escape(fmt_time(alert.window_end))}</dd></div></dl></div>"
+    badge = '<span class="alert-badge">SIMULATED</span>' if alert.is_mock else ""
+    score = escape(str(alert.cusum.statistic)) if alert.cusum else "not provided"
+    threshold = escape(str(alert.cusum.threshold)) if alert.cusum else "not provided"
+    pipe = (
+        f"<dd><code>{escape(alert.candidate_pipe)}</code> <small>best guess</small></dd>"
+        if alert.candidate_pipe
+        else "<dd>not provided</dd>"
+    )
+    maximum = max((abs(d.deviation_m) for d in alert.deviating_sensors), default=0.0) or 1.0
+    rows = "".join(
+        f'<li><code>{escape(d.sensor)}</code><span class="bar-track">'
+        f'<span class="bar" style="transform:scaleX({min(1.0, abs(d.deviation_m) / maximum):.4f})">'
+        f"</span></span><output>{_signed(d.deviation_m)} m</output></li>"
+        for d in alert.deviating_sensors
+    )
+    sensors = (
+        f'<ol class="evidence-sensors" aria-label="Observed minus expected pressure">{rows}</ol>'
+        if rows
+        else '<p class="muted">No deviating sensor.</p>'
+    )
+    return (
+        '<section class="evidence" aria-labelledby="evidence-title">'
+        f'<div class="evidence-head"><h2 id="evidence-title">{region}</h2>{badge}</div>'
+        f'<code class="evidence-id">{escape(alert.alert_id)}</code>'
+        '<dl class="evidence-score">'
+        f"<div><dt>Score (CUSUM)</dt><dd>{score}</dd></div>"
+        f"<div><dt>Threshold</dt><dd>{threshold}</dd></div></dl>"
+        f"{_score_bar(alert)}"
+        '<dl class="evidence-facts">'
+        f"<div><dt>Window end</dt><dd>{escape(fmt_time(alert.window_end))}</dd></div>"
+        f"<div><dt>Estimated onset</dt><dd>{escape(fmt_time(alert.suspected_onset))}</dd></div>"
+        f"<div><dt>Candidate pipe</dt>{pipe}</div></dl>"
+        f"<h3>Deviating sensors</h3>{sensors}"
+        f'<h3>Explanation</h3><p class="explanation-slot">{escape(explanation)}</p>'
+        '<a class="evidence-more" href="#alert-detail" target="_self">'
+        "Full record and audit reference</a></section>"
     )
 
 
