@@ -282,3 +282,45 @@ def test_pressure_drop_has_negative_deviation_and_positive_z(
     for d in alert.deviating_sensors:
         assert d.deviation_m < 0
         assert d.z is not None and d.z > 0
+
+
+class _ExplainOnAlert(FlakyForecaster):
+    """Computes contributions only when asked, as XGBoost does with ``on_alert``."""
+
+    def __init__(self, fail: bool = False) -> None:
+        super().__init__()
+        self.fail = fail
+        self.asked: list[list[str]] = []
+
+    def explain(self, request, sensor_ids):  # type: ignore[no-untyped-def]  # test double
+        self.asked.append(list(sensor_ids))
+        if self.fail:
+            raise RuntimeError("booster gone")
+        return {s: {"base": 50.0, "other_sensors": -1.0} for s in sensor_ids}
+
+
+def test_contributions_are_computed_only_for_the_sensors_of_an_alert(
+    make_pipeline: Callable[..., Pipeline], window: Win
+) -> None:
+    forecaster = _ExplainOnAlert()
+    p = make_pipeline(forecaster=forecaster)
+    feed(p, window, 5)
+    assert forecaster.asked == []  # no alert, no explanation
+    r5 = p.ingest(window(5, drop_m=5.0, drop_sensors=("P1", "P2"))).result
+    alert = p.alerts.get(r5.alert_ids[0])
+    assert alert is not None
+    assert forecaster.asked == [[d.sensor for d in alert.deviating_sensors]]
+    assert set(alert.forecast_contributions_m or {}) == {"P1", "P2"}
+    assert "explain" in r5.latency_ms
+
+
+def test_failed_explanation_keeps_the_alert_without_contributions(
+    make_pipeline: Callable[..., Pipeline], window: Win
+) -> None:
+    p = make_pipeline(forecaster=_ExplainOnAlert(fail=True))
+    feed(p, window, 5)
+    r5 = p.ingest(window(5, drop_m=5.0, drop_sensors=("P1", "P2"))).result
+    assert r5.status == "scored" and len(r5.alert_ids) == 1
+    alert = p.alerts.get(r5.alert_ids[0])
+    assert alert is not None and alert.forecast_contributions_m is None
+    assert [(i.stage, i.code) for i in r5.issues] == [("forecast", "explain_failed")]

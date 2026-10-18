@@ -52,6 +52,20 @@ def _bool(env: Mapping[str, str], key: str, default: bool) -> bool:
     raise ConfigError(f"{key} must be a boolean, got {raw!r}")
 
 
+def _contributions(env: Mapping[str, str], key: str) -> str:
+    """``all | on_alert | off``; the booleans of the original switch still work
+    (true = all, false = off). Default ``on_alert``: TreeSHAP only for the sensors of an
+    alert."""
+    raw = env.get(key, "on_alert").lower()
+    if raw in {"all", "on_alert", "off"}:
+        return raw
+    if raw in {"1", "true", "yes"}:
+        return "all"
+    if raw in {"0", "false", "no"}:
+        return "off"
+    raise ConfigError(f"{key} must be all, on_alert or off (or a boolean), got {raw!r}")
+
+
 def _choice(env: Mapping[str, str], key: str, default: str, allowed: set[str]) -> str:
     value = env.get(key, default)
     if value not in allowed:
@@ -84,7 +98,7 @@ class Settings:
     forecaster: str = "mock"
     forecaster_path: Path | None = None
     # XGBoost only: TreeSHAP costs ~127 of ~134 ms per window on the VM (docs/performance.md).
-    forecaster_contributions: bool = True
+    forecaster_contributions: str = "on_alert"
     forecaster_engine: str = "snapml"
     forecaster_tree_format: str = "auto"
     # "mock" or "cusum" (ADR-007). The CUSUM detector has no numeric default: every number comes
@@ -116,6 +130,11 @@ class Settings:
         if self.forecaster != "mock" and self.forecaster_path is None:
             raise ConfigError(
                 f"SENTINEL_FORECASTER={self.forecaster} needs SENTINEL_FORECASTER_PATH"
+            )
+        if self.forecaster_contributions not in {"all", "on_alert", "off"}:
+            raise ConfigError(
+                "SENTINEL_FORECASTER_CONTRIBUTIONS must be all, on_alert or off, got "
+                f"{self.forecaster_contributions!r}"
             )
         if self.forecaster_tree_format not in TREE_FORMATS:
             raise ConfigError(
@@ -156,7 +175,7 @@ class Settings:
             ),
             forecaster=_choice(e, "SENTINEL_FORECASTER", "mock", FORECASTERS),
             forecaster_path=_optional_path(e, "SENTINEL_FORECASTER_PATH"),
-            forecaster_contributions=_bool(e, "SENTINEL_FORECASTER_CONTRIBUTIONS", True),
+            forecaster_contributions=_contributions(e, "SENTINEL_FORECASTER_CONTRIBUTIONS"),
             forecaster_engine=_choice(
                 e, "SENTINEL_FORECASTER_ENGINE", "snapml", {"snapml", "xgboost"}
             ),
