@@ -14,6 +14,9 @@
   with exact parity with the detector, `sweep` over a grid of `h` and `N`) and `layer1.py`
   (counts and delays; the matching rule between an alert and a leak is **provisional**, Q-UI-06,
   and is an argument of every call, never a default). The development run itself is in progress.
+  Final calibration tools (BE-012j): `oof.py` (reader of DEP-DET-05), `persistence.py` (§D), `selection.py`
+  (selection rule, leave-one-leak-out, recovery) and `experiment.py` (the two-phase run on the protocol
+  `config/calibration-protocol.xgboost-33.json`); results in `docs/p4-calibration.md`.
 
 ## Context
 The design document fixes the models, σ, k and h on 2018 only and replays the whole of 2019
