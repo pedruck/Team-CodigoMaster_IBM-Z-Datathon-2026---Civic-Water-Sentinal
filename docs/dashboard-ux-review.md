@@ -1,4 +1,26 @@
-# Dashboard UX review — BE-021
+# Dashboard UX review — BE-021 / BE-023
+
+## Responsive follow-up — 2026-10-18
+
+The owner's report exposed gaps in the earlier checks, which had not exercised sidebar
+collapse at tablet widths or enlarged sidebar text. The UI/UX Pro Max responsive/overflow
+guidance was reapplied to the existing Streamlit stack. The targeted search returned web
+guidance on internal scrolling, avoiding clipped content and unobscured navigation.
+
+| Observed defect | Correction | Verification |
+|---|---|---|
+| A hidden sidebar reserved 270 px at 768 px viewport width. | Scope width limits to the expanded state and retain native collapse behaviour. | Main starts at 0–1 px after collapse at seven widths; both states checked. |
+| Low-contrast collapse icon and accumulated spacing hid the footer. | Visible toggle/icon colours, 44 px controls and consistent sidebar gaps. | Open sidebar screenshots reviewed; footer reachable at normal and 200% text. |
+| Native widgets referenced removed Geist fonts. | Align native body/heading/code families with local IBM Plex assets. | Browser-computed font families checked for headings, body and buttons. |
+| Negative native heading margins shifted controls off their centre line. | Reset scoped heading margins, stretch buttons and reflow rows by content width. | Shared heading/button centre lines within 2 px; mobile actions stack at full available width. |
+| Enlarged replay/map/footer labels clipped or overflowed. | Allow wrapping, scale avatar boxes with text and remove flex minimum-size constraints. | 200% text with no page/sidebar horizontal overflow at 360–1920 px. |
+| Map section was omitted from current-section tracking; mobile navigation covered the destination. | Derive tracked headings from the links; dismiss the mobile drawer after selection and focus the heading. | Browser checks verify the current map link, destination focus and drawer dismissal. |
+
+The reusable checker and exact results are in [design verification](dashboard-design.md#responsive-repair-verification--be-023-2026-10-18).
+All original evidence, fields, notices, filters, pagination and polling remain. The earlier
+review below is retained as the record of BE-021.
+
+## Original review — 2026-10-17
 
 Reviewed on 2026-10-17 against the owner's request: enlarge the interface, make issued
 alerts the first operational information, and simplify use without removing information.

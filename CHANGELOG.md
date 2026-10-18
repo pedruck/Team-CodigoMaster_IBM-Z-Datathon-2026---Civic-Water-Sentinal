@@ -5,6 +5,15 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Fixed
+
+- BE-023: respect Streamlit's collapsed sidebar width, restore visible navigation toggles,
+  remove accumulated sidebar spacing and native negative heading margins, and align/stretch
+  action buttons by available width. Point the native theme at the bundled IBM Plex fonts;
+  allow map links, status labels and footer text to reflow at 200% text. Include the network
+  map in current-section navigation and close the mobile sidebar after selecting a section.
+  Add an optional seven-viewport Playwright regression check.
+
 ### Changed
 - BE-022: align the operator workspace with the public CivicWater Figma palette and IBM Plex
   typography, keep issued alerts first, and show the source-derived L-Town map with selected

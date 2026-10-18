@@ -69,6 +69,8 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
         st.html(
             f'<div class="brand"><span class="brand-mark">{icon("drop")}</span>'
             "<div>CivicWater<span>SENTINEL</span></div></div>"
+        )
+        st.html(
             '<div class="workspace"><span class="workspace-avatar">LT</span>'
             "<div><strong>L-Town network</strong><small>Simulation workspace</small></div></div>"
         )

@@ -1,10 +1,18 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-18 — BE-022 adds the derived L-Town map, a Figma-directed visual refresh and Streamlit/Jupyter map views (ADR-012). The official L-TOWN.inp hash matched the supplied reference; the exported JSON hash differs from the task prompt and is recorded below.
+**Last update:** 2026-10-18 — BE-023 repairs sidebar collapse, typography, heading margins and responsive controls. Seven Chrome viewport widths and enlarged text checked; 894 tests passed, 39 skipped. BE-022's map source hash matches the prompt; the exported JSON digest discrepancy and exact Figma frame review remain documented below.
 
 **Prior backend update:** 2026-10-17 — branch `feat/p2-oof-residuals` (ML owner): the out-of-fold XGBoost residual generator for DEP-DET-05 (both Q-ML-07 variants; run on the VM with the real data, files in `data/v1/oof/xgboost-33@0.1.0/`: MAE on clean windows 6.7 mm with neighbours vs 16.1 mm without, leak contrast 4.71 vs 5.62), the optional `ml` extra (DEP-ML-03) and TreeSHAP only for the sensors of an alert (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`, new default; optional `ExplainingForecaster`, proposed to P3). Before: the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
 ## Summary
+
+**Responsive UI repair (BE-023, 2026-10-18):** collapsed navigation no longer reserves
+270 px on tablets. Sidebar controls have visible contrast, spacing is consistent and all
+footer/source information remains reachable. The native theme uses the locally bundled
+fonts, headings no longer retain negative native margins, buttons align with their content
+columns and long labels reflow. Network-map navigation updates its current state and closes
+the mobile drawer after an explicit selection. See `docs/dashboard-design.md` for the
+seven-viewport regression check and its exact commands.
 
 **Network map and visual refresh (BE-022, 2026-10-18):** the operator page now follows the
 public CivicWater Figma colour/type direction and places the official L-Town schematic
@@ -46,6 +54,10 @@ synthetic data found no bug (`docs/testing.md`). Nothing is calibrated on real r
 `Proposed` until the other owners confirm them.
 
 ## Done (tests green)
+
+BE-023 sidebar/responsive UI repair (2026-10-18): seven widths from 360 to 1920 px,
+open/collapsed navigation, evidence/history interactions and 200% text checked in Chrome;
+optional browser regression script committed.
 
 BE-021 Streamlit operator workspace redesign (2026-10-17): presentation-only diagrams,
 manual refresh, alerts-first readability refinement, thirteen new presentation/interaction
@@ -187,6 +199,8 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| BE-023: `python -m ruff format src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q -o cache_dir=E:/Codex/civicwater-sentinel/pytest-cache --basetemp=E:/Codex/civicwater-sentinel/pytest-tmp` | **164 files unchanged**, lint OK, **163 source files** with no mypy issues; **894 passed, 39 skipped in 40.23s** (external data/optional ML dependencies absent) |
+| BE-023: `node scripts/check_dashboard_responsive.cjs http://127.0.0.1:8501 E:/Codex/civicwater-sentinel/ui-check`; existing focused accessibility/map scripts (`docs/dashboard-design.md`) | Passed at **360, 390, 768, 1024, 1280, 1440 and 1920 px**, 900 px height: sidebar open/collapse and restored main width, current map section/mobile dismissal, evidence selection, raw audit disclosure, history filtering/reset, local typography, 44 px main targets and 200% text without page/sidebar horizontal overflow. Primary-feed contrast ≥5.27:1; keyboard focus retained through polling. Map page/navigation/SVG control rechecked. No browser page errors |
 | BE-022 integration with `origin/main` at `8aed1b9`: same four Python gate commands and browser map check below | **164 files formatted**, lint OK, **163 source files** with no mypy issues; **894 passed, 39 skipped in 40.38s**. Changelog/status conflicts resolved by retaining both changes; desktop/mobile map, navigation and download rechecked successfully |
 | BE-022, Windows x86-64 / Python 3.12.14: `python -m ruff format --check src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q` (same environment/cache paths as BE-021) | **145 files formatted**, lint OK, **144 source files** with no mypy issues; **753 passed, 34 skipped in 39.12s**. Skips require external data or optional ML dependencies |
 | BE-022, `node E:\Codex\civicwater-sentinel\browser\validate-map.cjs`, Chrome at 1536×1080 and 390×844 | Map image and IBM Plex fonts loaded, no browser errors or horizontal page overflow; internal mobile map scrolling, full-map navigation and SVG download checked. Captures use an explicitly hand-authored synthetic alert, not detector output |

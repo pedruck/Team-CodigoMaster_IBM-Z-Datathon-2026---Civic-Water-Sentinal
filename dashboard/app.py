@@ -145,10 +145,13 @@ with st.container(key="sentinel-shell"):
             st.warning("\n\n".join(notices))
         st.caption("Simulated data (BattLeDIM L-Town). Not validated on a real network.")
     with st.container(key="recent-panel"):
-        heading, controls = st.columns([3, 1], vertical_alignment="center")
-        heading.header("Recent alerts", anchor="recent-alerts")
-        with controls, st.container(key="refresh-controls", horizontal=True):
-            st.button("Refresh data", on_click=refresh_alerts, key="refresh_alerts")
+        with st.container(key="recent-heading"):
+            heading, controls = st.columns([3, 1], vertical_alignment="center")
+            heading.header("Recent alerts", anchor="recent-alerts")
+            with controls, st.container(key="refresh-controls", horizontal=True):
+                st.button(
+                    "Refresh data", on_click=refresh_alerts, key="refresh_alerts", width="stretch"
+                )
         render_recent_alerts(source, refresh_s)
     with st.container(key="alert-panel"):
         render_detail(source, status)

@@ -63,7 +63,9 @@ def _recent_alerts(source: AlertSource, refresh_s: float) -> None:
                 summary, action = st.columns([4, 1.25], vertical_alignment="center")
                 with summary:
                     st.html(alert_preview(alert, now))
-                if action.button("View evidence", key=f"inspect_alert_{alert.alert_id}"):
+                if action.button(
+                    "View evidence", key=f"inspect_alert_{alert.alert_id}", width="stretch"
+                ):
                     st.session_state["alert_detail_id"] = alert.alert_id
                     st.session_state["scroll_to_alert_detail"] = True
                     st.rerun()

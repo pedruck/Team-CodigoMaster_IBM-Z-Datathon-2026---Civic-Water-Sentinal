@@ -1,4 +1,4 @@
-# Operator workspace — BE-021 / BE-022
+# Operator workspace — BE-021 / BE-022 / BE-023
 
 The primary dashboard remains Streamlit. BE-022 aligns the page with the public preview
 of the [CivicWater Figma design](https://www.figma.com/design/vvZqt0ypTmooZpYLn93u9h/CivicWater-Sentinel-%E2%80%94-Painel-operacional?node-id=5-1518),
@@ -168,9 +168,60 @@ horizontal page overflow; wide tables retain their own scrolling. Warning text m
 3.85:1 / 4.00:1 against white, with direct value labels. These are focused checks, not a
 full WCAG audit, screen-reader rehearsal or a performance score.
 
-Review captures from `fixture-cusum`:
+Latest captures use the explicitly labelled hand-authored synthetic map preview described
+above; these are not detector outputs:
 
 - [Desktop issued alerts](images/dashboard-desktop.png)
 - [Selected alert on the network map](images/dashboard-map.png)
 - [Alert evidence and history](images/dashboard-evidence.png)
 - [Mobile issued alerts](images/dashboard-mobile.png)
+
+## Responsive repair verification — BE-023 (2026-10-18)
+
+The previous CSS applied a 270 px minimum width even when Streamlit collapsed the sidebar.
+At 768 px, the hidden sidebar still reserved that width. Width limits now apply only to the
+expanded state. Its collapse icon remains visible on the dark surface, navigation links
+retain 44 px targets, and accumulated margins no longer push the team footer below a
+900 px viewport. Longer content still scrolls vertically.
+
+The native theme still referenced removed Geist fonts; it now names the locally bundled
+IBM Plex families, including native widgets and headings. Removing Streamlit's negative
+markdown heading margins makes the refresh button and heading share the same centre line.
+Action buttons stretch within their column and stack by content width. Status/map labels,
+avatars and footer copy accommodate enlarged text. The network map participates in current
+section tracking, and explicit section navigation dismisses the sidebar at mobile widths
+and focuses the destination heading.
+
+`scripts/check_dashboard_responsive.cjs` is an optional browser regression check, independent
+of the Python runtime. It requires Node and Playwright installed outside the repository.
+Run it against the single-alert `fixture-cusum` playback or the labelled local map preview.
+An existing Chrome installation can be used without downloading another browser:
+
+```powershell
+# One-time optional tooling setup; no application dependencies change.
+npm.cmd install --prefix E:/Codex/civicwater-sentinel/browser playwright
+$env:NODE_PATH = 'E:\Codex\civicwater-sentinel\browser\node_modules'
+$env:CHROME_EXECUTABLE = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+node scripts/check_dashboard_responsive.cjs http://127.0.0.1:8501 E:/Codex/civicwater-sentinel/ui-check
+```
+
+Observed: **360, 390, 768, 1024, 1280, 1440 and 1920 px**, each 900 px high, passed open/
+collapsed navigation, restored page width, map-section state and mobile dismissal,
+heading/button alignment (within 2 px on shared rows), 44 px main targets, exact-record
+disclosure, history filtering/reset, local font checks and **200% root text** without page
+or sidebar horizontal overflow. Wide evidence tables and the map retain internal scrolling.
+The checker writes JSON measurements and screenshots to the supplied output directory.
+
+The existing scratch checks `browser/audit-accessibility.cjs` and `browser/validate-map.cjs`
+under `E:\Codex\civicwater-sentinel` passed again: primary-feed text contrast at least
+**5.27:1**, warning **8.12:1**, keyboard evidence selection/focus through polling, ordered
+headings, map/font loading and full map/SVG control. No page errors were observed.
+These checks use desktop Chrome with responsive viewports; native mobile browsers and
+spoken screen-reader output have not been assessed.
+
+Python gates used the same environment and cache paths above: ruff format **164 unchanged**,
+lint passed, strict mypy **163 files**, pytest **894 passed, 39 skipped in 40.23s**.
+
+Additional review captures: [mobile sidebar](images/dashboard-sidebar-mobile.png),
+[mobile alert controls](images/dashboard-responsive-mobile.png) and
+[sidebar with 200% text](images/dashboard-sidebar-text-200.png).

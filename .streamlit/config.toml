@@ -1,12 +1,13 @@
 [theme]
 base = "light"
-primaryColor = "#117765"
-backgroundColor = "#f6f8f7"
-secondaryBackgroundColor = "#f0f4f1"
-textColor = "#20332f"
-font = "Geist"
+primaryColor = "#08796f"
+backgroundColor = "#f3f7f5"
+secondaryBackgroundColor = "#e4f3ee"
+textColor = "#15343a"
+font = "IBM Plex Sans, sans-serif"
+headingFont = "IBM Plex Sans, sans-serif"
 baseFontSize = 16
-codeFont = "Geist Mono"
+codeFont = "IBM Plex Mono, monospace"
 baseRadius = "medium"
 showWidgetBorder = true
 

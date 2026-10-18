@@ -37,8 +37,22 @@
 
   // Navigation is real in-page navigation, with the current section exposed to AT.
   const links = sidebar?.querySelectorAll('.workspace-nav a') || [];
-  const headings = ['recent-alerts', 'alert-detail', 'history']
-    .map(id => document.getElementById(id)).filter(Boolean);
+  const headings = Array.from(links)
+    .map(link => document.getElementById(link.hash.slice(1))).filter(Boolean);
+  const navigate = event => {
+    const link = event.currentTarget;
+    const heading = document.getElementById(link.hash.slice(1));
+    if (!heading) return;
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      sidebar.querySelector('[data-testid="stSidebarCollapseButton"] button')?.click();
+    }
+    requestAnimationFrame(() => {
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({ block: 'start' });
+    });
+  };
+  links.forEach(link => link.addEventListener('click', navigate));
   navObserver = new IntersectionObserver(entries => {
     const current = entries.find(entry => entry.isIntersecting)?.target.id;
     if (!current) return;
@@ -51,6 +65,9 @@
   }, { rootMargin: '0px 0px -55% 0px', threshold: 0 });
   headings.forEach(heading => navObserver.observe(heading));
   window.civicWaterMotion = {
-    dispose() { media.revert(); navObserver.disconnect(); cancelAnimationFrame(frame); },
+    dispose() {
+      media.revert(); navObserver.disconnect(); cancelAnimationFrame(frame);
+      links.forEach(link => link.removeEventListener('click', navigate));
+    },
   };
 })();
