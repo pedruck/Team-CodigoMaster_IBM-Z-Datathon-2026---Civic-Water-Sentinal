@@ -56,6 +56,17 @@ def test_invalid_forecaster_settings_fail_at_startup(env: dict[str, str]) -> Non
         Settings.from_env(env)
 
 
+@pytest.mark.parametrize(
+    ("raw", "mode"),
+    [(None, "on_alert"), ("true", "all"), ("all", "all"), ("on_alert", "on_alert"), ("no", "off")],
+)
+def test_contributions_switch_accepts_modes_and_the_old_booleans(
+    raw: str | None, mode: str
+) -> None:
+    env = {} if raw is None else {"SENTINEL_FORECASTER_CONTRIBUTIONS": raw}
+    assert Settings.from_env(env).forecaster_contributions == mode
+
+
 def test_forecaster_settings_are_parsed() -> None:
     s = Settings.from_env(
         {
@@ -68,7 +79,7 @@ def test_forecaster_settings_are_parsed() -> None:
     )
     assert s.forecaster_path == Path("/models/xgboost-33@0.1.0")
     assert (s.forecaster_contributions, s.forecaster_engine, s.forecaster_tree_format) == (
-        False,
+        "off",
         "xgboost",
         "compress_trees",
     )
@@ -136,7 +147,7 @@ def test_api_loads_xgboost_with_contributions_switch(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     reg = SensorRegistry.load(registry)
-    for contributions in (True, False):
+    for contributions in ("all", "on_alert", "off"):
         settings = Settings(
             sensor_registry_path=registry,
             forecaster="xgboost",

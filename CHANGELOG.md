@@ -26,6 +26,20 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- Forecasting (ML owner, DEP-DET-05): `python -m sentinel.forecasting.oof` writes out-of-fold
+  2018 residuals of XGBoost for the detector calibration — calendar-month folds, each month
+  predicted by models trained on the clean windows of the other 11, trees per sensor of the
+  delivered model (no early stopping on the predicted month); two variants, with and without
+  the other sensors' current pressures (Q-ML-07); `residuals_long.csv.gz`
+  (`timestamp, sensor, observed, expected, fold`), `folds.json` and `declaration.json` per
+  variant under `$SENTINEL_DATA_DIR/v1/oof/`; resumable per fold. Run on the VM with the real
+  2018 data (both variants, `docs/p2-forecasting.md`).
+- Optional extra `ml` (numpy, xgboost, snapml) in `pyproject.toml` / `uv.lock` (DEP-ML-03).
+- TreeSHAP on demand: `SENTINEL_FORECASTER_CONTRIBUTIONS` accepts `all | on_alert | off`
+  (booleans still mean all/off) and defaults to `on_alert`; the pipeline asks the optional
+  `ExplainingForecaster.explain` for the deviating sensors of each alert, after detection
+  (contract §2, proposed). A failed explanation keeps the alert and reports
+  `forecast/explain_failed`.
 - BE-011: the API loads the real forecaster at startup. `SENTINEL_FORECASTER` accepts
   `mock | baseline | xgboost | gru` with `SENTINEL_FORECASTER_PATH`; XGBoost options
   `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP on/off), `_ENGINE`, `_TREE_FORMAT`

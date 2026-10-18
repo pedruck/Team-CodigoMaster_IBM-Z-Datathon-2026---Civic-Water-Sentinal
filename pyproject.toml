@@ -10,6 +10,15 @@ dependencies = [
     "uvicorn>=0.54.0",
 ]
 
+[project.optional-dependencies]
+# Runtime of the real forecaster (DEP-ML-03): `pip install -e ".[ml]"` or `uv sync --extra ml`.
+# Not needed by CI or the mocks; the VM image already has them in /opt/venv.
+ml = [
+    "numpy>=2.0",
+    "xgboost>=3.0",
+    "snapml>=1.17",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -14,7 +14,7 @@ from typing import Any
 from sentinel.audit.sinks import AuditSink
 from sentinel.config import Settings
 from sentinel.detection.interface import Detector
-from sentinel.forecasting.interface import Forecaster
+from sentinel.forecasting.interface import ExplainingForecaster, Forecaster
 from sentinel.observability.metrics import Metrics, StageTimer
 from sentinel.schemas.alerts import Alert, AlertModels, AuditEvent, AuditRef
 from sentinel.schemas.api import (
@@ -190,7 +190,7 @@ class Pipeline:
         if len(past) < self.required_history:
             status = "insufficient_history"
         else:
-            forecast = self._forecast(window, past, timer, issues)
+            request, forecast = self._forecast(window, past, timer, issues)
             if forecast is None:
                 status = "forecast_failed"
             else:
@@ -198,7 +198,14 @@ class Pipeline:
                 status = "scored" if detection is not None else "detection_failed"
                 if detection is not None:
                     alerts = [
-                        self._build_alert(window.timestamp, i, c, forecast, detection)
+                        self._build_alert(
+                            window.timestamp,
+                            i,
+                            c,
+                            forecast,
+                            detection,
+                            self._explain(request, c, forecast, timer, issues),
+                        )
                         for i, c in enumerate(detection.alerts, start=1)
                     ]
 
@@ -233,7 +240,7 @@ class Pipeline:
         past: tuple[SensorWindow, ...],
         timer: StageTimer,
         issues: list[ProcessingIssue],
-    ) -> ForecastResult | None:
+    ) -> tuple[ForecastRequest, ForecastResult | None]:
         t = time.perf_counter()
         request = ForecastRequest(
             target_timestamp=window.timestamp,
@@ -248,7 +255,7 @@ class Pipeline:
             issues.append(
                 ProcessingIssue(stage="forecast", code=type(exc).__name__, message=str(exc))
             )
-            return None
+            return request, None
         finally:
             timer.measure("forecast", t)
         problem = _check_forecast(forecast, window.timestamp, self.registry.pressure)
@@ -256,8 +263,8 @@ class Pipeline:
             issues.append(
                 ProcessingIssue(stage="forecast", code="invalid_forecast", message=problem)
             )
-            return None
-        return forecast
+            return request, None
+        return request, forecast
 
     def _detect(
         self,
@@ -299,6 +306,36 @@ class Pipeline:
             )
         return detection
 
+    def _explain(
+        self,
+        request: ForecastRequest,
+        candidate: AlertCandidate,
+        forecast: ForecastResult,
+        timer: StageTimer,
+        issues: list[ProcessingIssue],
+    ) -> dict[str, dict[str, float]] | None:
+        """Contributions of the alert's deviating sensors: taken from the forecast when the
+        forecaster computed them for every sensor, otherwise asked on demand (TreeSHAP only
+        for these sensors). A failure here never drops the alert: it goes out without
+        contributions and the issue is reported."""
+        deviating = [d.sensor for d in candidate.deviating_sensors]
+        if forecast.contributions:
+            wanted = set(deviating)
+            return {s: c for s, c in forecast.contributions.items() if s in wanted} or None
+        if not deviating or not isinstance(self.forecaster, ExplainingForecaster):
+            return None
+        t = time.perf_counter()
+        try:
+            return self.forecaster.explain(request, deviating)
+        except Exception as exc:  # boundary with a pluggable module owned by another member
+            log.exception("explain failed", extra={"fields": {"window": request.target_timestamp}})
+            issues.append(
+                ProcessingIssue(stage="forecast", code="explain_failed", message=str(exc))
+            )
+            return None
+        finally:
+            timer.measure("explain", t - timer.durations.get("explain", 0.0))  # summed over alerts
+
     def _build_alert(
         self,
         window_end: datetime,
@@ -306,14 +343,9 @@ class Pipeline:
         candidate: AlertCandidate,
         forecast: ForecastResult,
         detection: DetectionResult,
+        contributions: dict[str, dict[str, float]] | None,
     ) -> Alert:
         onset = candidate.suspected_onset
-        deviating = {d.sensor for d in candidate.deviating_sensors}
-        contributions = (
-            {s: c for s, c in forecast.contributions.items() if s in deviating}
-            if forecast.contributions
-            else None
-        )
         return Alert(
             alert_id=alert_id_for(window_end, index),
             window_end=window_end,
