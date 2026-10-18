@@ -209,6 +209,7 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| shared API restarted on `main` @ `6b9817a` (BE-024) with the pinned XGBoost, CUSUM v1, regions, network, token file and chain `replay-2019-20261018-be024`; 2019 replayed with `--token-file` | 105 120 × `201` in 334 s, 895 alerts, `mocks_active: false`; `replay_check` 105 120 / 105 120 matched; explanations chain ok; `POST` without token → 401; anchor in `docs/performance.md` |
 | branch `zanetti/ingest-hardening` (BE-024, x86-64): `just check` | ruff format/lint OK · mypy: no issues in 185 files · **1096 passed, 40 skipped** (29 new: `tests/test_ingest_hardening.py`, `test_artefact_integrity.py`, `test_replay_integrity.py`) |
 | same commit `896f785` on the VM (s390x, P3 clone): `python -m pytest -q` | **1068 passed, 14 skipped** |
 | VM: `replay_windows --year 2019` on the official v1 files (MANIFEST checked) into a temporary directory | 105 120 windows; sidecar sha256 `0df9df009ecd…`; **byte-identical** to the shared `replay/v1/windows_2019.jsonl` |
