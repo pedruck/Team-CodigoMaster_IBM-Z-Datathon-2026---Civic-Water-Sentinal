@@ -82,17 +82,231 @@ VM); nothing in the backend uses it — it matters for the model runtimes (desig
 | server `http_post_windows` p50 / p99 | 0.8502 / 15.4848 ms |
 | server pipeline `total` p50 / p99 | 0.193 / 0.539 ms |
 
+### Real data shape: full 2019 v1 export, in process (2026-10-17)
+
+`python scripts/validate_v1_ingestion.py $SENTINEL_DATA_DIR/v1 --year 2019` (script later
+replaced by `scripts/validate_replay_ingestion.py`, which reads the replay JSONL) in the shared
+Jupyter container on the LinuxONE VM (`/opt/venv`, Python 3.12.15, same pydantic/fastapi/
+starlette/uvicorn versions as `uv.lock`), commit `c70f997`, `nice -n 10`, VM otherwise idle
+(load ≈ 0.05). Mock forecaster/detector, in-memory audit, official 37-sensor registry.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 read · 0 rejected · 144 `insufficient_history` · 104 976 `scored` |
+| wall time (CSV read + parse + pipeline) | 30.27 s |
+| Pydantic window parsing, mean | 0.0228 ms |
+| pipeline `total` (last 10 000 windows) p50 / p99 / max | 0.1988 / 0.4044 / 3.5022 ms |
+
+An earlier identical run (pre-commit copy of the script) gave 29.39 s and p50/p99
+0.1961/0.2843 ms. At `073c605` (naive CSV timestamps normalised to UTC in ingestion): 32.99 s,
+p50/p99 0.2231/0.4074 ms, max 13.6681 ms. Single runs on a shared VM vary; treat these as
+orders of magnitude, not as the cost of the timezone normalisation.
+
+### Full 2019 over HTTP into the shared API (2026-10-17)
+
+Shared integration API (`scripts/shared_api.sh start`, `main` @ `fcce163`, official registry,
+in-memory audit, mocks, one worker, BLAS threads = 1) in the `notebook` container on the
+LinuxONE VM. Client: `scripts/replay.py` with the data owner's
+`$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl`, same container, `127.0.0.1:8000`,
+`nice -n 10`, sequential, a new connection per request. VM load before: 0.22 (other members'
+Jupyter kernels open, idle).
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 sent · 105 120 × `201` · error rate 0 · 144 `insufficient_history`, 104 976 `scored` |
+| wall time / client throughput | 145.238 s / 723.78 windows/s |
+| client latency p50 / p99 / max | 1.284 / 2.861 / 144.338 ms |
+| server `http_post_windows` p50 / p95 / p99 (last 10 000) | 0.8826 / 1.2801 / 2.1702 ms |
+| pipeline `total` p50 / p95 / p99 (last 10 000) | 0.2678 / 0.3967 / 0.5581 ms |
+| `validation` / `temporal_policy` / `forecast` / `detection` / `audit` p50 | 0.0422 / 0.035 / 0.0381 / 0.0897 / 0.0141 ms |
+| audit backlog after the run | 0 events |
+| API log size | 26.5 MB for the year (one INFO line per window) |
+
+### Full 2019 over HTTP into the shared API with the real XGBoost forecaster (2026-10-17)
+
+Same procedure, `main` @ `333b1bd`, `SENTINEL_FORECASTER=xgboost` (`xgboost-33@0.1.0`,
+`SENTINEL_FORECASTER_CONTRIBUTIONS=false`, `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees`),
+mock detector, `SENTINEL_LOG_LEVEL=WARNING`, client `nice -n 10` in the same container.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 × `201` · error rate 0 · 144 `insufficient_history`, 104 976 `scored` · 0 alerts |
+| wall time / client throughput | 246.99 s / 425.6 windows/s |
+| client latency p50 / p99 / max | 1.96 / 11.17 / 204.514 ms |
+| server `http_post_windows` p50 / p95 / p99 / max (last 10 000) | 1.5679 / 2.532 / 5.8296 / 84.6257 ms |
+| pipeline `total` p50 / p95 / p99 (last 10 000) | 0.9355 / 1.1867 / 1.5438 ms |
+| `forecast` / `detection` p50 (last 10 000) | 0.6903 / 0.0921 ms |
+| audit backlog after the run | 0 events |
+
+The forecast stage matches the in-process run (0.651 ms p50, `compress_trees`); the extra
+~0.67 ms of `total` p50 over the mock run is the model. One run, shared VM, not a benchmark.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
 `7fc91e5ac9bb54402ce4577df7f97f1df636ad01c84005f7de2b0ec5189717fa` on both x86_64 and
 s390x. Same alert ID and status sequence for the same synthetic replay. This covers the
 backend only; the model parity test (same predictions on both platforms) is still open
-(DEP-ML-03).
+(DEP-ML-03): the first real model was trained on the VM itself, see the next section.
+
+## Forecaster on the LinuxONE VM — `xgboost-33@0.1.0` (P2, 2026-10-17)
+
+Model: 33 per-sensor XGBoost models (at most 600 trees each, early-stopped on Nov–Dec 2018),
+trained on the VM (s390x) on the real `data/v1` 2018 export, branch `feat/p2-forecasting`.
+Measured by Part B of `notebooks/p2_forecast/02_xgboost_snapml.ipynb` with
+`training.benchmark` (3 warm-up calls, then 100 timed calls) and stored in the model's
+`meta.json`. Thread limits of the kernel were not recorded.
+
+**One forecast = one window, 33 sensors** (`XGBoostForecaster.predict`, what the API calls):
+
+| Engine | p50 ms | p99 ms | best ms |
+|---|---|---|---|
+| xgboost native (CPU) | 7.088 | 8.197 | 6.836 |
+| Snap ML `compress_trees` (CPU) | **0.637** | 0.812 | 0.628 |
+| Snap ML `zdnn_tensors` (NNPA, Telum) | 1.345 | 2.256 | 1.326 |
+| Snap ML `auto` + TreeSHAP contributions (API default) | 134.472 | 140.015 | 125.819 |
+
+With `tree_format="auto"` Snap ML picked `zdnn_tensors` on the VM.
+
+**Batch throughput, one sensor model, 1000 rows** (20 timed calls, p50):
+
+| Engine | ms / 1000 rows | rows/s |
+|---|---|---|
+| xgboost native (CPU) | 2.62 | 381 574 |
+| Snap ML `compress_trees` (CPU) | **1.20** | 830 138 |
+| Snap ML `zdnn_tensors` (NNPA) | 5.44 | 183 859 |
+| Snap ML `auto` (= `zdnn_tensors`; no TreeSHAP in this test) | 5.45 | 183 466 |
+
+Readings:
+- Snap ML on CPU is 11× faster than native XGBoost per window and 2.2× in batch.
+- The NNPA path is slower than Snap ML on CPU for this model, both per window and for 1000
+  rows. Larger batches were not tested.
+- TreeSHAP (native XGBoost `pred_contribs`; Snap ML has none) is ~127 of the ~134 ms.
+  Estimate, not measured: a full-year replay (105 120 windows) spends ≈ 3.9 h in the
+  forecaster with contributions and ≈ 67 s without them (`compress_trees`).
+- Everything is far below the 300 s interval.
+- Parity: the parity sample was produced on s390x too, so `meta.json` → `parity` compares the
+  VM with itself. The x86 → s390x check needs Part A run off-platform (Colab).
 
 Caveats: single runs, shared VM, no warm-up control; x86 numbers come from a laptop with
 other processes running. The two baselines are **not** a fair platform comparison and must
 not be used as one.
+
+### Real forecaster in the pipeline: full 2019, in process (BE-011, 2026-10-17)
+
+`scripts/validate_replay_ingestion.py windows_2019.jsonl` on the VM (container `/opt/venv`,
+`nice -n 10`, `SENTINEL_LOG_LEVEL=WARNING`), branch `zanetti/be-011-forecaster-wiring` @
+`4d8b8f0`, `SENTINEL_FORECASTER=xgboost`, artefact `xgboost-33@0.1.0`, official registry,
+in-memory audit, **mock detector**. Latency: last 10 000 samples (`total` includes the 144
+`insufficient_history` windows, which skip the forecast).
+
+| Run | Windows | Elapsed | `forecast` p50 / p99 ms | `total` p50 / p99 ms |
+|---|---|---|---|---|
+| Snap ML `auto` (→ NNPA), TreeSHAP off | 105 120 | 177.1 s | 1.371 / 2.042 | 1.574 / 2.387 |
+| Snap ML `compress_trees`, TreeSHAP off | 105 120 | 98.8 s | **0.651** / 1.324 | **0.839** / 1.782 |
+| Snap ML `auto`, TreeSHAP on (API default) | first 600 | 63.1 s | 135.98 / 175.37 | 134.39 / 168.71 |
+
+All runs: 0 rejected, 0 processing issues (no `ForecastError`), 104 976 `scored`. The
+forecast stage matches the ML owner's standalone numbers above (0.64 / 1.35 / 134 ms), so the
+backend adds ≈ 0.2 ms per window around it.
+
+**0 mock alerts over the whole year.** The mock detector uses σ = 1 m
+(`SENTINEL_MOCK_DETECTOR_SIGMA_M`) and z ≥ 3 on ≥ 2 sensors; XGBoost residuals are millimetres
+(σ < 0.02 m on 32 of 33 sensors, `docs/p2-forecasting.md`), so nothing reaches 3 m. This says
+nothing about leak detection: the real detector with per-sensor σ from `meta.json` (BE-012,
+P4) decides. Until then the shared API with XGBoost shows no alerts.
+
+## CUSUM detector (x86-64, synthetic input) — 2026-10-17
+
+Single measurements, **not a benchmark**: x86-64 laptop (Intel Core Ultra 7 155H, 22 threads,
+other processes running), Python 3.14.7, `wip/be-012-docs` @ `a93883b`. They time tests, so they
+include test set-up; they say nothing about the real models or about s390x.
+
+| Command | Result |
+|---|---|
+| `uv run pytest tests/detection/test_end_to_end.py -q` | 14 passed in 3.33 s (5.6 s wall with `uv run` start-up) |
+| `uv run pytest tests/detection/test_properties.py -q --durations=3` | 13 passed in 2.29 s; slowest: `test_null_series_run_length_matches_siegmund_arl0` 2.16 s |
+
+The ARL0 test calls `evaluate` 100 000 times with one sensor and generates its noise inside the
+timing: about 22 µs per window as an upper bound for the detector itself (2.16 s / 100 000).
+The cost with 33 sensors through the pipeline and over HTTP is measured in the next two
+sections. `just bench` / `scripts/bench_pipeline.py` build `Settings(audit_sink=...)` directly
+and do not read `SENTINEL_DETECTOR`, so they still measure the mock detector.
+Determinism digest of the fixed replay for BE-015: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64), s390x pending
+(`docs/testing.md`).
+
+## CUSUM detector selected by `SENTINEL_DETECTOR=cusum` — 2026-10-17
+
+Single measurements, **not benchmarks**: x86-64 laptop (Intel Core Ultra 7 155H, 22 threads,
+other processes running), Linux 7.2.9, CPython 3.14.7, uvicorn 0.54.0, one worker. Synthetic
+signal, invented calibration (`provenance = synthetic`, sigma about 0.07 m per sensor, `k = 0.5`,
+`h = 10`, `N = 3`, `c = 2`, `h_close = 5`), persistence mock forecaster, placeholder registry
+(33 pressure sensors), default history settings (capacity 288, 144 required), audit sink `null`
+over HTTP and `memory` in process. They measure backend and detector overhead, not real models,
+and say nothing about s390x.
+
+### Over HTTP, real server (end-to-end run, `docs/testing.md`)
+
+Source: the end-to-end report of the run on the tree of `79f2647` (scenario 1: ramp on 3 sensors,
+one alert). Client: sequential, one new TCP connection per request, loopback; server numbers
+from `GET /v1/status` after the replay.
+
+| Measure | Value |
+|---|---|
+| windows | 330 sent, all `201` (144 `insufficient_history`, 186 scored) |
+| wall time / client throughput | 1.082 s / 304.85 windows/s |
+| client latency per `POST /v1/windows` p50 / p99 / max | 3.077 / 4.578 / 27.628 ms (the max is the very first request, cold path) |
+| server `detection` stage p50 / p99 / max (186 scored windows) | 0.2947 / 1.0845 / 4.7047 ms |
+| server `total` p50 / p99 (330 windows, including the 144 that skip forecast and detection) | 0.516 / 1.2946 ms |
+| server `http_post_windows` p50 / p99 | 1.8118 / 2.8394 ms |
+
+The other four replays of that run (330 windows each, fresh server each time) gave a client p50
+between 2.856 and 2.923 ms and a p99 between 4.261 and 4.676 ms. One run per row, no warm-up and
+no repetitions, so differences between runs are noise.
+
+### In process, `build_pipeline` with the CUSUM selected from the environment
+
+Command (script outside the repository: `scripts/bench_pipeline.py` with `Settings.from_env()`
+instead of `Settings(audit_sink=...)`, same synthetic `generate(..., noise_m=0.05)` stream, no
+leak, so no alert is raised):
+`SENTINEL_DETECTOR=cusum SENTINEL_DETECTOR_CALIBRATION=<file> SENTINEL_AUDIT_SINK=memory python <script> 5000`.
+5000 windows, 4856 scored. Three runs, then two runs of `uv run python scripts/bench_pipeline.py
+--windows 5000` (mock detector) in the same session:
+
+| Detector | `detection` p50 / p99 / max (ms) | `total` p50 / p99 (ms) |
+|---|---|---|
+| CUSUM, run 1 | 0.1101 / 0.3352 / 3.8771 | 0.1896 / 0.5821 |
+| CUSUM, run 2 | 0.1054 / 0.3189 / 5.7599 | 0.1832 / 0.5408 |
+| CUSUM, run 3 | 0.1142 / 0.3399 / 4.3838 | 0.1939 / 0.563 |
+| mock, run 1 | 0.102 / 0.1747 / 2.7154 | 0.2288 / 0.402 |
+| mock, run 2 | 0.0578 / 0.1328 / 3.176 | 0.1299 / 0.3037 |
+
+The two sets of numbers are consistent (detection p50 about 0.1 to 0.3 ms with 33 sensors). The
+mock rows differ from each other by almost a factor of two, so the machine noise is larger than
+any CUSUM-versus-mock difference these runs could show. The cost per window is far below the
+300 s interval; the CUSUM runs in plain Python and is not a measured bottleneck.
+
+## Offline tools of BE-012f (`src/sentinel/detection/offline/`, x86-64) — 2026-10-17
+
+Single measurements of the development tools, same machine and Python as above (Intel Core
+Ultra 7 155H, CPython 3.14.7, pandas from `uv.lock`), measured when the tools were written and
+re-measured once for this document. Not part of the server. Timing only: the `z` matrices below
+are invented noise with invented drops (`numpy.random.default_rng(0)`, 105 120 windows × 33
+sensors, one year of 5-minute windows), parameters are arbitrary, and nothing is read from the
+output.
+
+| Operation | At implementation | Re-measured | Command / source |
+|---|---|---|---|
+| `replay` over 105 120 × 33, `k = 0.5`, `h = 8`, `c = 2`, `h_close = 4`, `N = 1` or `5` | 0.45–0.65 s | 0.469–0.765 s (5 runs for `N = 1`), 0.502–0.675 s (5 runs for `N = 5`) | `sentinel.detection.offline.sweep.replay`, timed with `time.perf_counter` |
+| `sweep` of 18 configurations (`h` in 4, 6, 8, 12, 16, 24 × `N` in 1, 2, 3), 14 invented leaks | 8.9 s (about 0.5 s per configuration) | 9.35, 10.04, 11.22 s (3 runs; 0.52–0.62 s per configuration) | `sentinel.detection.offline.sweep.sweep` |
+| `load_pressures_2018` (reads and hashes `scada_2018.csv.gz` of data v1, 105 120 × 33) | 0.30 s | 0.18–0.35 s (3 runs) | `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data` |
+| `oof_hour_of_week_residuals(slot_minutes=60, statistic="median")` | 0.56 s | 0.43–0.59 s (3 runs) | same |
+| `write_oof` (gzip CSV of the residuals + folds file) | 5.6 s | 4.90–6.24 s (3 runs) | same |
+
+Only the 2018 file is opened by these tools (`load_pressures_2018` has no argument to open
+another year). Each configuration of a `sweep` is a full replay, so its cost should grow
+linearly with the number of configurations (18 configurations measured; larger grids not
+measured).
 
 ## Observed bottlenecks / optimisation log
 
@@ -101,6 +315,11 @@ not be used as one.
 | 1 | With mocks, HTTP handling dominates: server HTTP p50 3.96 ms vs pipeline p50 0.80 ms (x86); 0.85 vs 0.19 ms (s390x) | HTTP replays above | JSON parse + Pydantic validation of 37 readings + response serialisation, plus a new TCP connection per request in the stdlib client | keep-alive client for load tests (BE-017); no server change while it is far below budget | not applied |
 | 2 | `temporal_policy` p50 0.05 ms, ~10× the `history` stage | bench above | dominated by `content_hash()` (canonical JSON + SHA-256) — **not profiled** | profile with `cProfile` before changing anything | — |
 | 3 | `forecast` stage (mock) p50 0.07 ms includes building `ForecastRequest` with up to 288 windows | bench above | cost is tuple/model construction — **not profiled** | none needed now | — |
+
+| 4 | Over HTTP, `validation` p50 0.0422 ms vs 0.0093 ms in process | full-year HTTP vs in-process runs above | `normalize_window` re-validates the whole window when turning `SensorWindowIn` into `SensorWindow` — **not profiled** | build the internal model without re-validating the readings (`model_construct` with the already validated fields) if it ever matters | not applied (0.03 ms vs a 300 s interval) |
+| 5 | One spike: `detection` max 141.6 ms, client max 144 ms, during the full-year replay | full-year HTTP run | GC pause or contention with other members' kernels on 3 shared vCPUs — **not investigated** | none; watch p99 on real-model runs | — |
+| 6 | TreeSHAP dominates the real forecaster: p50 134 ms per window vs 0.64 ms without it | `xgboost-33@0.1.0` on the VM, above | 33 `pred_contribs` calls on the native booster, one row each | `SENTINEL_FORECASTER_CONTRIBUTIONS=false` for long replays; keep contributions for the live demo | wired (BE-011); confirmed in the pipeline: 0.65 vs 136 ms per window |
+| 7 | Snap ML on the NNPA is slower than on CPU for this model (1.35 vs 0.64 ms per window; 5.4 vs 1.2 ms per 1000 rows) | same | transfer/setup cost dominates for small trees and few rows — **not profiled** | serve with `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees` (full-year replay 98.8 s vs 177.1 s with `auto`), or keep `auto` to show the accelerator; test larger batches before deciding for bulk replays | option wired (BE-011); default still `auto` (ML owner's choice) |
 
 No Rust/C++ optimisation is justified: there is no measured backend bottleneck relative to
 the 300 s interval. Revisit only with LinuxONE measurements of the real models.

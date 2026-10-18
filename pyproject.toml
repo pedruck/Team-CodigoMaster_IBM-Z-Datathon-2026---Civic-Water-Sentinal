@@ -18,9 +18,15 @@ build-backend = "hatchling.build"
 packages = ["src/sentinel"]
 
 [dependency-groups]
+dashboard = [
+    "ipywidgets>=8.1.9",
+    "streamlit>=1.66.0",
+]
 dev = [
     "httpx2>=2.13.1",
     "mypy>=2.4.0",
+    "pandas>=3.0.6",
+    "pandas-stubs>=3.0.5.260914",
     "pytest>=9.1.1",
     "ruff>=0.17.1",
 ]
@@ -38,6 +44,9 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "N"]
 ignore = ["PLR0913", "PLR0917", "PLR2004"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["sentinel", "dashboard"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR0915"]
 
@@ -45,5 +54,9 @@ ignore = ["PLR0913", "PLR0917", "PLR2004"]
 python_version = "3.12"
 strict = true
 mypy_path = "src"
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "dashboard"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["ipywidgets", "ipywidgets.*"]  # no type information shipped
+ignore_missing_imports = true

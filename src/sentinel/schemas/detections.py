@@ -11,8 +11,12 @@ DetectorState = Literal["normal", "suspect", "alarm"]
 
 
 class SensorResidual(ContractModel):
-    residual_m: FiniteFloat = Field(description="observed - expected, in metres.")
-    z: FiniteFloat | None = Field(default=None, description="Standardised residual, if computed.")
+    residual_m: FiniteFloat = Field(description="observed - expected, in metres (negative = low).")
+    z: FiniteFloat | None = Field(
+        default=None,
+        description="(expected - observed) / sigma: POSITIVE when pressure is below expected "
+        "(Q-DET-02). Opposite sign to residual_m.",
+    )
     cusum: FiniteFloat | None = Field(default=None, description="Sensor CUSUM statistic, if any.")
 
 
@@ -23,8 +27,10 @@ class CusumEvidence(ContractModel):
 
 class DeviatingSensor(ContractModel):
     sensor: SensorId
-    deviation_m: FiniteFloat
-    z: FiniteFloat | None = None
+    deviation_m: FiniteFloat = Field(description="observed - expected, in metres (negative = low).")
+    z: FiniteFloat | None = Field(
+        default=None, description="(expected - observed) / sigma, positive when low (Q-DET-02)."
+    )
     since: UtcDatetime | None = None
 
 

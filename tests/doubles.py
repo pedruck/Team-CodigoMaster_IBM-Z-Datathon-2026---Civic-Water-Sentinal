@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from datetime import datetime
 
-from sentinel.audit.sinks import AuditError
+from sentinel.audit.sinks import AuditError, InMemoryAuditSink
 from sentinel.detection.interface import DetectionError
 from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import ForecastError
@@ -65,3 +65,18 @@ class FailingAuditSink:
 
     def append(self, event: AuditEvent) -> AuditRef:
         raise AuditError("disk full")
+
+
+class SwitchableAuditSink(InMemoryAuditSink):
+    """Records like the in-memory sink while ``healthy``; raises AuditError otherwise."""
+
+    name = "switchable"
+
+    def __init__(self, healthy: bool = True) -> None:
+        super().__init__()
+        self.healthy = healthy
+
+    def append(self, event: AuditEvent) -> AuditRef:
+        if not self.healthy:
+            raise AuditError("audit store unavailable")
+        return super().append(event)

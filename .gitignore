@@ -25,6 +25,7 @@ htmlcov/
 *.inp
 *.jsonl
 !tests/fixtures/*.jsonl
+!dashboard/playback/*/alerts.jsonl
 
 # Model artifacts belong to the ML module, not to this repository
 *.onnx
@@ -43,3 +44,7 @@ htmlcov/
 *.csv.gz
 /models/
 /logs/
+
+# Training checkpoints written by the forecasting notebooks
+checkpoints/
+*.weights.h5

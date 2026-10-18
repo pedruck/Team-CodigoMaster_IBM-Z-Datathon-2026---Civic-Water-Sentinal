@@ -109,7 +109,11 @@ dependencies, risks, known bottlenecks, future optimisations, next step, verific
 
 - The data is **simulated** (BattLeDIM L-Town). Never describe results as validated on a
   real network.
-- Sensor IDs in `config/sensors.provisional.json` are **placeholders**.
+- Sensor IDs in `config/sensors.provisional.json` are **placeholders**; the real ones come from
+  the data owner's official registry `config/sensors.battledim.json` (`SENTINEL_SENSOR_REGISTRY`).
+  IDs are network elements (`n1`, `p227`, `T1`), not the SCADA CSV column names (`Pressure_n1`).
+- The shared integration API on the VM is managed only with `scripts/shared_api.sh`
+  (`docs/runbook-vm.md`); announce before restarting it.
 - History, results, alerts and metrics live **in memory** and are lost on restart (ADR-003).
 - The detector is stateful: one instance per process, called in order (contracts §3).
 - The window timestamp is the **end** of its 5-minute interval (contracts §1).

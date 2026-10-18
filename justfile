@@ -7,10 +7,10 @@ sync:
     uv sync --locked
 
 fmt:
-    uv run ruff format src tests scripts
+    uv run ruff format src tests scripts dashboard
 
 lint:
-    uv run ruff check src tests scripts
+    uv run ruff check src tests scripts dashboard
 
 typecheck:
     uv run mypy
@@ -23,10 +23,22 @@ check: fmt lint typecheck test
 
 # Same gates without modifying files (used by GitHub Actions)
 ci:
-    uv run ruff format --check src tests scripts
-    uv run ruff check src tests scripts
+    uv run ruff format --check src tests scripts dashboard
+    uv run ruff check src tests scripts dashboard
     uv run mypy
     uv run pytest
+
+# Operator dashboard (Streamlit). API_URL: backend to read, e.g. the VM through the SSH tunnel
+dashboard api_url="http://127.0.0.1:8000":
+    SENTINEL_DASHBOARD_API_URL={{api_url}} PYTHONPATH=. uv run --group dashboard streamlit run dashboard/app.py
+
+# Dashboard on a recorded run (always shown with the RECORDED REPLAY banner)
+dashboard-playback run="dashboard/playback/fixture-edge-cases":
+    SENTINEL_DASHBOARD_PLAYBACK_DIR={{run}} PYTHONPATH=. uv run --group dashboard streamlit run dashboard/app.py
+
+# Regenerate the playback fixture runs from the mock backend (synthetic day)
+playback-fixtures:
+    uv run python scripts/make_playback_fixtures.py
 
 # Development server with the mocks (http://127.0.0.1:8000/docs)
 dev:

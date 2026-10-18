@@ -4,7 +4,9 @@ A valid window is not a valid time series: ordering, duplicates and gaps are dec
 the pipeline against the history (ADR-004).
 """
 
-from sentinel.schemas.windows import SensorWindow
+from datetime import UTC
+
+from sentinel.schemas.windows import SensorWindow, SensorWindowIn
 from sentinel.sensors import SensorRegistry
 from sentinel.services.errors import WindowRejectedError
 
@@ -18,6 +20,27 @@ def _diff(kind: str, got: dict[str, float], expected: tuple[str, ...]) -> dict[s
     if unexpected:
         out[f"unexpected_{kind}"] = unexpected
     return out
+
+
+def normalize_window(window: SensorWindowIn, naive_tz: str) -> tuple[SensorWindow, bool]:
+    """Return the window with a UTC timestamp and whether its timezone was assumed.
+
+    ``naive_tz`` is ``"UTC"`` (a timestamp without timezone is read as UTC) or ``"reject"``.
+    """
+    if isinstance(window, SensorWindow):
+        return window, False
+    ts = window.timestamp
+    assumed = ts.tzinfo is None
+    if assumed:
+        if naive_tz == "reject":
+            raise WindowRejectedError(
+                "timestamp_without_timezone",
+                "timestamp has no timezone and SENTINEL_NAIVE_TIMESTAMP_TZ=reject",
+                {"timestamp": ts.isoformat()},
+            )
+        ts = ts.replace(tzinfo=UTC)
+    fields = {name: getattr(window, name) for name in type(window).model_fields}
+    return SensorWindow.model_validate({**fields, "timestamp": ts}), assumed
 
 
 def validate_window(

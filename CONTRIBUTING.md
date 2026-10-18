@@ -38,11 +38,16 @@ optional fields → minor version; anything else → major version + ADR + annou
    `src/sentinel/<area>/`.
 2. Make it pass the existing pipeline/API tests by injecting it through
    `sentinel.main.build_pipeline(...)`.
-3. Add a named option to `SENTINEL_FORECASTER` / `SENTINEL_DETECTOR` /
-   `SENTINEL_AUDIT_SINK` in `sentinel/config.py` and wire it in `build_pipeline`.
+3. Add a named option to `SENTINEL_FORECASTER` / `SENTINEL_DETECTOR` / `SENTINEL_AUDIT_SINK`
+   in `sentinel/config.py` and wire it in `build_pipeline` (forecasters: `config.FORECASTERS`
+   + `forecasting/registry.py`).
 4. Add its runtime dependencies as an optional group in `pyproject.toml`.
 
 ## Never commit
 
 Secrets, `.env`, BattLeDIM/SCADA data, model artefacts (`.onnx`, `.ubj`, `.pkl`), generated
 JSONL replays. The pre-commit hook runs `gitleaks`; do not bypass it.
+
+Exception: the dashboard playback fixtures in `dashboard/playback/*/` (a few KB, mock backend
+on a synthetic day, regenerated with `just playback-fixtures`) are committed because the tests
+and the demo fallback read them. They are not BattLeDIM data and every alert is `is_mock`.

@@ -11,7 +11,9 @@ All contracts are `Proposed` until the owner listed in each section confirms the
 
 Common rules for every contract model:
 - unknown fields are rejected (`extra="forbid"`), models are immutable;
-- timestamps must carry a timezone and are normalised to UTC (serialised with `Z`);
+- timestamps are normalised to UTC (serialised with `Z`). Internal models (`SensorWindow`, what
+  forecasters and detectors receive) always carry a timezone. Only the HTTP input
+  (`SensorWindowIn`) may omit it — see §1;
 - numbers must be finite JSON numbers: `NaN`, `±Infinity`, strings (`"50.1"`) and booleans
   are rejected;
 - sensor IDs: 1–64 chars, `[A-Za-z0-9_.:-]`.
@@ -21,16 +23,19 @@ Common rules for every contract model:
 | Field | Type | Rule |
 |---|---|---|
 | `schema_version` | `"1.0"` | required; other values rejected |
-| `timestamp` | datetime with TZ | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`) |
-| `pressures` | `{sensor_id: number}` | non-empty; metres (head) — unit to confirm (Q-DATA-01) |
-| `flows` | `{sensor_id: number}` | unit to confirm (Q-DATA-01) |
-| `tank_levels` | `{sensor_id: number}` | metres — to confirm |
+| `timestamp` | ISO datetime, with or without TZ (`2019-03-14T12:30:00Z`, `2019-03-14 12:30:00`) | **end** of the 5-min aggregation interval; must be on the 300 s UTC grid (`SENTINEL_REQUIRE_ALIGNED_TIMESTAMPS`). Without TZ it is read as UTC and the result says `timestamp_tz_assumed: true`; `SENTINEL_NAIVE_TIMESTAMP_TZ=reject` turns this into 422 `timestamp_without_timezone` |
+| `pressures` | `{sensor_id: number}` | non-empty; metres (data/v1) |
+| `flows` | `{sensor_id: number}` | m³/h (data/v1) |
+| `tank_levels` | `{sensor_id: number}` | metres (data/v1) |
 | `source` | string \| null | optional replay/run ID; not part of the content hash |
 
 Sensor set: every window must contain **exactly** the IDs of the sensor registry
-(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. The shipped
-registry `config/sensors.provisional.json` uses **placeholder IDs** (`P01..P33`, `F01..F03`,
-`T01`) — only the counts come from the design document. Real IDs: DEP-DATA-01.
+(`SENTINEL_SENSOR_REGISTRY`), no missing and no extra sensor, no `null` values. For real
+data, use the data owner's official registry `config/sensors.battledim.json` (BattLeDIM
+network-element IDs: `n1`…`n769`, `p227`, `p235`, `PUMP_1`, `T1`; registry order = array
+order). The SCADA CSV column names (`Pressure_n1`, `Flow_p227`, `Level_T1`) are **not** sensor
+IDs and are rejected (`docs/data.md`). The default `config/sensors.provisional.json` keeps **placeholder IDs**
+(`P01..P33`, `F01..F03`, `T01`) for development and tests.
 
 Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
 (an unknown field such as `leak_label` is rejected anyway).
@@ -59,15 +64,22 @@ Invalid examples (all 422):
 
 | File | Why | `error.code` |
 |---|---|---|
-| `window.invalid.naive-timestamp.json` | `"2019-03-14T00:00:00"` has no timezone | `validation_error` (`timezone_aware`) |
 | `window.invalid.string-value.json` | `"P01": "50.1"` | `validation_error` |
 | `window.invalid.unknown-field.json` | extra `leak_label` | `validation_error` (`extra_forbidden`) |
 | `window.invalid.missing-sensor.json` | `P33` absent | `sensor_set_mismatch` (`details.missing_pressures`) |
 | `window.invalid.misaligned.json` | `00:02:30Z` | `timestamp_misaligned` |
 
+Accepted with assumption: [`window.naive-timestamp.json`](examples/window.naive-timestamp.json)
+(`"2019-03-14T00:00:00"`) → 201 with `timestamp_tz_assumed: true` by default; 422
+`timestamp_without_timezone` with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`.
+
 Response: `WindowResult` — [`window-result.scored.json`](examples/window-result.scored.json).
 `status ∈ {scored, insufficient_history, forecast_failed, detection_failed}`,
-`audit ∈ {recorded, disabled, failed}`, `issues[]`, `latency_ms` per stage.
+`audit ∈ {recorded, pending, disabled}` (fail-closed: `pending` = events not yet in the log,
+alerts withheld — see §4), `issues[]`, `latency_ms` per stage. The result is a snapshot taken
+when the window was processed: an idempotent resend returns it unchanged (e.g. still
+`pending` after the queue was flushed); current audit state is in `/v1/status` and
+`GET /v1/alerts/{id}`.
 
 ## 2. Forecaster (owner to confirm: ML)
 
@@ -119,9 +131,11 @@ class Detector(Protocol):
   process** and calls it strictly in timestamp order, never concurrently, never twice for
   the same window. After a restart the state starts empty (ADR-003).
 - **Atomic:** either update state and return, or raise (`DetectionError`) without having
-  changed state.
-- Gaps: the detector is not told explicitly; it receives non-consecutive timestamps. Expected
-  behaviour (reset or continue) to define (Q-DET-03).
+  changed state. This holds for any exception, not only `DetectionError` (the pipeline
+  catches `Exception`).
+- Gaps: the detector is not told explicitly; it receives non-consecutive timestamps. Each
+  missing window counts as zero residual: every S decays by `k` per missing window
+  (ADR-007).
 
 `DetectionResult` — [`detection-result.valid.json`](examples/detection-result.valid.json):
 
@@ -130,19 +144,69 @@ class Detector(Protocol):
 | `timestamp` | must equal the evaluated window (else `invalid_detection`) |
 | `model` | `ModelInfo` |
 | `state` | `normal` \| `suspect` \| `alarm` |
-| `anomaly_score` | optional scalar (e.g. max CUSUM) — unit to define |
+| `anomaly_score` | optional scalar; with the CUSUM detector, the N-th largest S among unclaimed sensors, dimensionless (σ units) |
 | `residuals` | `{sensor: {residual_m, z?, cusum?}}` |
 | `alerts[]` | alerts **opened at this window** (not ongoing ones): `region?`, `suspected_onset?`, `cusum{statistic, threshold}?`, `deviating_sensors[] {sensor, deviation_m, z?, since?}` (≥1), `summary?` |
 | `region_scores` | optional `{region: score}` |
 | `diagnostics` | free `{key: number|string|bool}` (e.g. `k`, `h`) |
 | `complete`, `issues[]` | `complete=false` → result kept, issue `incomplete_detection` |
 
-**Sign convention (proposed):** `residual_m = observed − expected` (negative when pressure is
-low). The design document writes `z = (expected − observed)/σ` (§3) but its example alert
-shows `deviation_m: -0.9, z: -4.1` (§6), i.e. the opposite sign. To confirm (Q-DET-02).
+**Sign convention (decided, Q-DET-02, `docs/team-workflow.md`):**
+`residual_m` / `deviation_m` = observed − expected (negative when pressure is low) and
+`z = (expected − observed)/σ` (**positive** when pressure is low, as CUSUM accumulates it,
+design doc §3). So in a leak `deviation_m < 0` and `z > 0`. The design doc §6 example
+(`deviation_m −0.9`, `z −4.1`) has the wrong z sign. Enforced in the mock and by
+`test_pressure_drop_has_negative_deviation_and_positive_z`.
 
+**CUSUM semantics (`CusumDetector`; ADR-007, calibration in ADR-008, both `Proposed`):**
+- Per sensor `S ← min(c·h, max(0, S + z − k))` (`z` as above, positive on a drop);
+  `residuals[s].cusum` is `S`, so it is never negative and never above the cap `c·h`. σ, `k`,
+  `h`, `N`, `c`, `h_close` come from the calibration artefact, never from code defaults.
+- An alert opens when ≥ `N` **unclaimed** sensors have `S > h`; they become *claimed* and do
+  not count again until `S < h_close`. No reset after an alert; no closing event.
+- `cusum.statistic` = N-th largest `S` among unclaimed sensors, `threshold` = `h`; an alert
+  opens iff `statistic > threshold`. `anomaly_score` carries the same value on every window
+  (null while fewer than `N` sensors are unclaimed).
+- `state`: `alarm` if any sensor is claimed; else `suspect` if an unclaimed sensor has
+  `S > h` (fewer than `N`); else `normal`.
+- `deviating_sensors` = the unclaimed sensors with `S > h` that open the alert; `since` = last
+  window with `S = 0`, so a new episode that starts before `S` returned to 0 inherits the old
+  onset (Q-DET-06); `suspected_onset` = earliest `since`, or `null` when any deviating sensor
+  never had `S = 0` since the first window the detector saw.
+- Gaps: with `m` missing windows every `S` decays to `max(0, S − k·m)` before the current
+  window is processed. The onset and the release happen inside the gap: the last window of
+  the gap counts as a zero whenever the decay left `S` at 0, and a claimed sensor is
+  released if `min(decayed S, new S) < h_close`.
+- `region` / `region_scores` need a sensor → region file `{"regions": {"<region>": ["<sensor>",
+  ...]}}` (file order is the tie-break; each pressure sensor in exactly one region; startup
+  fails if it does not cover exactly `registry.pressure`). `region_scores` is emitted on
+  every window with every region (`0.0` when empty): the sum of `S` over the unclaimed
+  sensors with `S > h`, the same set as `anomaly_score` (after the `h_close` release, before
+  the sensors of the alert opening in this window are claimed). `region` = region with the
+  largest sum (tie: first in the file). Without the file both are null and no new key appears.
+- `diagnostics`: `k`, `h`, `n_min`, `c`, `cap`, `h_close`, `provenance`, `calibration_id`
+  (sha256 of the artefact file), `skipped_windows`; `reset_reason="gap"` only when a skip
+  emptied every `S`; `regions_id` (sha256 of the mapping file) only with a mapping.
+- `complete` is always `true`. `DetectionError` is raised, with the state unchanged
+  (atomic), when the timestamp is ≤ the last evaluated one or has no timezone, when the
+  observed or expected sensor set differs from the calibration's, or when a value or `z` is
+  not finite.
+- `ModelInfo`: `name="cusum"`, `version="0.1.0+<8 hex of the artefact hash>"`,
+  `is_mock=true` unless the calibration `provenance` is `battledim-2018-oof`.
+- `state` is returned by `POST /v1/windows` (`detector_state`) and is in the `window.*`
+  audit payload together with `anomaly_score`; no GET endpoint exposes either (Q-UI-05).
 Mock: `ThresholdMockDetector` — opens one alert when ≥ N sensors are ≥ 3σ below expected.
 Not CUSUM, no region.
+
+**Selection at startup (not part of the schema):** `SENTINEL_DETECTOR` is `mock` (default) or
+`cusum`. With `cusum`, `SENTINEL_DETECTOR_CALIBRATION` (the artefact, ADR-008 §B) is required and
+`SENTINEL_DETECTOR_REGIONS` (the mapping above) is optional; with `mock`, setting either is a
+`ConfigError` rather than being ignored. The server refuses to start (`ConfigError`) when a file
+is missing or invalid, when the artefact was made for another forecaster `name`/`version` than
+the one served, when its sensors differ from `registry.pressure` or are in another order, or when
+the mapping does not cover exactly `registry.pressure` (`CusumDetector.for_pipeline`, called from
+`build_pipeline`; README, "Running with the CUSUM detector"). A detector passed to
+`build_pipeline` wins over the environment.
 
 ## 4. Alert and audit (owners to confirm: audit; dashboard)
 
@@ -181,8 +245,13 @@ window.scored, window.not_scored}`; one `window.*` event per accepted window (de
 
 Requirements for the real sink (audit owner): append-only, sequence assigned by the sink,
 `hash = SHA-256(prev_hash ‖ canonical JSON)` (design doc §6), thread-safe, durable before
-returning. Shipped sinks: `NullAuditSink` (disabled) and `InMemoryAuditSink` (dev only, no
-hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
+returning; raise `AuditError` when the event was **not** stored. The backend is
+**fail-closed** (Q-AUD-03, ADR-006): an alert is served only after its `alert.raised` event
+is recorded; failed events wait in an ordered pending queue, retried before every new window;
+a full queue (`SENTINEL_AUDIT_PENDING_CAPACITY`) answers 503 `audit_backlog_full`. The sink
+therefore receives events strictly in window order, possibly late, never twice after a
+successful append. Shipped sinks: `NullAuditSink` (disabled: alerts served, `audit="disabled"`)
+and `InMemoryAuditSink` (dev only, no hash, lost on restart). **No `GET /v1/audit` endpoint** until the audit owner defines the
 contract and who may read it (DEP-AUD-02).
 
 ## 5. Read API for the dashboard
@@ -190,13 +259,15 @@ contract and who may read it (DEP-AUD-02).
 | Endpoint | Response | Notes |
 |---|---|---|
 | `GET /health` | `{status, version}` | liveness only |
-| `GET /v1/status` | `StatusResponse` | history, registry (provisional flag), models (`mocks_active`), counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
+| `GET /v1/status` | `StatusResponse` | history, registry (provisional flag, units), models (`mocks_active`), `audit_pending_events`, `audit_pending_alerts`, counters, per-stage latency p50/p95/p99, throughput, error rate, `persistence: "memory"` |
 | `GET /v1/alerts` | `AlertPage {items, total, limit, offset}` | newest first; `limit` 1–500 (50), `offset`, `since`/`until` (TZ required, on `window_end`, inclusive), `region` |
 | `GET /v1/alerts/{id}` | `Alert` | 404 `not_found` |
 
 Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
 `validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
-`out_of_order` 409, `window_conflict` 409, `not_found` 404, `internal_error` 500.
+`timestamp_without_timezone` 422 (only with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`),
+`out_of_order` 409, `window_conflict` 409, `not_found` 404, `audit_backlog_full` 503 (retry
+later), `internal_error` 500.
 
 ## 6. Versioning and change process
 

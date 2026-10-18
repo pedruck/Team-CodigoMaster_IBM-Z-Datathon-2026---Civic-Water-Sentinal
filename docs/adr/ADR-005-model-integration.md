@@ -1,7 +1,7 @@
 # ADR-005 — Integration of the real models in process, behind ports
 
-- **Status:** Proposed — needs confirmation by the ML owner (Q-ML-01..05) and the detection
-  owner (Q-DET-01..05).
+- **Status:** Accepted for the forecaster (ML owner's answers Q-ML-01..06 in
+  `docs/p2-forecasting.md`, wired in BE-011); Proposed for the detector (Q-DET-01..05).
 - **Date:** 2026-10-17
 
 ## Context
@@ -17,9 +17,13 @@ being used silently.
   `Detector` (`docs/integration-contracts.md` §2–§3), plus their artefact files.
 - Artefacts are loaded **once at startup** (`build_pipeline`), never per request; startup
   fails if loading fails. Warm-up, if needed, happens at startup.
-- Selection by env (`SENTINEL_FORECASTER`, `SENTINEL_DETECTOR`). Today the only accepted
-  value is `mock`; unknown values fail at startup. A real value is added only together
-  with its implementation, so a mock can never replace a requested real model.
+- Selection by env (`SENTINEL_FORECASTER`, `SENTINEL_DETECTOR`); unknown values fail at
+  startup. A real value is added only together with its implementation, so a mock can never
+  replace a requested real model. Forecaster (BE-011, 2026-10-17): `mock | baseline |
+  xgboost | gru`, artefact in `SENTINEL_FORECASTER_PATH`, loaded with the ML owner's
+  `load_forecaster`; a load error stops the process. XGBoost options:
+  `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP), `_ENGINE`, `_TREE_FORMAT`
+  (`auto | compress_trees | zdnn_tensors`). Detector: `mock` and `cusum` (ADR-007, ADR-008).
 - One detector instance per process; called in order under the pipeline lock.
 - Mock usage is visible in every result (`is_mock`) and in `/v1/status.mocks_active`.
 
@@ -35,7 +39,9 @@ No serialisation between backend and models; fail-fast configuration.
 Model dependencies (Snap ML, onnxruntime/zDLC) become backend runtime dependencies.
 
 ## Consequences
-Model packages are added as optional dependency groups when delivered, not before.
+Model packages are added as optional dependency groups when delivered, not before. Until
+then (DEP-ML-03) the real forecasters import numpy/xgboost/snapml lazily and run only with
+the VM image's Python (`/opt/venv`); CI runs their tests where the libraries exist.
 
 ## Risks
 GRU runtime only available in a container (design doc §4) → may force an out-of-process
