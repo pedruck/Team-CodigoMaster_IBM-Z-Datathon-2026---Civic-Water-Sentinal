@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
+- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
+  and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
+  team (Q-TEAM-03). Detection owner's review of
+  ADR-010 appended to it (stale `eval/v1`, regions and candidate pipe now exist, delays and
+  false alarms of the 4 inherited leaks, manifest ids); Q-DET-08 status recorded.
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
   `null` without a pipe network; new alerts carry `schema_version: "1.1"`, 1.0 payloads are still
   accepted. `docs/examples/alert.mock.json` updated. The alert JSON gained a key, so the
@@ -156,8 +161,11 @@ contract versions are tracked separately (`schema_version`).
   with their hashes, 2018 loader checked against `MANIFEST.json`), `sweep.py` (`replay` with exact
   parity with `CusumDetector` and a parameter `sweep`) and `layer1.py` (delay and false-alarm
   counts; the matching rule is a required argument and provisional, Q-UI-06). The sweep showed that
-  false alarms are not monotone in `h` (ADR-008 §E). BE-012f is not finished: no artefact has
-  been produced from a run yet.
+  false alarms are not monotone in `h` (ADR-008 §E). `devcal.py` runs the whole development calibration
+  (artefact `dev-baseline-2018`, `is_mock`, residual structure, σ sensitivity to the leak mask,
+  sweep and report; every number a required argument) and was reproduced byte for byte from
+  data v1; `write_oof` now hashes the CSV text, not the `.gz` bytes (zlib differs between x86-64
+  and s390x). No 2019 file is opened.
 - Documentation: end-to-end check of the CUSUM selection against the real server with synthetic
   data (`docs/testing.md`) and its timings (`docs/performance.md`); ADR-007/008, contract §3,
   architecture, dependencies and plan updated. No schema change.
