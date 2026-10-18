@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
+**Last update:** 2026-10-17 — the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
 ## Summary
 
@@ -12,7 +12,10 @@ real models or the real audit log yet. The real forecaster (XGBoost, chosen by t
 validation with 0 rejections. On the LinuxONE VM (s390x) the
 runtime installs from wheels and the 89 tests pass (recorded before the detector work); mypy does not install there yet.
 `CusumDetector` (per-sensor episodes, gap decay, atomic rejection, calibration artefact with hash,
-region ranking) exists and is tested with **invented, synthetic** calibrations. It is selected with
+region ranking, candidate pipe) exists and is tested with **invented, synthetic** calibrations.
+The L-Town regions (nine, over the 33 pressure sensors) are committed and the pipe network (905
+pipes) is the data owner's `l-town.json` (`SENTINEL_DETECTOR_REGIONS`, `SENTINEL_DETECTOR_NETWORK`); the candidate pipe is a
+topological guess (ADR-011), measured only on 2018 with a development calibration. It is selected with
 `SENTINEL_DETECTOR=cusum` and `SENTINEL_DETECTOR_CALIBRATION` (required; `SENTINEL_DETECTOR_REGIONS`
 optional); the server refuses to start with a `ConfigError` on a missing or invalid file, another
 forecaster, other or reordered sensors or a mapping that does not cover the registry, and `mock`
@@ -32,6 +35,8 @@ BE-011 real forecaster wired (`SENTINEL_FORECASTER`) ·
 BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefact, `calibrate()`,
 `for_pipeline`, region ranking · BE-012 selection `SENTINEL_DETECTOR=cusum` in `build_pipeline`
 (startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
+BE-012g real L-Town sensor → region mapping and BE-012i candidate pipe per alert (ADR-011,
+`Alert` 1.1, `SENTINEL_DETECTOR_NETWORK`) ·
 BE-012f parts 1 and 2: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
 exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1 counts with a
 **provisional** matching rule (`offline/layer1.py`, Q-UI-06). Details:
@@ -39,22 +44,21 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 
 ## In progress
 
-- BE-012 umbrella: selection and tools done; the final calibration and the layer-1 evaluation
-  (BE-012h) are blocked.
+- BE-012 umbrella: selection, tools, regions and candidate pipe done; the final calibration and
+  the layer-1 evaluation (BE-012h) are blocked.
 - BE-012f: development calibration on 2018 (out-of-fold hour-of-week baseline,
   `provenance = dev-baseline-2018`, `is_mock = true`). Parts 1 and 2 (the tools) are done; the
   development run that produces the artefact, the sensitivity of σ and the delay × false-alarms
   numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
   process (full 2019); full `just check` waits for Q-PLAT-02 (`gcc`). The detector
-  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check).
+  determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check). BE-012i added the `candidate_pipe` key to the alert JSON, so the literal is now `7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3` (the replay without that key gives `d9106c15e4d5…`); **its s390x run is pending**.
 
 ## Blocked
 
 | Task | Waiting for |
 |---|---|
-| BE-012g real L-Town sensor → region mapping | DEP-DET-04, Q-DET-05 (detection owner) |
-| BE-012h final calibration and layer-1 evaluation | BE-012f/g, BE-011, DEP-DET-05, Q-ML-07/08 (ML owner), Q-TEAM-03 |
+| BE-012h final calibration and layer-1 evaluation | BE-012f, BE-011, DEP-DET-05, Q-ML-07/08 (ML owner), Q-TEAM-03 |
 | BE-013 real audit sink | DEP-AUD-01 (audit owner) |
 
 ## Pending (independent, not started)
@@ -73,13 +77,26 @@ P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback
 
 ## External dependencies
 
-17 open/partial items in `docs/dependencies.md` (new: DEP-DET-05, out-of-fold 2018 residuals from
-the ML owner; DEP-DET-04 is now partial); P0 questions in
+15 open/partial items in `docs/dependencies.md` (DEP-DET-04 resolved by BE-012g; DEP-DET-06 partial:
+candidate pipe done, the official distance is the evaluation owner's); P0 questions in
 `docs/questions-for-team.md` (Q-TEAM-01/02, Q-ML-01/02/08, Q-DET-01,
 Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
+- The candidate pipe (ADR-011 §3) is a topological guess, not a hydraulic localisation. On the 6
+  abrupt 2018 leaks, with a development calibration and its first alert, it was within about 360 m
+  of the leaking pipe five times and 2.9 km once; that is six events, not a result, and it is
+  untested on incipient leaks. The region rule's diameter (1000 m) is a choice; the sensitivity
+  table is in ADR-011.
+- `Alert` 1.1 (new optional key, `schema_version: "1.1"`) and the `alert.raised` audit payload
+  change shape for the backend, audit and dashboard owners, who have not confirmed it yet
+  (ADR-011 is `Proposed`; Q-DET-08 asks them). The determinism digest of the detector was regenerated for the new
+  key (`tests/detection/test_determinism.py`); s390x still has to reproduce the new literal.
+- The server reads the pipe network from the data owner's `l-town.json` in
+  `$SENTINEL_DATA_DIR/network/v1/` (outside git). `SENTINEL_DETECTOR_NETWORK` is optional; without
+  it `candidate_pipe` is null. On the LinuxONE VM this was **not run** (no access from the author's
+  session): `docs/testing.md` has the command to verify it there.
 - Unmerged owner branches change the P6 plan (2026-10-17 18:30): `feat/be-012-cusum-detector`
   (real CUSUM, ADR-007/008: layer-2 2019 evaluation through the API is P6's, Q-UI-06) and
   `leo/local-version` (hash chain, verifier CLI, narrative; no HTTP endpoint, records fail-open,
@@ -121,19 +138,22 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 ## Pending for the detection owner
 
 - Finish BE-012f (the development run).
-- Pre-registration of ADR-008 §G, all `not yet registered`: δ (→ `k`), persistence-test
-  criterion, false-alarm budget (Q-TEAM-03), the region rule (Q-DET-05), artefact hash. Must be
-  committed before any evaluation run.
+- Pre-registration of ADR-008 §G: the region rule and the files are **registered** (ADR-011 §2,
+  hashes in the table). Still `not yet registered`: δ (→ `k`), persistence-test criterion,
+  false-alarm budget (Q-TEAM-03), artefact hash. Must be committed before any evaluation run.
 - Open questions: Q-ML-07/08 (ML), Q-UI-05/06 (dashboard/evaluation), Q-TEAM-03, Q-DET-05,
-  Q-DET-06 (onset inherited by a new episode). Dependencies DEP-DET-04/05.
+  Q-DET-06 (onset inherited by a new episode). Dependencies DEP-DET-05 (and DEP-DET-06: the
+  official BattLeDIM distance, evaluation owner).
 - ADR-007/008 are `Proposed`: they need the ML owner (Q-ML-07), the dashboard owner (Q-UI-05)
-  and the evaluation owner (Q-UI-06).
+  and the evaluation owner (Q-UI-06). ADR-011 is `Proposed`: it needs the backend owner (`Alert`
+  1.1), the evaluation owner (ADR-010 §6–7: pipe → region table, official distance) and the data
+  owner (the graph).
 
 ## Next recommended step
 
 Finish BE-012f and the calibration on the
 XGBoost out-of-fold residuals (DEP-DET-05) so `SENTINEL_DETECTOR=cusum` can run with the real
-forecaster; then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
+forecaster, and register the remaining ADR-008 §G fields (the region rule is done); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-17)
@@ -194,3 +214,9 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 | README procedure with a synthetic calibration and regions (uvicorn on 127.0.0.1, `SENTINEL_DETECTOR=cusum`) | `/health` ok; `/v1/status` reports detector `cusum` `0.1.0+<8 hex>`, `is_mock: true`, `mocks_active: true`; `cusum` without the calibration variable, a missing calibration file and the calibration variable set with the mock detector each end in a `ConfigError` |
 | manual end-to-end run on the real server, tree of `79f2647`, synthetic data (`docs/testing.md`) | 84 checks passed, no bug found; 330 windows over HTTP in 1.082 s, client p50 3.077 / p99 4.578 ms (`docs/performance.md`) |
 | `SENTINEL_DETECTOR=cusum` on the s390x VM, the shared API | **NOT_RUN** — the shared API runs the mock detector (`scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`) |
+| BE-012g/i (this change), x86-64, Python 3.14.7: `uv run --group dashboard ruff format --check src tests scripts dashboard`, `ruff check …`, `mypy`, `pytest` | 121 files already formatted · ruff OK · mypy: no issues in 121 source files · **675 passed, 31 skipped** (22 tests need `$SENTINEL_DATA_DIR`: 8 P1 data tests, 1 offline-baseline real-data test and 13 on `network/v1/l-town.json`; 9 more need xgboost, snapml, tensorflow or torch and skip in both runs) |
+| same, `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run --group dashboard pytest -q` (the data directory with `network/v1/l-town.json`, sha256 `ff772dc1…`) | **697 passed, 9 skipped** (includes the checks on the real network and the server started from the environment with the official registry, the committed regions and `l-town.json`) |
+| `uv run pytest tests/detection/test_network.py tests/detection/test_topology_build.py tests/detection/test_topology_files.py tests/detection/test_candidate_pipe.py tests/test_detector_network_startup.py tests/test_config.py -q` | all passed (see the full runs above for the counts) |
+| `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data uv run python -m sentinel.detection.offline.topology --check` | `config/regions.battledim.json: matches the rule on l-town.json` (exit 0); `l-town.json` has the same 905 pipes, nodes and lengths, the same pump and 3 PRVs and the same 5 zones as the rule computes from the pipes |
+| scratch replay of the 2018 out-of-fold residuals of the BE-012f development run through `CusumDetector` with the L-Town regions and network (no 2019 file) | 105 120 windows in 13.3 s / 16.1 s; 1 487 alerts (same count as the development run), each with a candidate pipe; first alert of the 6 abrupt leaks 363, 2 892, 0, 346, 220, 323 m from the leaking pipe (ADR-011 Evidence; not a result) |
+| determinism digest after BE-012i, x86-64 | `7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3` (the replay without the new key gives the previous `d9106c15e4d5…`); s390x: **NOT_RUN** |
