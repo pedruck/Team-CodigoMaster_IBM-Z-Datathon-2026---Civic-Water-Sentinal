@@ -38,6 +38,7 @@ def test_registro_oficial() -> None:
     reg = SensorRegistry.load(REGISTRO)
     assert not reg.provisional
     assert reg.counts == {"pressure": 33, "flow": 3, "tank_level": 1}
+    assert reg.units == {"pressure": "m", "flow": "m3/h", "tank_level": "m"}
 
 
 # ---------- máscara de 2018 (vazamentos inventados) ----------

@@ -39,6 +39,11 @@ class AlertCandidate(ContractModel):
 
     classification: Literal["leak_suspected"] = "leak_suspected"
     region: str | None = Field(default=None, description="Estimated region, when available.")
+    candidate_pipe: str | None = Field(
+        default=None,
+        description="Network pipe (link ID) the detector names as the candidate for the leak, "
+        "when it has the pipe network (ADR-011).",
+    )
     suspected_onset: UtcDatetime | None = None
     cusum: CusumEvidence | None = None
     deviating_sensors: tuple[DeviatingSensor, ...] = Field(min_length=1)

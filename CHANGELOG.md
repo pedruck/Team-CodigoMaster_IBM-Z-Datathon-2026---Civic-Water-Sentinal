@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
+- `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
+  `null` without a pipe network; new alerts carry `schema_version: "1.1"`, 1.0 payloads are still
+  accepted. `docs/examples/alert.mock.json` updated. The alert JSON gained a key, so the
+  determinism digest of `tests/detection/test_determinism.py` was regenerated
+  (`7c5ef97b…`); the previous one (`d9106c15…`) is the same replay without that key.
 - One sensor-ID scheme: the official registry `config/sensors.battledim.json` (data owner);
   loading `data/vN/sensors.csv` as a registry was removed (it used CSV column names such as
   `Pressure_n1`, incompatible with the replay). Registry JSON may carry optional `units`.
@@ -28,6 +33,16 @@ contract versions are tracked separately (`schema_version`).
   fallback to the mock); the CUSUM detector is checked against the forecaster actually loaded.
   `scripts/shared_api.sh` forwards the `SENTINEL_FORECASTER*` and `SENTINEL_DETECTOR*` variables
   that are set; `scripts/validate_replay_ingestion.py` reads them and reports processing issues.
+- Pipe network, L-Town regions and candidate pipe (BE-012g, BE-012i, ADR-011): `PipeNetwork`
+  (`sentinel.detection.network`: distances along the pipes, zones, `candidate_pipe`), the builder
+  `python -m sentinel.detection.offline.topology` (with `--check`) and the committed
+  `config/regions.battledim.json` (nine regions over the 33 official pressure sensors, a rule fixed
+  from the topology alone). The network is the data owner's `l-town.json` (schema 1.0, in
+  `$SENTINEL_DATA_DIR/network/v1/`, never in git): `SENTINEL_DETECTOR_NETWORK` (optional, with
+  `SENTINEL_DETECTOR=cusum`) points to it. `scripts/shared_api.sh` forwards it to the container and
+  `docs/runbook-vm.md` has the check to run on the VM.
+  Answers Q-DET-05 and Q-DET-07 (confirmation asked in Q-DET-08); DEP-DET-04 resolved, DEP-DET-06
+  partial. New example `docs/examples/alert.cusum-synthetic.json`.
 - Operator dashboard tracer (UI-001, P6): Streamlit page (`just dashboard api_url=...`) with
   the header from `/health` + `/v1/status` (simulated time, models, SIMULATED badge). Reads the
   backend only through `dashboard.source.AlertSource` (HTTP adapter, stdlib); every answer is

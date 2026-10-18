@@ -35,3 +35,4 @@ One file per decision with impact on contracts, reliability, performance or inte
 | [ADR-008](ADR-008-calibration-and-evaluation.md) | Detector calibration and evaluation protocol | Proposed |
 | [ADR-009](ADR-009-dashboard.md) | Operator dashboard: server-side, contract-checked, read-only | Proposed |
 | [ADR-010](ADR-010-layer2-evaluation.md) | Layer-2 evaluation of 2019 through the API: matching rule, metrics, manifest | Proposed |
+| [ADR-011](ADR-011-pipe-network-regions-candidate-pipe.md) | Pipe network, L-Town regions and the candidate pipe of an alert | Proposed |

@@ -39,8 +39,11 @@ MISSING = frozenset(range(70, 80)) | frozenset(range(170, 230))
 WINDOWS = [i for i in range(260) if i not in MISSING]
 
 # BE-015 reference: sha256 of the replay below (one JSON per window, joined with "\n"). Recorded
-# on x86-64 from the run that wrote this test; it must be the same on s390x.
-REFERENCE_SHA256 = "d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413"
+# on x86-64; it must be the same on s390x. Regenerated on purpose in BE-012i: the alert gained the
+# field ``candidate_pipe`` (null here: no network), which changes the JSON and nothing else. The
+# previous reference, d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413, is this
+# replay serialised without that field (checked), so the numbers of the detector are unchanged.
+REFERENCE_SHA256 = "7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3"
 
 
 def replay() -> list[DetectionResult]:

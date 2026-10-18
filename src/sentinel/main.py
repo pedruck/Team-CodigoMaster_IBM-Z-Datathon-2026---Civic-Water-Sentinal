@@ -103,6 +103,7 @@ def _cusum_detector(
     ``ConfigError`` at startup, never a failure at request time (ADR-005)."""
     calibration = settings.detector_calibration_path
     regions = settings.detector_regions_path
+    network = settings.detector_network_path
     assert calibration is not None  # Settings refuses cusum without it
     try:
         return CusumDetector.for_pipeline(
@@ -111,11 +112,13 @@ def _cusum_detector(
             pressure_sensors=registry.pressure,
             forecaster=forecaster.info,
             regions=regions,
+            network=network,
         )
     except ConfigError:
         raise
     except (OSError, ValueError) as exc:  # unreadable file, bad JSON, invalid artefact/mapping
-        files = f"calibration {calibration}" + (f" and regions {regions}" if regions else "")
+        named = {"calibration": calibration, "regions": regions, "network": network}
+        files = ", ".join(f"{kind} {path}" for kind, path in named.items() if path)
         raise ConfigError(f"cannot start the CUSUM detector from {files}: {exc}") from exc
 
 

@@ -65,9 +65,25 @@ def test_cusum_detector_accepts_an_optional_region_mapping() -> None:
     assert s.detector_regions_path == Path("run/regions.json")
 
 
+def test_cusum_detector_accepts_an_optional_pipe_network() -> None:
+    s = Settings.from_env(
+        {
+            "SENTINEL_DETECTOR": "cusum",
+            "SENTINEL_DETECTOR_CALIBRATION": "run/calibration.json",
+            "SENTINEL_DETECTOR_NETWORK": "run/network.json",
+        }
+    )
+    assert s.detector_network_path == Path("run/network.json")
+    assert s.detector_regions_path is None
+
+
 def test_detector_files_default_to_none_with_the_mock_detector() -> None:
     s = Settings.from_env({})
-    assert (s.detector_calibration_path, s.detector_regions_path) == (None, None)
+    assert (s.detector_calibration_path, s.detector_regions_path, s.detector_network_path) == (
+        None,
+        None,
+        None,
+    )
 
 
 def test_cusum_detector_without_a_calibration_file_fails_at_startup() -> None:
@@ -81,7 +97,14 @@ def test_region_mapping_without_a_calibration_file_fails_at_startup() -> None:
         Settings.from_env(env)
 
 
-@pytest.mark.parametrize("key", ["SENTINEL_DETECTOR_CALIBRATION", "SENTINEL_DETECTOR_REGIONS"])
+DETECTOR_FILE_KEYS = [
+    "SENTINEL_DETECTOR_CALIBRATION",
+    "SENTINEL_DETECTOR_REGIONS",
+    "SENTINEL_DETECTOR_NETWORK",
+]
+
+
+@pytest.mark.parametrize("key", DETECTOR_FILE_KEYS)
 @pytest.mark.parametrize("detector", [None, "mock"])
 def test_detector_files_are_not_ignored_by_the_mock_detector(
     key: str, detector: str | None
@@ -91,7 +114,7 @@ def test_detector_files_are_not_ignored_by_the_mock_detector(
         Settings.from_env(env)
 
 
-@pytest.mark.parametrize("key", ["SENTINEL_DETECTOR_CALIBRATION", "SENTINEL_DETECTOR_REGIONS"])
+@pytest.mark.parametrize("key", DETECTOR_FILE_KEYS)
 def test_an_empty_detector_file_path_fails_instead_of_meaning_the_current_directory(
     key: str,
 ) -> None:

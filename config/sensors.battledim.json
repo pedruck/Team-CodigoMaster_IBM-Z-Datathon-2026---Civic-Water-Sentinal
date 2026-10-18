@@ -43,5 +43,10 @@
   ],
   "tank_level": [
     "T1"
-  ]
+  ],
+  "units": {
+    "pressure": "m",
+    "flow": "m3/h",
+    "tank_level": "m"
+  }
 }

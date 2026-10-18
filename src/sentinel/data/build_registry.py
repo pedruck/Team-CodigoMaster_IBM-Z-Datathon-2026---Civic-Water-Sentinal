@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     for tipo, campo in TIPOS.items():
         registro[campo] = sensors.loc[sensors["tipo"] == tipo, "elemento_rede"].tolist()
+    registro["units"] = {"pressure": "m", "flow": "m3/h", "tank_level": "m"}
     args.out.write_text(json.dumps(registro, indent=2, ensure_ascii=False) + "\n")
 
     reg = SensorRegistry.load(args.out)

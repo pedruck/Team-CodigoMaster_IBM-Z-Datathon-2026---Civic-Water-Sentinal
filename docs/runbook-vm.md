@@ -42,11 +42,47 @@ not load (missing artefact, `snapml` absent after the container was recreated), 
 and prints the log: the API never falls back to the mock. `status` shows `forecaster` with
 `is_mock: false`.
 
-The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION` and
-`SENTINEL_DETECTOR_REGIONS` (only the variables that are set). The CUSUM detector refuses to start
+The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION`,
+`SENTINEL_DETECTOR_REGIONS` and `SENTINEL_DETECTOR_NETWORK` (only the variables that are set). The CUSUM detector refuses to start
 with a calibration made for another forecaster ([README](../README.md#running-with-the-cusum-detector),
 ADR-008); no calibration for `xgboost-33@0.1.0` exists yet (DEP-DET-05), so with XGBoost keep
 the mock detector, which raises no alerts with millimetre residuals (`docs/performance.md`).
+
+### Regions and pipe network for the CUSUM detector (ADR-011)
+
+The regions are the repository's `config/regions.battledim.json` (the integration copy has it). The
+pipe network is the data owner's file `~/shared/civicwater/data/network/v1/l-town.json` on the
+host, `/home/ibm-user/shared/civicwater/data/network/v1/l-town.json` inside the container (sha256
+`ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59`). With a calibration for the
+forecaster served (DEP-DET-05), the shared API would be started with:
+
+```bash
+SENTINEL_DETECTOR=cusum \
+SENTINEL_DETECTOR_CALIBRATION=<calibration file, path inside the container> \
+SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json \
+SENTINEL_DETECTOR_NETWORK=/home/ibm-user/shared/civicwater/data/network/v1/l-town.json \
+scripts/shared_api.sh restart
+```
+
+To check the files on the VM first, **without starting or restarting anything**, run this in the
+Jupyter terminal (inside the container), in the integration copy:
+
+```bash
+cd ~/shared/civicwater/main
+sha256sum ~/shared/civicwater/data/network/v1/l-town.json     # must be the hash above
+SENTINEL_DATA_DIR=$HOME/shared/civicwater/data python -m sentinel.detection.offline.topology --check
+SENTINEL_DATA_DIR=$HOME/shared/civicwater/data python -m pytest -q \
+    tests/detection/test_network.py tests/detection/test_topology_build.py \
+    tests/detection/test_topology_files.py tests/detection/test_candidate_pipe.py \
+    tests/test_detector_network_startup.py
+```
+
+`--check` says whether `config/regions.battledim.json` is what the rule gives for that file. The
+tests need nothing outside `/opt/venv` and read the network from `$SENTINEL_DATA_DIR`: with the
+file in place none of them is skipped, `test_topology_files.py` pins its hash, and
+`test_detector_network_startup.py` starts the server from environment variables only (official
+registry, regions, `l-town.json`) and localises a synthetic ramp. If the file is missing they are
+skipped, not failed, so check the summary line for `skipped`.
 
 Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
 ≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).

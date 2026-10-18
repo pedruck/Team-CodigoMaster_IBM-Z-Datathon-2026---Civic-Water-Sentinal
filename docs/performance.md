@@ -232,8 +232,8 @@ timing: about 22 µs per window as an upper bound for the detector itself (2.16 
 The cost with 33 sensors through the pipeline and over HTTP is measured in the next two
 sections. `just bench` / `scripts/bench_pipeline.py` build `Settings(audit_sink=...)` directly
 and do not read `SENTINEL_DETECTOR`, so they still measure the mock detector.
-Determinism digest of the fixed replay for BE-015: `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (x86-64), s390x pending
-(`docs/testing.md`).
+Determinism digest of the fixed replay for BE-015: `7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3` (x86-64; `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` before BE-012i, the same replay without the new `candidate_pipe` key, which passed on s390x on 2026-10-17), the
+new literal is pending on s390x (`docs/testing.md`).
 
 ## CUSUM detector selected by `SENTINEL_DETECTOR=cusum` — 2026-10-17
 
@@ -285,6 +285,23 @@ The two sets of numbers are consistent (detection p50 about 0.1 to 0.3 ms with 3
 mock rows differ from each other by almost a factor of two, so the machine noise is larger than
 any CUSUM-versus-mock difference these runs could show. The cost per window is far below the
 300 s interval; the CUSUM runs in plain Python and is not a measured bottleneck.
+
+## Pipe network and candidate pipe (BE-012g/i, x86-64, CPython 3.14.7) — 2026-10-17
+
+Single measurements, Intel Core Ultra 7 155H, the data owner's `l-town.json` (299 kB, 905
+pipes, 785 nodes). Nothing here is on the per-window path: the candidate is computed only when an
+alert opens.
+
+| Operation | Time |
+|---|---|
+| `PipeNetwork.from_file` (median of 10 runs; range 3.1–6.9 ms) | 3.4 ms |
+| `candidate_pipe` with 3 deviating sensors, first call (shortest paths not cached) / warm p50 over 200 calls | 1.5 ms / 0.67 ms |
+| `candidate_pipe` with 16 deviating sensors, first call / warm p50 over 100 calls | 8.8 ms / 3.5 ms |
+| 105 120 windows of 2018 through `CusumDetector.evaluate` (33 sensors, regions and network, 1 487 alerts each with a candidate) | 13.3 s and 16.1 s (two runs; about 0.13–0.15 ms per window) |
+
+The last row is a scratch replay of the out-of-fold 2018 residuals of the development run; no 2019
+file was read. The shortest paths are cached per sensor node on first use, so only the first alert
+that involves a sensor pays the cold cost. Not measured on s390x.
 
 ## Offline tools of BE-012f (`src/sentinel/detection/offline/`, x86-64) — 2026-10-17
 

@@ -1,10 +1,11 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "alert_id": "A-20190314T1230Z-1",
   "window_end": "2019-03-14T12:30:00Z",
   "created_at": "2026-10-17T14:11:41.900111Z",
   "classification": "leak_suspected",
   "region": null,
+  "candidate_pipe": null,
   "suspected_onset": "2019-03-14T12:30:00Z",
   "hours_since_onset": 0.0,
   "cusum": null,
