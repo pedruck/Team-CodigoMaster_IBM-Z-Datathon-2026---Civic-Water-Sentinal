@@ -5,6 +5,16 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Added
+- BE-025: interactive L-Town network map as the first viewport of the dashboard: queue |
+  live SVG map | selected-alert evidence. Zoom (wheel, pinch, buttons, keys), pan, double-click
+  zoom, hover tooltips and pinned details for pipes and sensors, Alert and Regions modes (nine
+  region inks, clickable legend), focus-alert camera flight (also on open) and an in-map replay
+  of the loaded alerts with a card for the lit alert. Pure `map_payload`, self-contained offline
+  iframe document (`map_document`, `st.iframe`), same component on the map page and in the
+  Jupyter view (`srcdoc`, static SVG fallback). Labelled synthetic demo playback
+  `fixture-synthetic-ltown-demo`. PRODUCT.md and DESIGN.md (Impeccable). ADR-012 addendum.
+
 ### Security
 - BE-024 (pre-integration review, 2026-10-18), write path:
   - readings outside the registry's physical `limits` get 422 `reading_out_of_range` (the

@@ -64,8 +64,19 @@
     });
   }, { rootMargin: '0px 0px -55% 0px', threshold: 0 });
   headings.forEach(heading => navObserver.observe(heading));
+  // A collapsed sidebar is off screen: keep its links out of the Tab order until it opens.
+  const sidebarContent = sidebar?.querySelector('[data-testid="stSidebarUserContent"]');
+  const syncSidebar = () => {
+    if (!sidebar || !sidebarContent) return;
+    sidebarContent.inert = sidebar.getAttribute('data-collapsed') === 'true'
+      || sidebar.getAttribute('aria-expanded') === 'false';
+  };
+  const sidebarObserver = new MutationObserver(syncSidebar);
+  if (sidebar) sidebarObserver.observe(sidebar, { attributes: true, attributeFilter: ['data-collapsed', 'aria-expanded'] });
+  syncSidebar();
   window.civicWaterMotion = {
     dispose() {
+      sidebarObserver.disconnect();
       media.revert(); navObserver.disconnect(); cancelAnimationFrame(frame);
       links.forEach(link => link.removeEventListener('click', navigate));
     },

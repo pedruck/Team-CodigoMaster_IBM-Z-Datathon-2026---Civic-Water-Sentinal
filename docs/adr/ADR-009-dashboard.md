@@ -122,6 +122,16 @@ alerts arrive (anchoring on `until` is technical debt).
 - Tunnel address changes when the container is recreated; the runbook command to find it is
   broken (Q-DOC-02).
 
+**Interactive map addendum (2026-10-18, BE-025).** The first viewport becomes queue | map |
+evidence (ADR-012 addendum). The map is one more trusted, static local document, loaded with
+`st.iframe` (the replacement for the deprecated `components.v1.html`), which runs scripts
+in a same-origin frame. Contract values enter it only as escaped JSON data and are written
+into the page as text, never as markup or script (`tests/test_network_map_interactive.py`).
+The dashboard still imports only `sentinel.schemas` from the backend. The explanation slot of
+item 10 is now also shown beside the map, still reading "explanation unavailable" until
+Q-AUD-07 exists. The selection widget is a radio queue instead of a select box; the alert
+list still offers every loaded record and field below the fold.
+
 ## Dependencies
 Read API (contract §5, P3); Q-UI-07 (P3 + P4), Q-AUD-06 and Q-AUD-07 (P5 + P3), Q-DET-07
 (P4, P1), Q-DOC-01/02 (P3) in `docs/questions-for-team.md`; DEP-UI-03, DEP-AUD-02,

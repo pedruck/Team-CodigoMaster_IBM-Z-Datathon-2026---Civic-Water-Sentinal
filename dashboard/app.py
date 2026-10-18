@@ -1,18 +1,23 @@
-"""Streamlit entry point: ``just dashboard``. Rendering only; no business rules here (ADR-009)."""
+"""Streamlit entry point: ``just dashboard``. Rendering only; no business rules here (ADR-009).
+
+First viewport (ADR-012 addendum): the alert queue, the interactive network map and the selected
+alert's key evidence side by side. The full record, history and system status follow.
+"""
 
 import streamlit as st
 
-from dashboard.alert_detail import alert_detail
+from dashboard.alert_detail import AlertDetail, alert_detail
 from dashboard.config import refresh_interval_s, source_from_env
 from dashboard.header import build_header
 from dashboard.history import render_history
-from dashboard.live import render_recent_alerts, shown_alerts
-from dashboard.map_embed import map_image
+from dashboard.live import render_alert_queue, render_all_fields, render_recent_alerts, shown_alerts
+from dashboard.map_embed import map_document
 from dashboard.network_map import load_map
 from dashboard.presentation import (
     apply_theme,
+    evidence_pane,
     icon,
-    render_alert_snapshot,
+    map_heading,
     render_metrics,
     render_motion,
     render_profiles,
@@ -29,44 +34,50 @@ from dashboard.source import (
 from sentinel.schemas.alerts import Alert
 from sentinel.schemas.api import StatusResponse
 
+MAP_HEIGHT = 560  # the stylesheet resizes the frame to the viewport
+
 
 def refresh_alerts() -> None:
     """A manual refresh also resets the poll's back-off timer."""
     st.session_state.pop("recent_alerts_poll", None)
 
 
-def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
-    st.header("Alert detail", anchor="alert-detail")
-    st.caption("Inspect the evidence behind a record. Values come directly from the source.")
-    if status is None:
-        render_map(None)
-        return
-    shown = shown_alerts()
-    selected = (
-        st.selectbox("Alert", [a.alert_id for a in shown], index=0, key="alert_detail_id")
-        if shown
-        else None
-    )
+def load_selected(source: AlertSource, selected: Alert | None) -> tuple[Alert, AlertDetail] | None:
+    """The selected record as the source serves it; errors are shown, never papered over."""
     if selected is None:
-        st.caption("No alert to show.")
-        render_map(None)
-        return
+        return None
     try:
-        alert = source.get_alert(selected)
-        detail = alert_detail(alert)
+        alert = source.get_alert(selected.alert_id)
+        return alert, alert_detail(alert)
     except ContractMismatchError as exc:
-        st.error(f"Contract mismatch: alert {selected} does not match the contract. {exc}")
-        return
+        st.error(f"Contract mismatch: alert {selected.alert_id} does not match the contract. {exc}")
     except SourceError as exc:
-        st.error(f"Could not load alert {selected} ({source.name}): {exc}")
+        st.error(f"Could not load alert {selected.alert_id} ({source.name}): {exc}")
+    return None
+
+
+def render_map(alert: Alert | None) -> None:
+    """The interactive map; the static SVG stays available on the map page."""
+    st.html(map_heading(alert))
+    try:
+        document = map_document(load_map(), alert, shown_alerts())
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        st.warning(f"Network map unavailable: {exc}")
         return
+    st.iframe(document, height=MAP_HEIGHT)
+
+
+def render_detail(loaded: tuple[Alert, AlertDetail] | None) -> None:
+    st.header("Alert detail", anchor="alert-detail")
+    if loaded is None:
+        st.caption("No alert to show.")
+        return
+    alert, detail = loaded
     if detail.simulated:
         st.warning("SIMULATED — this alert came from a mock: not leak detection.")
-    render_map(alert)
-    snapshot, evidence = st.columns([1, 1.25], gap="large")
-    with snapshot:
-        render_alert_snapshot(alert)
-    with evidence:
+    st.caption(f"{alert.alert_id} · values exactly as received from the source.")
+    chart, record = st.columns([1, 1.25], gap="large")
+    with chart:
         st.markdown("**Deviating sensors**")
         st.html(sensor_plot(alert))
         if detail.sensors:
@@ -74,35 +85,22 @@ def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
                 st.table(list(detail.sensors))
         else:
             st.caption("No deviating sensor.")
-    with st.expander("Full record & audit reference"):
-        st.table(list(detail.facts))
-    with st.expander("Forecast contributions & explanation"):
-        st.markdown("**Forecast contributions (deviating sensors)**")
-        if detail.contributions:
-            st.table(list(detail.contributions))
-        else:
-            st.caption("Forecast contributions: not provided.")
-        st.markdown("**Explanation**")
-        st.info(detail.explanation)
+    with record:
+        with st.expander("Full record & audit reference"):
+            st.table(list(detail.facts))
+        with st.expander("Forecast contributions & explanation"):
+            st.markdown("**Forecast contributions (deviating sensors)**")
+            if detail.contributions:
+                st.table(list(detail.contributions))
+            else:
+                st.caption("Forecast contributions: not provided.")
+            st.markdown("**Explanation**")
+            st.info(detail.explanation)
 
 
-def render_map(alert: Alert | None) -> None:
-    """Display topology separately from the received evidence and keep its source visible."""
-    st.subheader("Network map", anchor="network-map")
-    try:
-        st.html(map_image(load_map(), alert))
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        st.warning(f"Network map unavailable: {exc}")
-        return
-    st.caption(
-        "L-Town (BattLeDIM 2020), simulated network. When available, region, sensor "
-        "differences and candidate pipe come from the selected alert; the pipe is a best guess. "
-        "On narrow screens, scroll inside the map to inspect it. "
-        "[Network source: BattLeDIM, CC BY 4.0](https://doi.org/10.5281/zenodo.4017659)."
-    )
-
-
-st.set_page_config(page_title="CivicWater Sentinel", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(
+    page_title="CivicWater Sentinel", layout="wide", initial_sidebar_state="collapsed"
+)
 apply_theme()
 
 try:
@@ -135,35 +133,57 @@ with st.container(key="sentinel-shell"):
         else:
             notices = []
         if header.simulated:
-            notices.append(
-                "SIMULATED — a mock model or a non-final calibration is active (is_mock): "
-                "not leak detection."
-            )
+            notices.append("SIMULATED — mock model or non-final calibration: not leak detection.")
         if header.provisional_sensors and status is not None:
             notices.append("Provisional sensor IDs in use.")
         if notices:
-            st.warning("\n\n".join(notices))
-        st.caption("Simulated data (BattLeDIM L-Town). Not validated on a real network.")
-    with st.container(key="recent-panel"):
-        with st.container(key="recent-heading"):
-            heading, controls = st.columns([3, 1], vertical_alignment="center")
-            heading.header("Recent alerts", anchor="recent-alerts")
-            with controls, st.container(key="refresh-controls", horizontal=True):
-                st.button(
-                    "Refresh data", on_click=refresh_alerts, key="refresh_alerts", width="stretch"
+            st.warning("  ·  ".join(notices))
+        # The fixed caption leads; a recording's own description (e.g. "SYNTHETIC, hand-authored
+        # ...") follows it on the same line.
+        caption = "Simulated data (BattLeDIM L-Town). Not validated on a real network."
+        if source.recording is not None and source.recording.note:
+            caption += f" · Recording note: {source.recording.note}"
+        st.caption(caption)
+    loaded: tuple[Alert, AlertDetail] | None = None
+    with st.container(key="workspace"):
+        queue_pane, map_pane, evidence_pane_col = st.columns([220, 760, 270], gap="small")
+        with queue_pane, st.container(key="queue-pane"):
+            with st.container(key="recent-heading", horizontal=True, vertical_alignment="center"):
+                st.header("Recent alerts", anchor="recent-alerts")
+                st.button("Refresh", on_click=refresh_alerts, key="refresh_alerts")
+            render_recent_alerts(source, refresh_s)
+            selected = render_alert_queue()
+        loaded = load_selected(source, selected)
+        with map_pane, st.container(key="map-pane"):
+            render_map(loaded[0] if loaded else None)
+        with evidence_pane_col, st.container(key="evidence-pane"):
+            if loaded is not None:
+                st.html(evidence_pane(loaded[0], loaded[1].explanation))
+            elif status is None:
+                st.html(
+                    '<p class="pane-empty">The alert source is not reachable, so no evidence '
+                    "can be shown. The map still draws the network.</p>"
                 )
-        render_recent_alerts(source, refresh_s)
+            elif not shown_alerts():
+                st.html(
+                    '<p class="pane-empty">No alert selected. When an alert is issued, its '
+                    "region, sensors and candidate pipe appear here and on the map.</p>"
+                )
     with st.container(key="alert-panel"):
-        render_detail(source, status)
+        render_detail(loaded)
+        render_all_fields()
     if status is not None:
         with st.container(key="history-panel"):
             render_history(source, status.last_timestamp)
-    with st.expander("System status · sensors, processing and history buffer"):
+    with st.container(key="status-panel"):
         st.header("System status", anchor="system-status")
-        render_metrics(status)
-        render_profiles(status)
+        with st.expander("Sensors, processing and history buffer"):
+            render_metrics(status)
+            render_profiles(status)
     st.html(
         '<footer class="page-footer"><span>CivicWater Sentinel · Team CodigoMaster</span>'
+        '<span>Network: L-Town, <a href="https://doi.org/10.5281/zenodo.4017659">BattLeDIM 2020'
+        "</a> (Vrachimis et al.), CC BY 4.0</span>"
         f"<span>{icon('database')}In-memory state · read-only workspace</span></footer>"
     )
 render_motion(scroll_to_detail=bool(st.session_state.pop("scroll_to_alert_detail", False)))

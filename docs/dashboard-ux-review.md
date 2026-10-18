@@ -1,4 +1,46 @@
-# Dashboard UX review — BE-021 / BE-023
+# Dashboard UX review — BE-021 / BE-023 / BE-025
+
+## Interactive map — BE-025 (2026-10-18), reviewed with Impeccable
+
+Process: `init` (PRODUCT.md), `shape` (three structures on the decision page; the owner chose
+the three-pane command view), build, then `critique` as two isolated assessments (design review;
+detector plus browser overlay), `audit` (technical checks in Chromium), `polish`, a second
+detector run and the finish review. The incumbent visual world was kept.
+
+| Finding | Source | Correction | Verification |
+|---|---|---|---|
+| Sensor labels covered the candidate pipe, so the "best guess" callout pointed at a dot | critique A (P1) | Labels are laid out in priority order and avoid each other and the pipe; the camera frames the pipe and its deviating sensors | Captures at three sizes |
+| During replay the map showed another alert than the heading and evidence pane | critique A (P1) | In-map note while another alert is lit; the card names the lit alert; Regions mode sets the card aside | Browser check: card, note and "Back to selected alert" |
+| Queue row styling did not apply (selector expected direct children) | critique A (P1) | Descendant selector; selected row tinted, hover and focus ring | Computed background of the checked row |
+| Map stage only 341 px tall at 1280 × 720 | critique A (P1), finish review | Header beside the sidebar toggle, one-line notice and caption, zoom stack and legend drawn over the map, short credit (full attribution in the footer) | Frame 709 × 558, stage 707 × 454 (asked: about 480) |
+| Mandatory notice text crossed its box border | critique A (P2), audit | Streamlit's negative markdown margin removed inside notices | scrollHeight = clientHeight |
+| SIMULATED repeated in four styles; developer words ("is_mock") in the notice | critique A | Plain wording; the replay card no longer repeats the map's badge | Text review |
+| Legend and detail said "Below expected" whatever the sign | critique A | "Deviating sensor"; detail note follows the sign | Code review |
+| Fit icon read as full screen; shortcuts undiscoverable | critique A | "Whole network" with its own icon; tooltips name the keys | Visual review |
+| Collapsed sidebar links took six Tab stops | critique A | Sidebar content is `inert` while collapsed | `inert` read back in Chromium |
+| Map controls 36 px | audit | 40 px, 44 px on coarse pointers | Measured |
+| "best guess" at 10.8 px | audit | 12 px | Measured |
+| `side-tab` (4 px left border) and card-in-card notice/expanders | detector | Dead feed CSS removed; disclosures and the detail notice drawn flat inside panels | Detector CLI `[]`; overlay clean on the top page at 1440 |
+| Placeholder text 3.7:1 in history filters | detector overlay | Placeholder ink #52696a | Overlay |
+| Score and threshold were two bare numbers | critique A question | One-scale bar with the threshold marked and a one-line reading | Visual review |
+
+Finish review (`impeccable-finish-reviewer`): disposition **fix**, eight material fixes, all
+applied: the replay note moved into the card and the camera frames the lit pipe clear of it;
+the card shows SIMULATED for mock alerts; the larger stage above; the recording note (for the
+demo, "SYNTHETIC, hand-authored, not a detector output") follows the fixed caption on the page;
+the sidebar "DATA SOURCE" eyebrow removed; mobile label collisions and the orphan legend item
+fixed; shorter score label and a full-width selected queue row; two region inks that read alike
+replaced. Moving the zoom controls into the map exposed a defect the browser check caught: the
+stage captured their clicks. Overlay controls now keep their own pointer and key events.
+
+Remaining detector notes judged false positives: `text-occlusion` on the map's label layer
+(labels are drawn above the SVG with `pointer-events: none`, so hit-testing reaches the SVG) and
+`low-contrast` on Streamlit's slider value on the map page (the value sits on the page ground).
+
+Measured contrast (Chromium): map text 4.6–13.3:1, workspace text 5.4–7.6:1. Reduced motion:
+no running animations and an instant camera. Touch (emulated, Chromium): tap opens details;
+pinch was not synthesised. Not assessed: spoken screen-reader output, a real touch device,
+200% text on the new panes, JupyterLab on the VM.
 
 ## Responsive follow-up — 2026-10-18
 

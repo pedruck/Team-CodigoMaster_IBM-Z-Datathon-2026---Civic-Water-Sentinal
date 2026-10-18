@@ -10,7 +10,9 @@ shown comes from the alert or the map file; nothing is inferred here.
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -46,6 +48,7 @@ class MapLink:
     y2: float
     diameter: float | None
     region: str | None
+    sensor: str | None = None  # pressure sensor whose influence area holds the link
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,7 @@ def parse_map(data: dict[str, Any]) -> NetworkMap:
                 y2=float(lk["y2"]),
                 diameter=None if lk.get("diameter") is None else float(lk["diameter"]),
                 region=lk.get("region"),
+                sensor=lk.get("sensor"),
             )
             for lk in data["links"]
         ),
@@ -326,3 +330,107 @@ def map_svg(net: NetworkMap, alert: Alert | None = None, *, width: int = 900) ->
     out += _legend(net, fr, note)
     out.append("</svg>")
     return "".join(out)
+
+
+# Regions mode: nine inks distinct from each other, at least 4.3:1 against BACKGROUND, and
+# kept away from the coral of alerts and the green of the alert region.
+REGION_PALETTE = (
+    "#1a73c2",
+    "#312e81",
+    "#9a4bd4",
+    "#b02f86",
+    "#9e6a00",
+    "#831843",
+    "#2f3336",
+    "#6c7a00",
+    "#5b3a1a",
+)
+PAYLOAD_VERSION = "1"
+
+
+def _when(value: datetime | None) -> str | None:
+    return None if value is None else value.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _alert_view(net: NetworkMap, alert: Alert) -> dict[str, Any]:
+    """What the interactive map needs from one alert. Unknown IDs are flagged, never placed."""
+    regions = {s.region for s in net.sensors if s.region}
+    pipes = {lk.id for lk in net.links}
+    sensors = {s.id for s in net.sensors}
+    region_known = alert.region in regions if alert.region else False
+    pipe_known = alert.candidate_pipe in pipes if alert.candidate_pipe else False
+    warnings = []
+    if alert.region and not region_known:
+        warnings.append(f"Region {alert.region} is not in the map.")
+    if alert.candidate_pipe and not pipe_known:
+        warnings.append(f"Candidate pipe {alert.candidate_pipe} is not in the map.")
+    unknown = [d.sensor for d in alert.deviating_sensors if d.sensor not in sensors]
+    if unknown:
+        warnings.append(f"Sensor {', '.join(unknown)} not in the map.")
+    strongest = max(alert.deviating_sensors, key=lambda d: abs(d.deviation_m), default=None)
+    return {
+        "id": alert.alert_id,
+        "time": alert.window_end.isoformat(),
+        "time_label": _when(alert.window_end),
+        "onset_label": _when(alert.suspected_onset),
+        "region": alert.region,
+        "region_known": region_known,
+        "candidate_pipe": alert.candidate_pipe,
+        "candidate_known": pipe_known,
+        "is_mock": alert.is_mock,
+        "cusum": (
+            {"statistic": alert.cusum.statistic, "threshold": alert.cusum.threshold}
+            if alert.cusum
+            else None
+        ),
+        "sensors": [
+            {"id": d.sensor, "deviation_m": d.deviation_m, "z": d.z, "known": d.sensor in sensors}
+            for d in alert.deviating_sensors
+        ],
+        "strongest": (
+            {"sensor": strongest.sensor, "deviation_m": strongest.deviation_m}
+            if strongest
+            else None
+        ),
+        "warnings": warnings,
+    }
+
+
+def map_payload(
+    net: NetworkMap, alert: Alert | None = None, alerts: Sequence[Alert] = ()
+) -> dict[str, Any]:
+    """JSON-ready data for the interactive map (``dashboard.map_embed.map_component``).
+
+    Pure: no drawing decisions beyond the region inks. ``alerts`` (any order) become the replay,
+    oldest first and de-duplicated; ``alert`` is the selected one and joins the list if absent.
+    Every string stays data: the page inserts it as text, never as HTML.
+    """
+    region_ids = sorted({s.region for s in net.sensors if s.region})
+    by_id = {a.alert_id: a for a in alerts}
+    if alert is not None:
+        by_id.setdefault(alert.alert_id, alert)
+    ordered = sorted(by_id.values(), key=lambda a: (a.window_end, a.alert_id))
+    return {
+        "version": PAYLOAD_VERSION,
+        "network": "L-Town (BattLeDIM 2020), simulated",
+        "attribution": net.attribution,
+        "bbox": list(net.bbox),
+        "counts": dict(net.counts),
+        "links": [
+            [lk.id, lk.type, lk.x1, lk.y1, lk.x2, lk.y2, lk.diameter, lk.region, lk.sensor]
+            for lk in net.links
+        ],
+        "sensors": [[s.id, s.x, s.y, s.region] for s in net.sensors],
+        "landmarks": [[m.id, m.kind, m.x, m.y] for m in net.landmarks],
+        "regions": [
+            {
+                "id": rid,
+                "color": REGION_PALETTE[i % len(REGION_PALETTE)],
+                "sensors": sorted(s.id for s in net.sensors if s.region == rid),
+                "links": sum(1 for lk in net.links if lk.region == rid),
+            }
+            for i, rid in enumerate(region_ids)
+        ],
+        "alerts": [_alert_view(net, a) for a in ordered],
+        "selected": alert.alert_id if alert is not None else None,
+    }
