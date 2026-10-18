@@ -7,6 +7,9 @@ accelerator (zDNN) when it is available and compressed trees on the CPU otherwis
 
 TreeSHAP contributions (``pred_contribs``) come from the native XGBoost booster, because
 Snap ML does not compute them. They are grouped as in the alert payload (design doc §6).
+``contributions`` chooses when they are computed: ``"all"`` (every sensor of every window,
+inside ``predict``), ``"on_alert"`` (only in ``explain``, which the pipeline calls for the
+deviating sensors of an alert) or ``"off"``.
 
 numpy, snapml and xgboost are imported lazily: they exist on the VM image but are not
 backend dependencies, so the rest of the package (and CI) does not need them.
@@ -15,6 +18,7 @@ backend dependencies, so the rest of the package (and CI) does not need them.
 import importlib
 import json
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +35,18 @@ from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
 
 MODEL_NAME = "xgboost-33"
 ENGINES = ("snapml", "xgboost")
+CONTRIBUTION_MODES = ("all", "on_alert", "off")
+
+
+def contribution_mode(value: bool | str) -> str:
+    """``True`` / ``False`` (the original switch) mean ``"all"`` / ``"off"``."""
+    if value is True:
+        return "all"
+    if value is False:
+        return "off"
+    if value not in CONTRIBUTION_MODES:
+        raise ValueError(f"contributions must be one of {CONTRIBUTION_MODES}, got {value!r}")
+    return value
 
 
 def _lazy(module: str) -> Any:
@@ -78,7 +94,7 @@ class XGBoostForecaster:
         *,
         engine: str = "snapml",
         tree_format: str = "auto",
-        with_contributions: bool = True,
+        with_contributions: bool | str = True,
     ) -> None:
         if engine not in ENGINES:
             raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
@@ -95,12 +111,13 @@ class XGBoostForecaster:
 
         self._np = _numpy()
         self._engine = engine
-        self._with_contributions = with_contributions
+        self.contributions = contribution_mode(with_contributions)
         self._models: dict[str, Any] = {}
         self._boosters: dict[str, Any] = {}
         self.tree_format_used: str = "xgboost-native"
 
-        xgb = _xgboost() if (engine == "xgboost" or with_contributions) else None
+        needs_booster = engine == "xgboost" or self.contributions != "off"
+        xgb = _xgboost() if needs_booster else None
         for sensor in self._sensors:
             path = self._dir / f"{sensor}.json"
             if xgb is not None:
@@ -145,11 +162,8 @@ class XGBoostForecaster:
                     expected[request_id] = float(self._models[sensor].predict(x)[0])
                 else:
                     expected[request_id] = float(self._booster_predict(sensor, x, False)[0])
-                if self._with_contributions:
-                    values = [float(v) for v in self._booster_predict(sensor, x, True)[0]]
-                    contributions[request_id] = group_contributions(
-                        self._names[sensor], values[:-1], values[-1]
-                    )
+                if self.contributions == "all":
+                    contributions[request_id] = self._contributions(sensor, x)
         except KeyError as exc:
             raise ForecastError(f"window is missing an input sensor: {exc}") from exc
         return ForecastResult(
@@ -158,6 +172,35 @@ class XGBoostForecaster:
             model=self._info,
             contributions=contributions or None,
         )
+
+    def explain(
+        self, request: ForecastRequest, sensor_ids: Sequence[str]
+    ) -> dict[str, dict[str, float]] | None:
+        """TreeSHAP contributions of ``sensor_ids`` only (IDs as in the request), from the
+        window being scored. ``None`` when contributions are ``"off"``. Same numbers as the
+        ``"all"`` mode, so the groups still add up to the forecast."""
+        if self.contributions == "off":
+            return None
+        to_model = self._ids.mapping(request.pressure_sensor_ids)
+        unknown = [s for s in sensor_ids if s not in to_model or to_model[s] not in self._names]
+        if unknown:
+            raise ForecastError(f"sensors without a model: {unknown}")
+        current = self._ids.window(request.current)
+        out: dict[str, dict[str, float]] = {}
+        try:
+            for request_id in sensor_ids:
+                sensor = to_model[request_id]
+                row = xgb_features(current, self._layout, sensor)
+                out[request_id] = self._contributions(
+                    sensor, self._np.asarray([row], dtype=self._np.float32)
+                )
+        except KeyError as exc:
+            raise ForecastError(f"window is missing an input sensor: {exc}") from exc
+        return out
+
+    def _contributions(self, sensor: str, x: Any) -> dict[str, float]:
+        values = [float(v) for v in self._booster_predict(sensor, x, True)[0]]
+        return group_contributions(self._names[sensor], values[:-1], values[-1])
 
     @staticmethod
     def _import_snapml(path: Path, tree_format: str) -> Any:

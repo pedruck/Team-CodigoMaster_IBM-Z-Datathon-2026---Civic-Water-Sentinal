@@ -23,13 +23,14 @@ def load_forecaster(
     *,
     engine: str = "snapml",
     tree_format: str = "auto",
-    with_contributions: bool = True,
+    with_contributions: bool | str = True,
 ) -> Forecaster:
     """``engine``, ``tree_format`` and ``with_contributions`` apply to ``xgboost`` only.
 
-    On the LinuxONE VM, TreeSHAP takes ~127 of the ~134 ms per window and Snap ML's
-    ``compress_trees`` was the fastest format (``docs/performance.md``), so a long replay can
-    load the model with ``with_contributions=False`` and the live demo with the defaults.
+    ``with_contributions``: ``"all"`` (or ``True``), ``"on_alert"`` or ``"off"`` (or
+    ``False``). On the LinuxONE VM, TreeSHAP takes ~127 of the ~134 ms per window and Snap
+    ML's ``compress_trees`` was the fastest format (``docs/performance.md``); ``"on_alert"``
+    pays TreeSHAP only for the deviating sensors of an alert.
     """
     if kind == "baseline":
         return HourOfWeekForecaster.load(path)

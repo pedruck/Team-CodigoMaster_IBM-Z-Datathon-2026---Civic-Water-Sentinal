@@ -65,6 +65,30 @@ def test_load_forecaster_passes_the_xgboost_options(tmp_path: Path) -> None:
     )
 
 
+def test_on_alert_explains_only_the_requested_sensors(tmp_path: Path) -> None:
+    model_dir = _train_xgb(tmp_path)
+    every = XGBoostForecaster(model_dir, engine="xgboost", with_contributions="all")
+    lazy = XGBoostForecaster(model_dir, engine="xgboost", with_contributions="on_alert")
+    off = XGBoostForecaster(model_dir, engine="xgboost", with_contributions="off")
+    req = request(T0)
+    assert lazy.predict(req).contributions is None
+    full = every.predict(req)
+    assert full.contributions is not None
+    some = list(full.expected_pressures)[:2]
+    explained = lazy.explain(req, some)
+    assert explained is not None and set(explained) == set(some)
+    for sensor in some:
+        assert explained[sensor] == pytest.approx(full.contributions[sensor])
+        assert sum(explained[sensor].values()) == pytest.approx(
+            full.expected_pressures[sensor], abs=1e-3
+        )
+    assert off.explain(req, some) is None
+    with pytest.raises(ForecastError):
+        lazy.explain(req, ["not-a-sensor"])
+    with pytest.raises(ValueError):
+        XGBoostForecaster(model_dir, engine="xgboost", with_contributions="sometimes")
+
+
 def test_snapml_engine_matches_xgboost(tmp_path: Path) -> None:
     pytest.importorskip("snapml")
 
