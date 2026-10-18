@@ -320,6 +320,7 @@ class Pipeline:
             created_at=self._clock(),
             classification=candidate.classification,
             region=candidate.region,
+            candidate_pipe=candidate.candidate_pipe,
             suspected_onset=onset,
             hours_since_onset=(
                 round((window_end - onset).total_seconds() / 3600, 2) if onset else None

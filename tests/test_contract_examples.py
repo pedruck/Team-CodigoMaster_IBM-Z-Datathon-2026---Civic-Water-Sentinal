@@ -63,6 +63,7 @@ def test_invalid_window_examples_are_rejected(app_client: TestClient, name: str,
     ("name", "model"),
     [
         ("alert.mock.json", Alert),
+        ("alert.cusum-synthetic.json", Alert),
         ("window-result.scored.json", WindowResult),
         ("forecast-result.valid.json", ForecastResult),
         ("detection-result.valid.json", DetectionResult),

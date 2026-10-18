@@ -1,4 +1,4 @@
-"""Public alert payload (``sentinel.alert`` v1.0) and audit contract types."""
+"""Public alert payload (``sentinel.alert`` v1.1) and audit contract types."""
 
 from typing import Any, Literal
 
@@ -8,7 +8,9 @@ from sentinel.schemas.common import ContractModel, FiniteFloat, ModelInfo, UtcDa
 from sentinel.schemas.detections import CusumEvidence, DeviatingSensor
 from sentinel.schemas.windows import SensorId
 
-ALERT_SCHEMA_VERSION: Literal["1.0"] = "1.0"
+# 1.1 adds ``candidate_pipe`` (optional, Q-DET-07, ADR-011); 1.0 payloads are still accepted.
+ALERT_SCHEMA_VERSION: Literal["1.1"] = "1.1"
+AlertSchemaVersion = Literal["1.0", "1.1"]
 
 AuditEventType = Literal["window.scored", "window.not_scored", "alert.raised"]
 
@@ -26,12 +28,17 @@ class AlertModels(ContractModel):
 
 
 class Alert(ContractModel):
-    schema_version: Literal["1.0"] = ALERT_SCHEMA_VERSION
+    schema_version: AlertSchemaVersion = ALERT_SCHEMA_VERSION
     alert_id: str = Field(description="Deterministic: A-<window_end yyyymmddThhmmZ>-<n>.")
     window_end: UtcDatetime
     created_at: UtcDatetime = Field(description="Server wall-clock time when stored.")
     classification: Literal["leak_suspected"]
     region: str | None
+    candidate_pipe: str | None = Field(
+        default=None,
+        description="Network pipe (link ID) named as the candidate for the leak; null when the "
+        "detector has no pipe network. A candidate, not a confirmed location (ADR-011).",
+    )
     suspected_onset: UtcDatetime | None
     hours_since_onset: FiniteFloat | None
     cusum: CusumEvidence | None

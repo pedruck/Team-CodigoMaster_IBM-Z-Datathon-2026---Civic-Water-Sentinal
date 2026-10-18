@@ -23,6 +23,7 @@
     {
       "classification": "leak_suspected",
       "region": "R4",
+      "candidate_pipe": null,
       "suspected_onset": "2019-03-14T08:10:00Z",
       "cusum": {
         "statistic": 7.9,

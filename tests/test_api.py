@@ -99,7 +99,8 @@ def test_alert_is_exposed_by_list_and_detail(client: TestClient, payload: Payloa
     detail = client.get(f"/v1/alerts/{alert_id}")
     assert detail.status_code == 200
     a = detail.json()
-    assert a["schema_version"] == "1.0"
+    assert a["schema_version"] == "1.1"
+    assert a["candidate_pipe"] is None  # the mock detector has no pipe network
     assert a["window_end"] == "2019-01-01T00:25:00Z"
     assert a["is_mock"] is True
     assert a["models"]["detector"]["name"] == "mock-threshold"

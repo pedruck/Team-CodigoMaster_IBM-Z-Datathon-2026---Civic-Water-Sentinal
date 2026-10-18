@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.1",
+  "alert_id": "A-20190101T1645Z-1",
+  "window_end": "2019-01-01T16:45:00Z",
+  "created_at": "2026-10-18T00:00:49.946161Z",
+  "classification": "leak_suspected",
+  "region": "Z3-R1",
+  "candidate_pipe": "p147",
+  "suspected_onset": "2019-01-01T16:35:00Z",
+  "hours_since_onset": 0.17,
+  "cusum": {
+    "statistic": 9.0,
+    "threshold": 8.0
+  },
+  "deviating_sensors": [
+    {
+      "sensor": "n215",
+      "deviation_m": -0.5,
+      "z": 5.0,
+      "since": "2019-01-01T16:35:00Z"
+    }
+  ],
+  "forecast_contributions_m": null,
+  "summary": "[MOCK] CUSUM above h on 1 sensors (synthetic calibration)",
+  "models": {
+    "forecaster": {
+      "name": "test-profile",
+      "version": "0.1.0",
+      "is_mock": true
+    },
+    "detector": {
+      "name": "cusum",
+      "version": "0.1.0+6f85c4aa",
+      "is_mock": true
+    }
+  },
+  "is_mock": true,
+  "audit": null
+}
