@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request, Response
 
 from sentinel import __version__
 from sentinel.api.errors import install_error_handlers
+from sentinel.api.guard import WriteGuard
 from sentinel.api.routes import alerts, audit, health, status, windows
 from sentinel.audit.chain import HashChainAuditSink
 from sentinel.audit.sinks import AuditError, AuditSink, InMemoryAuditSink, NullAuditSink
@@ -18,7 +19,7 @@ from sentinel.detection.interface import Detector
 from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import Forecaster
 from sentinel.forecasting.mock import PersistenceMockForecaster
-from sentinel.forecasting.registry import load_forecaster
+from sentinel.forecasting.registry import ArtefactMismatchError, load_forecaster
 from sentinel.narrative.runtime import ExplainingAuditSink, narrator_for
 from sentinel.narrative.store import ExplanationService, ExplanationStore, explanations_path_for
 from sentinel.observability.logging import configure_logging
@@ -76,13 +77,17 @@ def _configured_forecaster(settings: Settings) -> Forecaster:
         raise ConfigError(
             f"SENTINEL_FORECASTER={settings.forecaster} needs SENTINEL_FORECASTER_PATH"
         )
-    forecaster = load_forecaster(
-        settings.forecaster,
-        settings.forecaster_path,
-        engine=settings.forecaster_engine,
-        tree_format=settings.forecaster_tree_format,
-        with_contributions=settings.forecaster_contributions,
-    )
+    try:
+        forecaster = load_forecaster(
+            settings.forecaster,
+            settings.forecaster_path,
+            engine=settings.forecaster_engine,
+            tree_format=settings.forecaster_tree_format,
+            with_contributions=settings.forecaster_contributions,
+            expected_sha256=settings.forecaster_sha256,
+        )
+    except ArtefactMismatchError as exc:
+        raise ConfigError(f"SENTINEL_FORECASTER_SHA256: {exc}") from exc
     log.info(
         "forecaster loaded",
         extra={
@@ -90,6 +95,8 @@ def _configured_forecaster(settings: Settings) -> Forecaster:
                 "kind": settings.forecaster,
                 "path": str(settings.forecaster_path),
                 "model": forecaster.info.model_dump(),
+                "artefact_sha256": getattr(forecaster, "artefact_sha256", None),
+                "artefact_pinned": settings.forecaster_sha256 is not None,
                 "contributions": settings.forecaster_contributions,
                 "tree_format_used": getattr(forecaster, "tree_format_used", None),
             }
@@ -175,6 +182,10 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
     install_error_handlers(app)
     for module in (health, windows, alerts, audit, status):
         app.include_router(module.router)
+    # Added before the counting middleware below, so that one (outermost) also counts 401/413.
+    app.add_middleware(
+        WriteGuard, token=settings.ingest_token, max_body_bytes=settings.max_body_bytes
+    )
 
     @app.middleware("http")
     async def _count_window_requests(
@@ -200,11 +211,16 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
                 "audit_sink": pipeline.audit_sink.name,
                 "mocks_active": pipeline.mocks_active,
                 "registry_provisional": pipeline.registry.provisional,
+                "ingest_token_required": settings.ingest_token is not None,
             }
         },
     )
     if pipeline.mocks_active:
         log.warning("MOCK forecaster/detector active: results are not leak detections")
+    if settings.ingest_token is None:
+        log.warning(
+            "POST /v1/windows is open: set SENTINEL_INGEST_TOKEN(_FILE) outside development"
+        )
     if pipeline.registry.provisional:
         log.warning("PROVISIONAL sensor registry: IDs are placeholders, not BattLeDIM IDs")
     return app

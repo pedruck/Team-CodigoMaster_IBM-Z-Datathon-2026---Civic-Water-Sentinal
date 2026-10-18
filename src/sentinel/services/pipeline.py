@@ -8,7 +8,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sentinel.audit.sinks import AuditSink
@@ -32,6 +32,7 @@ from sentinel.services.errors import (
     SentinelError,
     ServiceUnavailableError,
     TemporalConflictError,
+    WindowRejectedError,
 )
 from sentinel.services.history import HistoryBuffer
 from sentinel.services.ingestion import normalize_window, validate_window
@@ -127,6 +128,7 @@ class Pipeline:
             self.settings.interval_seconds,
             self.settings.require_aligned_timestamps,
         )
+        self._check_not_in_future(window)
         timer.measure("validation", t)
 
         # One window at a time: the detector is stateful and must see windows in order.
@@ -153,6 +155,7 @@ class Pipeline:
                         "last_timestamp": self._last_ts.isoformat(),
                     },
                 )
+            self._check_gap(window)
             if len(self._audit_pending) >= self.settings.audit_pending_capacity:
                 raise ServiceUnavailableError(
                     "audit_backlog_full",
@@ -171,6 +174,36 @@ class Pipeline:
 
         self._record(result, timer)
         return IngestOutcome(result, True)
+
+    def _check_not_in_future(self, window: SensorWindow) -> None:
+        """Replays are in the past and live data is never ahead of the clock, so a later
+        timestamp is a client error. Refused before it can become the last window."""
+        latest = self._clock() + timedelta(seconds=self.settings.future_tolerance_seconds)
+        if window.timestamp > latest:
+            raise WindowRejectedError(
+                "timestamp_in_future",
+                "timestamp is later than the server clock allows "
+                "(SENTINEL_FUTURE_TOLERANCE_SECONDS)",
+                {"timestamp": window.timestamp.isoformat(), "latest_allowed": latest.isoformat()},
+            )
+
+    def _check_gap(self, window: SensorWindow) -> None:
+        """Without this, one window far ahead (a typo in a simulated year) would make every
+        real window after it ``out_of_order`` until a restart, which loses the state."""
+        max_gap = self.settings.max_gap_seconds
+        if not max_gap or self._last_ts is None:
+            return
+        if window.timestamp - self._last_ts > timedelta(seconds=max_gap):
+            raise TemporalConflictError(
+                "gap_too_large",
+                "window is further ahead of the last accepted window than "
+                "SENTINEL_MAX_GAP_SECONDS allows",
+                {
+                    "timestamp": window.timestamp.isoformat(),
+                    "last_timestamp": self._last_ts.isoformat(),
+                    "max_gap_seconds": max_gap,
+                },
+            )
 
     def _process(
         self,

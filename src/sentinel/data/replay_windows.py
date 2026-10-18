@@ -9,21 +9,47 @@ em $SENTINEL_DATA_DIR/replay/<versão>/, pronta para scripts/replay.py.
 Os IDs vêm do registro oficial de sensores. Nenhum rótulo de vazamento é lido ou escrito.
 O BattLeDIM não tem fuso: o horário simulado é tratado como UTC. O timestamp marca o fim
 da janela de 5 min.
+
+Integridade: antes de ler, o SHA-256 do scada_<ano>.csv.gz é comparado com o MANIFEST.json da
+versão (o script para se divergir ou faltar). Ao lado da saída fica <saída>.manifest.json com o
+SHA-256 e a contagem do JSONL, o hash da fonte, do MANIFEST e do registro; scripts/replay.py
+confere esse arquivo antes de enviar, e python -m sentinel.audit.replay_check compara a cadeia
+de auditoria com o JSONL.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
+from sentinel.data.manifest import sha256
 from sentinel.schemas.windows import SensorWindow
 from sentinel.sensors import SensorRegistry
 
 PREFIXO = {"pressures": "Pressure_", "flows": "Flow_", "tank_levels": "Level_"}
+SIDECAR_VERSION = "1.0"
+
+
+def conferir_fonte(vdir: Path, nome: str) -> dict[str, Any]:
+    """Compara o SHA-256 do arquivo com o MANIFEST.json da versão; devolve a entrada."""
+    manifest_path = vdir / "MANIFEST.json"
+    if not manifest_path.exists():
+        raise SystemExit(f"{manifest_path} não existe: a versão de dados não está selada.")
+    entrada = json.loads(manifest_path.read_text(encoding="utf-8"))["files"].get(nome)
+    if entrada is None:
+        raise SystemExit(f"{nome} não está no {manifest_path}.")
+    atual = sha256(vdir / nome)
+    if atual != entrada["sha256"]:
+        raise SystemExit(
+            f"{vdir / nome} difere do MANIFEST: sha256 {atual}, esperado {entrada['sha256']}."
+        )
+    return {"file": nome, "sha256": atual, "manifest_sha256": sha256(manifest_path)}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -44,8 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     if reg.provisional:
         raise SystemExit(f"{args.registry} é provisório; use o registro oficial.")
 
+    fonte = conferir_fonte(base / args.version, f"scada_{args.year}.csv.gz")
     df = pd.read_csv(
-        base / args.version / f"scada_{args.year}.csv.gz",
+        base / args.version / fonte["file"],
         index_col="timestamp",
         parse_dates=True,
     )
@@ -76,7 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     saida = pasta / f"windows_{args.year}{sufixo}.jsonl"
 
     valores = {campo: df[cols].to_numpy() for campo, cols in colunas.items()}
-    with saida.open("w", encoding="utf-8") as f:
+    digest = hashlib.sha256()
+    with saida.open("wb") as f:
         for i, ts in enumerate(idx):
             leituras = {
                 campo: dict(zip(grupos[campo], map(float, valores[campo][i]), strict=True))
@@ -89,7 +117,24 @@ def main(argv: list[str] | None = None) -> int:
                 "source": source,
             }
             SensorWindow.model_validate(janela)
-            f.write(json.dumps(janela, separators=(",", ":")) + "\n")
+            linha = (json.dumps(janela, separators=(",", ":")) + "\n").encode("utf-8")
+            digest.update(linha)
+            f.write(linha)
+
+    sidecar = {
+        "sidecar_version": SIDECAR_VERSION,
+        "file": saida.name,
+        "sha256": digest.hexdigest(),
+        "windows": len(df),
+        "first": idx.min().strftime("%Y-%m-%dT%H:%M:%SZ") if len(df) else None,
+        "last": idx.max().strftime("%Y-%m-%dT%H:%M:%SZ") if len(df) else None,
+        "data_version": args.version,
+        "source": fonte,
+        "registry": {"path": str(args.registry), "sha256": sha256(args.registry)},
+    }
+    saida.with_name(saida.name + ".manifest.json").write_text(
+        json.dumps(sidecar, indent=2) + "\n", encoding="utf-8"
+    )
 
     print(f"{saida} | {len(df)} janelas | {idx.min()} a {idx.max()}")
     return 0

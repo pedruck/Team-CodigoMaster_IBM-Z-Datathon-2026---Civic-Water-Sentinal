@@ -5,6 +5,28 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Security
+- BE-024 (pre-integration review, 2026-10-18), write path:
+  - readings outside the registry's physical `limits` get 422 `reading_out_of_range` (the
+    official registry carries the data owner's cleaning ranges: pressure 0–100 m, flow 0–500
+    m³/h, level 0–10 m; `build_registry` copies them from `MANIFEST.json`);
+  - a window later than the server clock + 1 h gets 422 `timestamp_in_future`, and one more
+    than `SENTINEL_MAX_GAP_SECONDS` (1 day) after the last accepted gets 409 `gap_too_large`, so
+    a wrong year can no longer block the stream until a restart;
+  - `SENTINEL_INGEST_TOKEN` / `_FILE`: every `POST` needs `Authorization: Bearer`, checked before
+    the body is read (401 `unauthorized`); bodies above `SENTINEL_MAX_BODY_BYTES` get 413;
+  - `scripts/replay.py` needs `--url` and sends the token (`--token-file`); the evaluation CLI
+    takes `--token-file` too;
+  - `scripts/shared_api.sh` defaults to the audit chain (new run per start unless named) and
+    creates and passes a token file (mode 600, never on a command line).
+- Forecaster artefact integrity: `load_forecaster` hashes the artefact before parsing it, the
+  served version carries the digest (`0.1.0+808746bc`) and `SENTINEL_FORECASTER_SHA256` pins it.
+  The CUSUM matches a calibration naming the release against any artefact of it, and one naming a
+  digest only against that artefact.
+- Replay data integrity: `replay_windows` checks the SCADA source against the version's
+  `MANIFEST.json` and writes `<file>.manifest.json`; `scripts/replay.py` checks the file against
+  it; `python -m sentinel.audit.replay_check` compares the audit chain with the replay file.
+
 ### Fixed
 
 - BE-023: respect Streamlit's collapsed sidebar width, restore visible navigation toggles,

@@ -22,7 +22,9 @@ window can be processed again.
 | Same timestamp, same measurements (`content_hash`, `source` ignored) | idempotent: stored result returned, nothing reprocessed | 200, `duplicate=true` |
 | Same timestamp, different measurements | rejected | 409 `window_conflict` |
 | Timestamp ≤ last accepted (and not a known duplicate) | rejected, not stored | 409 `out_of_order` |
-| Timestamp > last + interval (gap) | accepted; `gap_windows` reported; contiguity resets | 201 |
+| Timestamp later than the server clock + `SENTINEL_FUTURE_TOLERANCE_SECONDS` (3600) | rejected, not stored: replays are in the past and live data is never ahead of the clock (2026-10-18) | 422 `timestamp_in_future` |
+| Timestamp > last + `SENTINEL_MAX_GAP_SECONDS` (86 400 = 1 day; `0` = no limit) | rejected, not stored: one window far ahead would otherwise make every later real window `out_of_order` until a restart, which loses the state (2026-10-18) | 409 `gap_too_large` |
+| Timestamp > last + interval (gap, up to the limit) | accepted; `gap_windows` reported; contiguity resets | 201 |
 | Contiguous past windows < required | accepted, not scored | 201, `insufficient_history` |
 
 - The timestamp is the **end** of the 5-minute aggregation interval.

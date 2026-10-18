@@ -40,8 +40,21 @@ IDs and are rejected (`docs/data.md`). The default `config/sensors.provisional.j
 Labels (leak start/pipe) must never be sent in a window: they are for offline evaluation only
 (an unknown field such as `leak_label` is rejected anyway).
 
+Physical limits: a registry may carry `limits` per sensor kind (`{"pressure": {"min", "max"},
+…}`, inclusive, registry units). The official registry copies the data owner's cleaning ranges
+(`MANIFEST.json` `cleaning.valid_ranges`: pressure 0–100 m, flow 0–500 m³/h, tank level 0–10 m).
+A reading outside them → 422 `reading_out_of_range`, `details.readings` = the offending sensors;
+nothing is stored or audited.
+
+Write access: when the API has a token (`SENTINEL_INGEST_TOKEN` / `_FILE`), every `POST` needs
+`Authorization: Bearer <token>` → otherwise 401 `unauthorized` (checked before the body is
+read). Bodies above `SENTINEL_MAX_BODY_BYTES` (64 KiB) → 413 `payload_too_large`. Reads (`GET`)
+stay open.
+
 Time-series rules (ADR-004): duplicate → 200 idempotent; same timestamp with different data
-→ 409 `window_conflict`; older than last accepted → 409 `out_of_order`; gap → accepted with
+→ 409 `window_conflict`; older than last accepted → 409 `out_of_order`; more than
+`SENTINEL_MAX_GAP_SECONDS` (1 day) after the last accepted → 409 `gap_too_large`; later than the
+server clock + 1 h → 422 `timestamp_in_future`; gap → accepted with
 `gap_windows`, contiguity resets; fewer contiguous past windows than required → accepted,
 `insufficient_history`. A resend is recognised as a duplicate only while its result is
 retained (`SENTINEL_RESULT_CAPACITY`, default 2016 windows = 7 days); older resends get
@@ -305,9 +318,11 @@ With the chain, every recorded `alert.raised` is queued for an explanation (audi
 | `GET /v1/audit/head` | `AuditHead {seq, hash}` | last record (`null`s for an empty log); 404 unless `chain` |
 
 Errors (all endpoints): `{"error": {"code", "message", "details"}}` —
-`validation_error` 422, `sensor_set_mismatch` 422, `timestamp_misaligned` 422,
+`validation_error` 422, `sensor_set_mismatch` 422, `reading_out_of_range` 422,
+`timestamp_misaligned` 422, `timestamp_in_future` 422,
 `timestamp_without_timezone` 422 (only with `SENTINEL_NAIVE_TIMESTAMP_TZ=reject`),
-`out_of_order` 409, `window_conflict` 409, `not_found` 404, `audit_backlog_full` 503 (retry
+`out_of_order` 409, `window_conflict` 409, `gap_too_large` 409, `unauthorized` 401 (POST
+without the token), `payload_too_large` 413, `not_found` 404, `audit_backlog_full` 503 (retry
 later), `internal_error` 500.
 
 ## 6. Versioning and change process

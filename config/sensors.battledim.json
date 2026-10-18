@@ -48,5 +48,19 @@
     "pressure": "m",
     "flow": "m3/h",
     "tank_level": "m"
+  },
+  "limits": {
+    "pressure": {
+      "min": 0,
+      "max": 100
+    },
+    "flow": {
+      "min": 0,
+      "max": 500
+    },
+    "tank_level": {
+      "min": 0,
+      "max": 10
+    }
   }
 }

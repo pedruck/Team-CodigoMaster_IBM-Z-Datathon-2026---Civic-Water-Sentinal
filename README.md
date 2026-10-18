@@ -71,13 +71,21 @@ official registry, for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory` | `c
 (`mock` | `cusum`, below). Invalid values fail at startup. State is **in memory** and lost on
 restart (ADR-003).
 
+Write path safety (contracts §1): `SENTINEL_INGEST_TOKEN` or `SENTINEL_INGEST_TOKEN_FILE` makes
+every `POST` require `Authorization: Bearer <token>` (reads stay open; without a token the API
+logs a warning); `SENTINEL_MAX_BODY_BYTES` (64 KiB); `SENTINEL_MAX_GAP_SECONDS` (1 day: a window
+further ahead of the last one is refused, `0` = off); `SENTINEL_FUTURE_TOLERANCE_SECONDS` (1 h
+past the server clock). Readings outside the registry's `limits` get 422. `scripts/replay.py`
+needs `--url` and takes `--token-file` (or `SENTINEL_INGEST_TOKEN`).
+
 ## Running with a real forecaster
 
 | Variable | Meaning |
 |---|---|
 | `SENTINEL_FORECASTER` | `mock` (default), `baseline`, `xgboost` or `gru` |
 | `SENTINEL_FORECASTER_PATH` | artefact of the ML owner (`docs/p2-forecasting.md`). **Required** unless `mock` |
-| `SENTINEL_FORECASTER_CONTRIBUTIONS` | XGBoost TreeSHAP contributions in alerts (`true`, default) or not (`false`, long replays) |
+| `SENTINEL_FORECASTER_CONTRIBUTIONS` | XGBoost TreeSHAP: `on_alert` (default; only the deviating sensors of an alert), `all` or `off` |
+| `SENTINEL_FORECASTER_SHA256` | optional pin: the artefact's SHA-256 (`sentinel.forecasting.integrity`); any other artefact stops startup. The served version always carries the first 8 digits (`0.1.0+808746bc`) |
 | `SENTINEL_FORECASTER_ENGINE` | `snapml` (default) or `xgboost` |
 | `SENTINEL_FORECASTER_TREE_FORMAT` | Snap ML: `auto` (default; NNPA on LinuxONE), `compress_trees` or `zdnn_tensors` |
 

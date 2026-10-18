@@ -10,6 +10,7 @@ run artefacts (``sentinel.eval.run``), ``report.md`` and ``manifest.json`` in ``
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 from dataclasses import asdict
@@ -67,12 +68,20 @@ def main(argv: list[str] | None = None) -> int:
         "--calibration", type=Path, help="calibration artefact the API was started with"
     )
     ap.add_argument("--run-id", default=f"eval-{datetime.now(UTC):%Y%m%dT%H%MZ}")
+    ap.add_argument(
+        "--token-file", type=Path, help="bearer token for POST (default: $SENTINEL_INGEST_TOKEN)"
+    )
     args = ap.parse_args(argv)
+    token = (
+        args.token_file.read_text(encoding="utf-8").strip()
+        if args.token_file
+        else os.environ.get("SENTINEL_INGEST_TOKEN")
+    )
 
     labels = read_labels(args.labels)
     check_official_labels(labels)  # before posting anything (ADR-010 §10)
 
-    summary = record_run(args.windows, args.api, args.out, run_id=args.run_id)
+    summary = record_run(args.windows, args.api, args.out, run_id=args.run_id, token=token)
     alerts = [
         Alert.model_validate_json(line)
         for line in (args.out / "alerts.jsonl").read_text().splitlines()

@@ -19,6 +19,7 @@ from sentinel.detection.calibration import CalibrationArtefact, canonical_bytes
 from sentinel.detection.interface import DetectionError
 from sentinel.detection.network import PipeNetwork
 from sentinel.detection.regions import RegionMapping
+from sentinel.forecasting.integrity import release
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.detections import (
     AlertCandidate,
@@ -152,7 +153,11 @@ class CusumDetector:
                 "(ADR-007 §9)"
             )
         calibrated = detector._cal.forecaster
-        if (forecaster.name, forecaster.version) != (calibrated.name, calibrated.version):
+        # The served version carries the artefact digest (``0.1.0+1a2b3c4d``); a calibration
+        # that names only the release matches any artefact of it, one that names the digest
+        # matches only that artefact (pin it with SENTINEL_FORECASTER_SHA256).
+        served = forecaster.version if "+" in calibrated.version else release(forecaster.version)
+        if (forecaster.name, served) != (calibrated.name, calibrated.version):
             raise ConfigError(
                 f"calibration was made for forecaster {calibrated.name} {calibrated.version}, "
                 f"but the pipeline serves {forecaster.name} {forecaster.version}"

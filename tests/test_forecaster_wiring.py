@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from sentinel.config import DEFAULT_REGISTRY_PATH, ConfigError, Settings
 from sentinel.detection.calibration import write_artefact
 from sentinel.forecasting.baseline import SLOTS
+from sentinel.forecasting.integrity import artefact_sha256
 from sentinel.main import create_app
 from sentinel.sensors import SensorRegistry
 from tests.detection.artefacts import make_artefact
@@ -93,11 +94,12 @@ def test_missing_artefact_stops_startup_instead_of_falling_back_to_mock(tmp_path
 
 def test_api_scores_with_the_configured_baseline(tmp_path: Path) -> None:
     reg = SensorRegistry.load(OFFICIAL)
+    artefact = _baseline_artefact(tmp_path, reg.pressure)
     settings = Settings.from_env(
         {
             "SENTINEL_SENSOR_REGISTRY": str(OFFICIAL),
             "SENTINEL_FORECASTER": "baseline",
-            "SENTINEL_FORECASTER_PATH": str(_baseline_artefact(tmp_path, reg.pressure)),
+            "SENTINEL_FORECASTER_PATH": str(artefact),
             "SENTINEL_MIN_HISTORY_WINDOWS": "1",
             "SENTINEL_AUDIT_SINK": "memory",
         }
@@ -107,7 +109,7 @@ def test_api_scores_with_the_configured_baseline(tmp_path: Path) -> None:
     status = client.get("/v1/status").json()
     assert status["forecaster"] == {
         "name": "baseline-hourofweek",
-        "version": "0.0.1",
+        "version": f"0.0.1+{artefact_sha256(artefact)[:8]}",  # the digest names the weights
         "is_mock": False,
     }
     assert status["mocks_active"] is True  # the detector is still the mock

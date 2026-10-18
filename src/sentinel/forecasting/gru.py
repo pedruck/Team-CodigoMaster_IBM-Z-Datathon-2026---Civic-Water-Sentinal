@@ -29,6 +29,7 @@ from sentinel.forecasting.features import (
     gru_feature_names,
     gru_step_features,
 )
+from sentinel.forecasting.integrity import versioned
 from sentinel.forecasting.interface import ForecastError
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
@@ -138,7 +139,7 @@ def export_onnx(keras_model: Any, path: str | Path, opset: int = 17) -> dict[str
 class GRUForecaster:
     """Loads ``<model_dir>/meta.json`` (layout, window, horizon, scalers) and Keras weights."""
 
-    def __init__(self, model_dir: str | Path) -> None:
+    def __init__(self, model_dir: str | Path, *, artefact_sha256: str | None = None) -> None:
         self._dir = Path(model_dir)
         meta = json.loads((self._dir / "meta.json").read_text(encoding="utf-8"))
         self._layout = SensorLayout.from_dict(meta["layout"])
@@ -177,7 +178,12 @@ class GRUForecaster:
             input_signature=[tf.TensorSpec([None, self._window, len(names)], tf.float32)],
             autograph=False,
         )
-        self._info = ModelInfo(name=MODEL_NAME, version=str(meta["version"]), is_mock=False)
+        self.artefact_sha256 = artefact_sha256
+        self._info = ModelInfo(
+            name=MODEL_NAME,
+            version=versioned(str(meta["version"]), artefact_sha256),
+            is_mock=False,
+        )
 
     @property
     def info(self) -> ModelInfo:
