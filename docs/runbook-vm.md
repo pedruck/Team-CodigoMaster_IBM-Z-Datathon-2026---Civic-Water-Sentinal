@@ -33,10 +33,10 @@ API from the Jupyter terminal), not a member who reads the file: the VM has one 
 Never print or commit it.
 
 The forecaster and the detector are the mocks unless set (ADR-005). **Current shared API
-(2026-10-18, `main` @ `45f733d`):** no mocks: XGBoost (`compress_trees`, contributions
-`on_alert`), CUSUM with `config/calibration.xgboost-33.json`, regions and pipe network, audit chain
-run `replay-2019-1018` (the full command is under "Regions and pipe network" plus
-`SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=replay-2019-1018`), 2019 replayed. Restart it with
+(2026-10-18, `main` @ `6b9817a`):** no mocks: XGBoost pinned (`0.1.0+808746bc`, `compress_trees`,
+contributions `on_alert`), CUSUM with `config/calibration.xgboost-33.json`, regions and pipe
+network, write token, audit chain run `replay-2019-20261018-be024` (the full command is under
+"Regions and pipe network"), 2019 replayed and checked with `replay_check`. Restart it with
 the same variables to keep that configuration, and a **new** run name if you replay again. Real XGBoost (ML owner's artefact):
 
 ```bash

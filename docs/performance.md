@@ -190,6 +190,26 @@ end of the run: seq 106 014, hash
 `96fa38333d56681f5de7aa09e0ce46d42977e712869b7ed951cb02c6a15b0856` (explanations: seq 894,
 `2c93bfe6c39709e3faae9b704607b1dd917ea02079c3efbb5ee393edbed97b03`). One run, shared VM.
 
+### Same, after BE-024: pinned model, write token, limits (2026-10-18)
+
+`main` @ `6b9817a`, same configuration plus `SENTINEL_FORECASTER_SHA256` (served
+`0.1.0+808746bc`) and the write token; run `replay-2019-20261018-be024`; `scripts/replay.py
+--token-file`.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 × `201` (none outside the physical limits) · audit backlog 0 |
+| wall time / client throughput | 334.05 s / 314.69 windows/s |
+| client latency p50 / p99 / max | 2.915 / 6.287 / 70.837 ms |
+| alerts / explanations | 895 / 895 (`verify_file` ok) |
+| `replay_check` chain vs `windows_2019.jsonl` | ok: 105 120 / 105 120 matched, 0 mismatched, 0 foreign |
+| `POST` without the token | 401 |
+
+Chain anchor at the end of the run: seq 106 014, hash
+`892c096e50a57b92d320f78259ae31f6ea254b0728d8eddfe5a738a80372c8f6` (explanations: seq 894,
+`465f6727a54b65eccfe32b2b702e608d721679adc70628e87c2f783f122bc470`). The guard and the limits
+cost nothing visible next to the run without them (338.04 s). One run, shared VM.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
