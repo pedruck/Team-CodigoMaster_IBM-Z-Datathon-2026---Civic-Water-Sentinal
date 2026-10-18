@@ -10,6 +10,11 @@
 
 ## Summary
 
+**Render deploy (BE-028, 2026-10-18, branch `feat/be-028-render-deploy`):** `render.yaml`
+(Blueprint, option 1 of ADR-013) and the steps in `docs/external-dashboard.md`. Build and start
+commands checked locally against the shared API; the gateway and tunnel on the VM and the
+Render service itself are NOT_RUN (they need the Render account owner and Q-OPS-01).
+
 **Dashboard evidence fixes (BE-027, 2026-10-18, branch `fix/be-027-dashboard-evidence`):** the
 evidence pane, the detail and the Jupyter view show the stored explanation from
 `GET /v1/alerts/{id}/explanation` (with how it was produced); the queue shows date and time;

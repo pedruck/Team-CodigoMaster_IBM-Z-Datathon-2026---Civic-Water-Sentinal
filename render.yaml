@@ -1,0 +1,31 @@
+# Render Blueprint: the operator dashboard hosted off the VM (BE-028, ADR-013 option 1).
+# The dashboard reads the shared API through the read-only gateway and the outbound tunnel the
+# VM opens (docs/external-dashboard.md). Secrets are entered in the Render dashboard, never here.
+services:
+  - type: web
+    name: civicwater-sentinel-dashboard
+    runtime: python
+    plan: free
+    autoDeploy: false # deploy on purpose: the demo URL must not change under the presenter
+    # Render adds uv because uv.lock is at the root. Only the dashboard group, no dev tools.
+    buildCommand: uv sync --locked --no-dev --group dashboard
+    startCommand: >-
+      uv run --no-sync streamlit run dashboard/app.py
+      --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.13 # same minor as CI
+      - key: PYTHONPATH
+        value: . # the dashboard package lives at the repo root
+      # https://….lhr.life of the tunnel; it changes when the tunnel restarts.
+      - key: SENTINEL_DASHBOARD_API_URL
+        sync: false
+      # Content of ~/shared/civicwater/secrets/dashboard-gateway.token on the VM host.
+      - key: SENTINEL_DASHBOARD_API_TOKEN
+        sync: false
+      - key: SENTINEL_DASHBOARD_TIMEOUT_S
+        value: "10" # the tunnel adds latency
+      # While the tunnel or the VM is down: the labelled synthetic recording (RECORDED REPLAY).
+      - key: SENTINEL_DASHBOARD_FALLBACK_DIR
+        value: dashboard/playback/fixture-synthetic-ltown-demo

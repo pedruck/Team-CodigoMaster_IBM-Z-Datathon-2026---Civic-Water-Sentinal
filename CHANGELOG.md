@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- BE-028: `render.yaml`, a Render Blueprint for the dashboard (free Python web service,
+  `uv sync --locked --no-dev --group dashboard`, Streamlit on `$PORT`, health check
+  `/_stcore/health`, `autoDeploy: false`). It reads the shared API through the read-only gateway
+  and the VM's outbound tunnel (option 1 of ADR-013); URL and token are Render secrets, and the
+  labelled synthetic recording is the fallback. Steps in `docs/external-dashboard.md`.
 - BE-027: the dashboard shows the stored explanation of an alert (Q-AUD-07,
   `GET /v1/alerts/{id}/explanation`) beside the map, in the detail and in the Jupyter view,
   with one line on how it was produced (template, language model, fallback reason, pending).
@@ -13,6 +18,7 @@ contract versions are tracked separately (`schema_version`).
   "explanation unavailable". `ExplanationStatus` moved to `sentinel.schemas.api` (same fields;
   still importable from `sentinel.narrative.store`) so the dashboard keeps depending only on
   the contract models.
+- README redesigned as a landing page (banner and logo, demo, status table, dashboard design summary); the configuration reference moved unchanged to `docs/configuration.md`; brand assets in `docs/images/brand/` and demo captures in `docs/images/demo/`.
 
 ### Fixed
 - BE-027, dashboard: the alert queue showed only the time (`08:15`) although a replayed year
@@ -21,6 +27,8 @@ contract versions are tracked separately (`schema_version`).
   the map card (`170.01`), exact value in the full record. The onset shows the backend's
   `hours_since_onset` (`404 h (16.8 days) before this window`). The map card dropped the
   onset's date (`12:20`) and the replay note the selected alert's date.
+
+### Added
 - BE-026: dashboard hosted off the VM (ADR-013, `docs/external-dashboard.md`). A read-only,
   token-protected gateway for an outbound tunnel (`scripts/readonly_gateway.py`: GET on health,
   status and alerts only), a snapshot push to pre-signed URLs (`scripts/push_snapshot.py`,

@@ -103,6 +103,34 @@ python3 scripts/push_snapshot.py --api http://172.17.0.2:8000 --every 60 --count
 Dashboard secret: `SENTINEL_DASHBOARD_SNAPSHOT_URL = "<pre-signed GET URL>"`. A new PUT URL is
 needed when the old one expires; the dashboard then shows the snapshot's age until it resumes.
 
+## Hosting on Render (BE-028)
+
+`render.yaml` at the repo root is a Render Blueprint for the dashboard with option 1: one free
+Python web service, built with `uv sync --locked --no-dev --group dashboard` (Render adds uv
+because `uv.lock` is at the root), started with Streamlit on `$PORT`, health check
+`/_stcore/health`, `autoDeploy: false` so the demo URL only changes when someone deploys on
+purpose. Python 3.12.13 (`PYTHON_VERSION`), like CI.
+
+1. On the VM host (`ssh linuxone`, own clone at `main`), start the gateway and the tunnel as in
+   "Using option 1" (two tmux sessions). Note the `https://….lhr.life` URL the tunnel prints.
+2. Render dashboard → **New → Blueprint** → this repository, branch `main` → it reads
+   `render.yaml` and asks for the two `sync: false` values:
+   - `SENTINEL_DASHBOARD_API_URL`: the `https://….lhr.life` URL;
+   - `SENTINEL_DASHBOARD_API_TOKEN`: the content of
+     `~/shared/civicwater/secrets/dashboard-gateway.token` (copy it yourself; never paste it in
+     chat, an issue or git).
+3. After the deploy, the page header should read CONNECTED with "Latest simulated window"
+   2019-12-31 23:55 UTC. If it shows RECORDED REPLAY + "LIVE SOURCE UNAVAILABLE", the tunnel or
+   the token is wrong: the synthetic recording is on screen instead.
+
+When the tunnel restarts, its URL changes: update `SENTINEL_DASHBOARD_API_URL` in Render
+(Environment) and redeploy. The free plan sleeps after 15 minutes without visits and takes
+about a minute to wake: open the URL a few minutes before the presentation. Verified before
+the first deploy (x86-64, 2026-10-18): the build command and the start command above, run
+locally with `PORT=8510` against the shared API through an SSH tunnel: health `ok`, the page
+CONNECTED with the 2019 replay, ~77 MB resident. The Render deploy itself is the user's step
+(account and secrets).
+
 ## Rules (either option)
 
 - Expose only the read-only gateway (GET on status and alerts). Never the API, Jupyter or `/docs`.
