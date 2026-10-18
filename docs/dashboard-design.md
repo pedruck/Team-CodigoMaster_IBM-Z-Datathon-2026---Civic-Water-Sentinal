@@ -1,8 +1,11 @@
-# Operator workspace — BE-021
+# Operator workspace — BE-021 / BE-022
 
-The primary dashboard remains Streamlit. This refresh changes presentation and adds an
-explicit **Refresh data** action; it does not replace the source adapters, polling logic,
-schemas or the Jupyter renderer.
+The primary dashboard remains Streamlit. BE-022 aligns the page with the public preview
+of the [CivicWater Figma design](https://www.figma.com/design/vvZqt0ypTmooZpYLn93u9h/CivicWater-Sentinel-%E2%80%94-Painel-operacional?node-id=5-1518),
+adds the official L-Town network schematic and keeps the existing source adapters, polling,
+schemas and evidence. The Figma URL returned 403 for the full frame in this environment;
+the public thumbnail exposed its colour/type system, and exact visual fidelity needs the
+owner's review.
 
 Issued alerts are the first operational section. The owner-requested readability pass
 keeps the approved visual identity and changes the task order to **alerts → evidence →
@@ -11,9 +14,10 @@ the findings, application of UI/UX Pro Max and measured checks.
 
 ## Visual direction
 
-A light monitoring workspace with a restrained water-green accent, local Geist typography,
-Phosphor regular icons and fine structural lines. The sidebar links to actual sections on
-the page; it collapses using Streamlit's native mobile navigation.
+A light monitoring workspace with a dark teal sidebar, green for network context and
+coral for alerts. IBM Plex Sans/Mono fonts and Phosphor icons are local. The sidebar links
+to real sections and the full network map; it collapses using Streamlit's native mobile
+navigation. The issued-alert feed remains the first operational section.
 
 References: [Codrops](https://tympanus.net/codrops/hub/), [GSAP](https://gsap.com/),
 [Raylight](https://www.raylight.app/templates),
@@ -43,6 +47,16 @@ removing their required content. Controls and labels reflow with enlarged text.
 | Processing profile | Each stage's `p95_ms` | Shared length scale; these are not pressure trends and stage p95s are not added |
 | Window buffer | `history.contiguous`, `capacity`, `required` | Contiguous history relative to capacity; warm-up compared to the backend requirement |
 | Sensor deviations | `alert.deviating_sensors[].deviation_m` | Signed observed-minus-expected pressure head, metres; zero at the centre |
+| Network map | `config/l-town-map.json`, selected `Alert` | All official link segments and 33 pressure sensors; selected region in green, reported deviations and optional candidate pipe in coral. The candidate is a best guess, not a confirmed leak |
+
+The map is shown after selecting an alert and still draws the network when no alert exists.
+On narrow screens it scrolls inside its own focusable region, keeping labels at their full
+size. The dedicated Streamlit page selects an alert in time order and downloads SVG; the
+Jupyter view offers the same map with a selection slider. Source: [BattLeDIM 2020](https://zenodo.org/records/4017659),
+CC BY 4.0. The map JSON was generated from the official `L-TOWN.inp` with SHA-256
+`a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`; observed
+map JSON SHA-256 is `e165e9fdb15521af7673e0c2f3f2e764382ae5547e8e32c25f9a6e721472e9a4`,
+which differs from the digest in the task prompt (ADR-012). Counts and all 12 map tests pass.
 
 Summary values are rounded for readability. Expand **Sensor readings · exact values** or
 **Full record & audit reference** to inspect the unchanged received values. Missing values
@@ -56,7 +70,7 @@ remains unavailable until its read contract exists.
 
 ## Motion and local assets
 
-GSAP core, fonts and the icon subset are committed with their upstream notices in
+GSAP core, IBM Plex fonts and the icon subset are committed with their upstream notices in
 `dashboard/assets/` (versions and licences: [assets README](../dashboard/assets/README.md)).
 No Node build or external asset service is needed to run the dashboard.
 
@@ -92,6 +106,10 @@ uv run --group dashboard streamlit run dashboard/app.py --server.address 127.0.0
 
 Open `http://127.0.0.1:8501`. This fixture is an invented synthetic day with a mock
 forecaster and a synthetic CUSUM calibration. The recording/simulation banners stay visible.
+Its invented region `R-SYN-A` is outside the official L-Town region mapping, so the map
+shows the network and labels that region as unavailable. The BE-022 screenshots use a
+separate, hand-authored synthetic alert with official topology IDs (`Z1-R3`, `p4`, `n163`,
+`n188`) solely to review the map's appearance; it is not a detector output.
 For the API, remove `SENTINEL_DASHBOARD_PLAYBACK_DIR` and set `SENTINEL_DASHBOARD_API_URL`
 to the existing backend or tunnel.
 
@@ -153,5 +171,6 @@ full WCAG audit, screen-reader rehearsal or a performance score.
 Review captures from `fixture-cusum`:
 
 - [Desktop issued alerts](images/dashboard-desktop.png)
+- [Selected alert on the network map](images/dashboard-map.png)
 - [Alert evidence and history](images/dashboard-evidence.png)
 - [Mobile issued alerts](images/dashboard-mobile.png)

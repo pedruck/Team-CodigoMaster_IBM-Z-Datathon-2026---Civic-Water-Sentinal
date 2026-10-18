@@ -46,8 +46,11 @@ def _svg_base64(svg: str) -> str:
 def _styles() -> str:
     faces = []
     for family, filename, weight in (
-        ("Geist", "Geist-Variable.woff2", "100 900"),
-        ("Geist Mono", "GeistMono-Regular.woff2", "400"),
+        ("IBM Plex Sans", "IBMPlexSans-Regular.woff2", "400"),
+        ("IBM Plex Sans", "IBMPlexSans-Medium.woff2", "500"),
+        ("IBM Plex Sans", "IBMPlexSans-SemiBold.woff2", "600"),
+        ("IBM Plex Sans", "IBMPlexSans-Bold.woff2", "700"),
+        ("IBM Plex Mono", "IBMPlexMono-Regular.woff2", "400"),
     ):
         encoded = base64.b64encode((ASSETS / "fonts" / filename).read_bytes()).decode("ascii")
         faces.append(
@@ -72,6 +75,7 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
         links = (
             ("recent-alerts", "pulse", "Issued alerts"),
             ("alert-detail", "fingerprint", "Alert evidence"),
+            ("network-map", "squares-four", "Network map"),
             ("history", "clock-counter-clockwise", "History"),
         )
         st.html(
@@ -84,6 +88,7 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
             )
             + "</nav>"
         )
+        st.page_link("pages/network_map_page.py", label="Open full network map")
         mode = (
             "Recorded replay"
             if source.recording
@@ -243,7 +248,7 @@ def buffer_profile(status: StatusResponse | None) -> str:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" '
         'fill="none" stroke-width="5">'
         '<circle stroke="#edf2ef" cx="60" cy="60" r="52"/>'
-        '<circle stroke="#117765" stroke-linecap="round" cx="60" cy="60" r="52" '
+        '<circle stroke="#08796f" stroke-linecap="round" cx="60" cy="60" r="52" '
         f'pathLength="100" stroke-dasharray="{fraction * 100:.3f} 100"/></svg>'
     )
     return (

@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
+- BE-022: align the operator workspace with the public CivicWater Figma palette and IBM Plex
+  typography, keep issued alerts first, and show the source-derived L-Town map with selected
+  alert evidence. On narrow screens the map scrolls internally at readable label size;
+  unknown regions and candidate pipes are reported. Existing alert details, history,
+  metrics and mock/replay notices remain available (ADR-012).
 - BE-021: refresh the Streamlit dashboard with a responsive operator workspace, section
   navigation, local Geist/Phosphor assets, source-derived pipeline/buffer/sensor diagrams,
   collapsible exact evidence and reduced-motion-aware local GSAP reveals. Add a manual
@@ -35,6 +40,10 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- BE-022: `config/l-town-map.json` from the official BattLeDIM topology (attributed CC BY 4.0),
+  a pure SVG renderer, a dedicated Streamlit map page with SVG download, a Jupyter selection
+  view and a notebook. The official source hash matches the prompt; the generated map hash
+  differs from its expected digest and is documented in `docs/dashboard-design.md`.
 - Windows verification compatibility: keep the hash-pinned regions JSON at LF on checkout,
   and normalise paths in the evaluation-boundary guard. No region data or runtime code changed.
 - BE-011: the API loads the real forecaster at startup. `SENTINEL_FORECASTER` accepts

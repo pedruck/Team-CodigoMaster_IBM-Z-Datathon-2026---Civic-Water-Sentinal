@@ -3,8 +3,9 @@
 Assets are served inline from disk; the operator view does not contact a font, icon or
 animation CDN and needs no Node build step.
 
-- `fonts/`: Geist Sans variable and Geist Mono regular from `geist` **1.8.1**,
-  https://github.com/vercel/geist-font, SIL Open Font License (`fonts/LICENSE.txt`).
+- `fonts/`: IBM Plex Sans (regular, medium, semibold, bold) and IBM Plex Mono regular from
+  [IBM/plex](https://github.com/IBM/plex), SIL Open Font License
+  (`fonts/IBM-Plex-LICENSE.txt`).
 - `icons/`: the regular SVG subset from `@phosphor-icons/core` **2.1.1**,
   https://github.com/phosphor-icons/core, MIT (`icons/LICENSE`).
 - `vendor/gsap.min.js`: the unmodified GSAP core **3.15.0** distribution from `gsap`,

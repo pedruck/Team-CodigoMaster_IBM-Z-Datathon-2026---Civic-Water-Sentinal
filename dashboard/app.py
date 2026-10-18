@@ -7,6 +7,8 @@ from dashboard.config import refresh_interval_s, source_from_env
 from dashboard.header import build_header
 from dashboard.history import render_history
 from dashboard.live import render_recent_alerts, shown_alerts
+from dashboard.map_embed import map_image
+from dashboard.network_map import load_map
 from dashboard.presentation import (
     apply_theme,
     icon,
@@ -24,6 +26,7 @@ from dashboard.source import (
     SourceError,
     SourceUnavailableError,
 )
+from sentinel.schemas.alerts import Alert
 from sentinel.schemas.api import StatusResponse
 
 
@@ -36,6 +39,7 @@ def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
     st.header("Alert detail", anchor="alert-detail")
     st.caption("Inspect the evidence behind a record. Values come directly from the source.")
     if status is None:
+        render_map(None)
         return
     shown = shown_alerts()
     selected = (
@@ -45,6 +49,7 @@ def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
     )
     if selected is None:
         st.caption("No alert to show.")
+        render_map(None)
         return
     try:
         alert = source.get_alert(selected)
@@ -57,6 +62,7 @@ def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
         return
     if detail.simulated:
         st.warning("SIMULATED — this alert came from a mock: not leak detection.")
+    render_map(alert)
     snapshot, evidence = st.columns([1, 1.25], gap="large")
     with snapshot:
         render_alert_snapshot(alert)
@@ -78,6 +84,22 @@ def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
             st.caption("Forecast contributions: not provided.")
         st.markdown("**Explanation**")
         st.info(detail.explanation)
+
+
+def render_map(alert: Alert | None) -> None:
+    """Display topology separately from the received evidence and keep its source visible."""
+    st.subheader("Network map", anchor="network-map")
+    try:
+        st.html(map_image(load_map(), alert))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        st.warning(f"Network map unavailable: {exc}")
+        return
+    st.caption(
+        "L-Town (BattLeDIM 2020), simulated network. When available, region, sensor "
+        "differences and candidate pipe come from the selected alert; the pipe is a best guess. "
+        "On narrow screens, scroll inside the map to inspect it. "
+        "[Network source: BattLeDIM, CC BY 4.0](https://doi.org/10.5281/zenodo.4017659)."
+    )
 
 
 st.set_page_config(page_title="CivicWater Sentinel", layout="wide", initial_sidebar_state="auto")

@@ -1,8 +1,19 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-17 — the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
+**Last update:** 2026-10-18 — BE-022 adds the derived L-Town map, a Figma-directed visual refresh and Streamlit/Jupyter map views (ADR-012). The official L-TOWN.inp hash matched the supplied reference; the exported JSON hash differs from the task prompt and is recorded below.
+
+**Prior backend update:** 2026-10-17 — the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
 ## Summary
+
+**Network map and visual refresh (BE-022, 2026-10-18):** the operator page now follows the
+public CivicWater Figma colour/type direction and places the official L-Town schematic
+with selected-alert evidence after the issued-alert feed. The map is a derived, attributed
+JSON/SVG asset (909 links, 33 sensors, three landmarks), with a separate Streamlit view,
+Jupyter slider and SVG export. The original records, disclosures, filters, polling and
+simulation notices remain. A local hand-authored mock alert demonstrates Z1-R3/p4/n163/n188
+without presenting it as detector output. Exact frame comparison with Figma remains pending
+because the full design URL returned 403. See ADR-012 and `docs/dashboard-design.md`.
 
 **Dashboard presentation (BE-021, 2026-10-17):** the primary Streamlit page now has a
 responsive workspace with issued alerts first, 16/14 px alert text, full records on demand
@@ -57,6 +68,9 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 
 ## In progress
 
+- BE-022: network map and visual refresh implemented and tested; owner visual review,
+  full Figma frame comparison (URL returned 403) and the exported-map digest discrepancy
+  remain review items (ADR-012).
 - BE-012 umbrella: selection, tools, regions and candidate pipe done; the final calibration and
   the layer-1 evaluation (BE-012h) are blocked.
 - BE-012f: development calibration on 2018 (out-of-fold hour-of-week baseline,
@@ -169,10 +183,13 @@ XGBoost out-of-fold residuals (DEP-DET-05) so `SENTINEL_DETECTOR=cusum` can run 
 forecaster, and register the remaining ADR-008 §G fields (the region rule is done); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
 
-## Verification (2026-10-17)
+## Verification (through 2026-10-18)
 
 | Command | Result |
 |---|---|
+| BE-022, Windows x86-64 / Python 3.12.14: `python -m ruff format --check src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q` (same environment/cache paths as BE-021) | **145 files formatted**, lint OK, **144 source files** with no mypy issues; **753 passed, 34 skipped in 39.12s**. Skips require external data or optional ML dependencies |
+| BE-022, `node E:\Codex\civicwater-sentinel\browser\validate-map.cjs`, Chrome at 1536×1080 and 390×844 | Map image and IBM Plex fonts loaded, no browser errors or horizontal page overflow; internal mobile map scrolling, full-map navigation and SVG download checked. Captures use an explicitly hand-authored synthetic alert, not detector output |
+| BE-022 source reproduction: `sentinel.data.build_network` then `sentinel.data.export_map` from official L-TOWN.inp | Input SHA-256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436` matches prompt. Exported JSON `e165e9fdb15521af7673e0c2f3f2e764382ae5547e8e32c25f9a6e721472e9a4` differs from prompt's expected `2930fd5d016bb277bf718d03fb880d4e2eece22984500b14ff8227b7fbf6b30e`; 909 links, 905 pipes, 33 sensors and 3 landmarks. Discrepancy remains documented for review |
 | BE-021, Windows x86-64 / Python 3.12.14: `python -m ruff format --check src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q` (cache/temp redirected to E; exact environment in `docs/dashboard-design.md`) | **138 files formatted**, lint OK, **137 files** with no mypy issues; **741 passed, 34 skipped in 42.36s** (optional data/ML dependencies absent). Includes thirteen new presentation/interaction tests. Fixed two existing Windows-only guard failures: pinned JSON checkout line endings and POSIX-normalised path exclusion |
 | BE-021, Playwright + installed Chrome: 1536×1080, 390×844, 360×800, 768×1024, 1440×900 with reduced motion; evidence navigation, raw audit/sensor disclosures, history filter/reset and manual refresh | Passed; no page errors, no horizontal page overflow, all local font/icon assets loaded, **0 external requests**, **0 GSAP tweens** with reduced motion. Captures: `docs/images/dashboard-*.png` |
 | BE-021 UX review: primary-feed contrast including opacity, evidence activation/focus, focus retained through polling, heading order, button height and 200% root text at 1536/390 px | Passed focused browser checks: warning 8.12:1, sampled feed text ≥5.03:1, caption 5.90:1; evidence button 44 px high; no horizontal page overflow with enlarged text. Full WCAG conformance and spoken screen-reader output not assessed |
