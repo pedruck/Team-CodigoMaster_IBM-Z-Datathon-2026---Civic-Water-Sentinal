@@ -9,8 +9,12 @@ rules for using it. Decision record: [ADR-013](adr/ADR-013-external-dashboard-ac
 **Status:** code and tests on branch `feat/be-026-external-dashboard`. VM checks from the
 Jupyter terminal (container, 2026-10-18): s390x, Python 3.12.15, API `/health` 200, outbound
 HTTPS open (GitHub, localhost.run, Cloudflare, Google Storage, S3), outbound TCP 22 open and
-localhost.run answering, `snapshot-read` JSON ok. Tunnel (1a) and snapshot upload (3b/3c):
-NOT_RUN. Nothing is exposed until they pass and the team agrees.
+localhost.run answering, `snapshot-read` JSON ok. Tunnel test (1a) from the Jupyter terminal:
+the `https://….lhr.life` URL served the test page (`ok`, HTTP 200, valid TLS, 0.8 s) to a phone
+off the Wi-Fi and to an x86 host outside the VM, and `/v1/status` through it was 404 (only the
+test page is behind it). It stayed up for about 10 minutes and was then stopped on purpose; the
+30-minute criterion is **not verified**. Snapshot upload (3b/3c): NOT_RUN. Nothing is exposed
+until the team agrees (Q-OPS-01).
 
 ## The two options
 
