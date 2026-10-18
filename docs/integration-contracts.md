@@ -108,6 +108,14 @@ class Forecaster(Protocol):
 - `model`: `ModelInfo`; `contributions` (optional): `{sensor: {feature: metres}}`
   (TreeSHAP for XGBoost, design doc §6).
 
+Optional extension (additive, **proposed** 2026-10-17 by the ML owner, P3 to confirm):
+`ExplainingForecaster.explain(request, sensor_ids) -> {sensor: {group: metres}} | None`
+(`sentinel.forecasting.interface`). When `ForecastResult.contributions` is empty and the
+forecaster implements it, the pipeline calls it once per alert, after detection, with the same
+request and the alert's deviating sensors; the result fills `forecast_contributions_m`. A
+failure keeps the alert without contributions and adds the issue `forecast/explain_failed`;
+its time is the `explain` latency stage. Forecasters without it are unchanged.
+
 Errors: raise `ForecastError` for expected failures (model not loaded, bad shape). Any
 exception → window `forecast_failed` (not retried, ADR-004). A result violating the rules
 above → `forecast_failed` with `issues[0].code = "invalid_forecast"`. Insufficient history
