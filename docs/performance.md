@@ -141,6 +141,31 @@ mock detector, `SENTINEL_LOG_LEVEL=WARNING`, client `nice -n 10` in the same con
 The forecast stage matches the in-process run (0.651 ms p50, `compress_trees`); the extra
 ~0.67 ms of `total` p50 over the mock run is the model. One run, shared VM, not a benchmark.
 
+### Full 2019 over HTTP, real stack + audit chain, private API on the VM (BE-013, 2026-10-18)
+
+`main` + PR #18 + BE-013 (`e8be180`, local integration bundle) in the P3 clone, uvicorn on
+127.0.0.1:8003 in the `notebook` container: `xgboost-33@0.1.0` (`compress_trees`,
+contributions `on_alert`), `SENTINEL_DETECTOR=cusum` with `config/calibration.xgboost-33.json`,
+`config/regions.battledim.json` and the data owner's `l-town.json`, `SENTINEL_AUDIT_SINK=chain`
+(file in the container's `/tmp`, fsync per record), `SENTINEL_NARRATOR=none`,
+`SENTINEL_LOG_LEVEL=WARNING`; `scripts/replay.py` with `nice -n 10`.
+
+| Measure | Value |
+|---|---|
+| windows | 105 120 accepted · 144 `insufficient_history`, 104 976 `scored` · audit backlog 0 |
+| wall time / client throughput | 348.46 s / 301.67 windows/s (425.6 with the mock detector and the in-memory sink, above) |
+| models | forecaster and detector `is_mock: false`, `mocks_active: false` |
+| alerts | 895, all with `forecast_contributions_m`, `region` and `candidate_pipe` |
+| audit chain | 106 015 records (105 120 windows + 895 alerts), `verify_file` ok, the same over `GET /v1/audit` pages; restart with the same run continues at seq 106 014 |
+| explanations | 895 records (`template`, no narrator), `verify_file` ok; `verify_alert` of an alert against its record ok |
+
+Alert volume (counted from the audit log; the 2019 labels were **not** read): Jan–Mar 10 alerts,
+then about 100 per month (Apr 59 … Dec 111); 492 distinct (region, `suspected_onset`) pairs,
+up to 28 alerts for one pair; 37 % of consecutive alerts within 30 min. Whether these are leaks or
+false alarms is the layer-2 evaluation's job (EV-003, ADR-010); the repeated alerts for one
+episode are a question for the detection owner (Q-DET-09). The slowdown versus the mock run is not
+broken down (no per-stage numbers were captured in this run). One run, shared VM, not a benchmark.
+
 ### x86 vs s390x parity (design doc §7, byte order)
 
 `SensorWindow.content_hash()` of `docs/examples/window.valid.json`:
