@@ -200,7 +200,8 @@ tested on incipient leaks, which the development run does not detect (ADR-008).
   `topology --check` says whether the regions file is what the rule gives for the file at hand.
 - On the LinuxONE VM the server needs the file at `network/v1/l-town.json` of its data directory;
   without it, `SENTINEL_DETECTOR_NETWORK` makes the start fail (it is optional: unset, the alert
-  has no `candidate_pipe`).
+  has no `candidate_pipe`). `scripts/shared_api.sh` forwards the variable and `docs/runbook-vm.md`
+  has the commands that check the file there.
 - If the evaluation's distance counts pumps and valves as links, `pipe_distance` and the
   official one disagree across zones; the zones are far from each other either way.
 - A client that rejects unknown fields and still validates against 1.0 will refuse 1.1 alerts.

@@ -96,7 +96,7 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 - The server reads the pipe network from the data owner's `l-town.json` in
   `$SENTINEL_DATA_DIR/network/v1/` (outside git). `SENTINEL_DETECTOR_NETWORK` is optional; without
   it `candidate_pipe` is null. On the LinuxONE VM this was **not run** (no access from the author's
-  session): `docs/testing.md` has the command to verify it there.
+  session): `docs/runbook-vm.md` has the commands to verify it there (`topology --check` and the tests that read the file).
 - Unmerged owner branches change the P6 plan (2026-10-17 18:30): `feat/be-012-cusum-detector`
   (real CUSUM, ADR-007/008: layer-2 2019 evaluation through the API is P6's, Q-UI-06) and
   `leo/local-version` (hash chain, verifier CLI, narrative; no HTTP endpoint, records fail-open,

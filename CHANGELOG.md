@@ -39,7 +39,8 @@ contract versions are tracked separately (`schema_version`).
   `config/regions.battledim.json` (nine regions over the 33 official pressure sensors, a rule fixed
   from the topology alone). The network is the data owner's `l-town.json` (schema 1.0, in
   `$SENTINEL_DATA_DIR/network/v1/`, never in git): `SENTINEL_DETECTOR_NETWORK` (optional, with
-  `SENTINEL_DETECTOR=cusum`) points to it.
+  `SENTINEL_DETECTOR=cusum`) points to it. `scripts/shared_api.sh` forwards it to the container and
+  `docs/runbook-vm.md` has the check to run on the VM.
   Answers Q-DET-05 and Q-DET-07 (confirmation asked in Q-DET-08); DEP-DET-04 resolved, DEP-DET-06
   partial. New example `docs/examples/alert.cusum-synthetic.json`.
 - Operator dashboard tracer (UI-001, P6): Streamlit page (`just dashboard api_url=...`) with
