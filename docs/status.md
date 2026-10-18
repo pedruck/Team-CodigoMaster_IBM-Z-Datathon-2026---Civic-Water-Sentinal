@@ -10,10 +10,13 @@
 
 ## Summary
 
-**Render deploy (BE-028, 2026-10-18, branch `feat/be-028-render-deploy`):** `render.yaml`
-(Blueprint, option 1 of ADR-013) and the steps in `docs/external-dashboard.md`. Build and start
-commands checked locally against the shared API; the gateway and tunnel on the VM and the
-Render service itself are NOT_RUN (they need the Render account owner and Q-OPS-01).
+**Render deploy (BE-028, 2026-10-18):** the dashboard is public at
+https://civicwater-sentinel-dashboard.onrender.com (free plan, `render.yaml`), reading the shared
+API live through the read-only gateway (tmux `gateway` on the VM host) and a Cloudflare quick
+tunnel (tmux `cf-tunnel`, `cloudflared` built for s390x). localhost.run was dropped: its free
+domain rotated within minutes and the page fell back to the recording. A GitHub Actions workflow
+pings the health endpoint every 5 minutes so the free instance does not sleep. If the tunnel
+restarts, its URL changes and must be updated in Render (`docs/external-dashboard.md`).
 
 **Dashboard evidence fixes (BE-027, 2026-10-18, branch `fix/be-027-dashboard-evidence`):** the
 evidence pane, the detail and the Jupyter view show the stored explanation from

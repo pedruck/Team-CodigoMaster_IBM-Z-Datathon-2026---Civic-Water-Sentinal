@@ -111,11 +111,11 @@ because `uv.lock` is at the root), started with Streamlit on `$PORT`, health che
 `/_stcore/health`, `autoDeploy: false` so the demo URL only changes when someone deploys on
 purpose. Python 3.12.13 (`PYTHON_VERSION`), like CI.
 
-1. On the VM host (`ssh linuxone`, own clone at `main`), start the gateway and the tunnel as in
-   "Using option 1" (two tmux sessions). Note the `https://….lhr.life` URL the tunnel prints.
-2. Render dashboard → **New → Blueprint** → this repository, branch `main` → it reads
-   `render.yaml` and asks for the two `sync: false` values:
-   - `SENTINEL_DASHBOARD_API_URL`: the `https://….lhr.life` URL;
+1. On the VM host (`ssh linuxone`), start the gateway as in "Using option 1" and the tunnel
+   below (two tmux sessions). Note the tunnel's URL.
+2. Render dashboard → **New → Blueprint** → this repository (as a public Git repository URL),
+   branch `main` → it reads `render.yaml` and asks for the two `sync: false` values:
+   - `SENTINEL_DASHBOARD_API_URL`: the tunnel's URL;
    - `SENTINEL_DASHBOARD_API_TOKEN`: the content of
      `~/shared/civicwater/secrets/dashboard-gateway.token` (copy it yourself; never paste it in
      chat, an issue or git).
@@ -123,13 +123,46 @@ purpose. Python 3.12.13 (`PYTHON_VERSION`), like CI.
    2019-12-31 23:55 UTC. If it shows RECORDED REPLAY + "LIVE SOURCE UNAVAILABLE", the tunnel or
    the token is wrong: the synthetic recording is on screen instead.
 
-When the tunnel restarts, its URL changes: update `SENTINEL_DASHBOARD_API_URL` in Render
-(Environment) and redeploy. The free plan sleeps after 15 minutes without visits and takes
-about a minute to wake: open the URL a few minutes before the presentation. Verified before
+**Tunnel: Cloudflare quick tunnel, not localhost.run.** The free localhost.run domain rotates by
+itself every few minutes (observed 2026-10-18: `cw-tunnel` changed domain within about ten
+minutes, with the process still running), so the URL stored in Render died and the page fell
+back to the recording ("LIVE SOURCE UNAVAILABLE"). A `cloudflared` quick tunnel keeps its
+`https://….trycloudflare.com` URL for the life of the process, needs no account and has no
+request quota (no uptime guarantee either). Cloudflare publishes no s390x binary, so it is
+built from the official source off the VM and copied to the VM host (outside every clone):
+
+```bash
+# on an x86 computer with Go ≥ the version in cloudflared's go.mod
+git clone --depth 1 --branch 2026.10.1 https://github.com/cloudflare/cloudflared.git
+cd cloudflared && CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build -mod=mod -trimpath \
+    -ldflags "-s -w -X main.Version=2026.10.1" -o cloudflared-linux-s390x ./cmd/cloudflared
+scp cloudflared-linux-s390x linuxone:shared/civicwater/users/<you>/bin/cloudflared
+# on the VM host, in tmux (session cf-tunnel): the URL is printed in the log
+~/shared/civicwater/users/<you>/bin/cloudflared tunnel --no-autoupdate \
+    --url http://127.0.0.1:8099 2>&1 | tee ~/cf-tunnel.log
+```
+
+When the tunnel process restarts, its URL changes: update `SENTINEL_DASHBOARD_API_URL` in Render
+(Environment → Edit → Save only, then Manual Deploy → Deploy latest commit). The gateway reads its
+token file once, at start: after regenerating the token, restart the gateway too, or every request
+gets 401.
+
+**Keep-alive.** The free plan sleeps after 15 minutes without requests and takes about a minute
+to wake (27 s measured on the first visit). `.github/workflows/keep-dashboard-awake.yml` pings
+`/_stcore/health` every 5 minutes (repository variable `DASHBOARD_URL` overrides the URL); it
+never calls the API. A web page (e.g. GitHub Pages) would only ping while someone has it open.
+One always-on free service uses about 744 of the workspace's 750 free instance hours a month;
+disable the workflow after the event. Verified before
 the first deploy (x86-64, 2026-10-18): the build command and the start command above, run
 locally with `PORT=8510` against the shared API through an SSH tunnel: health `ok`, the page
-CONNECTED with the 2019 replay, ~77 MB resident. The Render deploy itself is the user's step
-(account and secrets).
+CONNECTED with the 2019 replay, ~77 MB resident.
+
+**Deployed 2026-10-18:** https://civicwater-sentinel-dashboard.onrender.com (Blueprint
+`civicwater-sentinel`, service `civicwater-sentinel-dashboard`, free plan, from `main` @
+`84611b4`). Through the tunnel with the token: `/health`, `/v1/status`, `/v1/alerts` 200,
+`/docs` and `/openapi.json` 404, no token 401. The hosted page read CONNECTED, latest simulated
+window 2019-12-31 23:55 UTC, the queue with dates, score `170.01` vs `128.0` and the stored
+explanation.
 
 ## Rules (either option)
 
