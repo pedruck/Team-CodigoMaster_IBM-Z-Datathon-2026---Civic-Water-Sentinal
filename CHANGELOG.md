@@ -6,6 +6,13 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- BE-029: **Sentinel assistant**, a section of the dashboard that explains the alerts as a chat
+  (messaging-app layout): an *Overview* conversation (sensors, latest window, alerts stored,
+  regions of the recent alerts, biggest drop, models) and the *selected alert* step by step
+  (what happened, where to look, since when, how strong, sensors below the forecast, next step)
+  with the audited text the backend stored attached. Deterministic sentences from received
+  values only; language-model text is labelled. The small explanation slot of the evidence
+  pane is replaced by a link to it.
 - BE-028 deployed: the dashboard is public at https://civicwater-sentinel-dashboard.onrender.com,
   live through the read-only gateway and a Cloudflare quick tunnel (`cloudflared` built from the
   official source for s390x; localhost.run's free domain rotated within minutes).

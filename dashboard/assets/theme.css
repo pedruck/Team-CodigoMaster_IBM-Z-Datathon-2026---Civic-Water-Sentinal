@@ -385,8 +385,6 @@
 .evidence-sensors output { font-family: 'IBM Plex Mono', monospace; text-align: right; font-variant-numeric: tabular-nums; }
 .bar-track { height: 8px; background: #f1f5f3; border-radius: 4px; overflow: hidden; }
 .bar { display: block; height: 100%; background: var(--cw-alert); border-radius: 4px; transform-origin: left center; }
-.explanation-slot { margin: 0; padding: .5rem .65rem; font-size: .8125rem; color: var(--cw-muted); background: #f6f9f7; border: 1px dashed #c9dbd3; border-radius: 6px; white-space: pre-line; overflow-wrap: anywhere; max-height: 10rem; overflow-y: auto; }
-.explanation-note { margin: .35rem 0 0; font-size: .75rem; color: var(--cw-muted); }
 .evidence-facts dd small.onset-age { display: block; margin-top: .15rem; }
 .evidence-facts dd:has(.onset-age) { flex-basis: 100%; }
 .evidence-more { margin-top: .9rem; font-size: .875rem; font-weight: 500; color: var(--cw-accent); text-underline-offset: 3px; }
@@ -466,4 +464,43 @@
   }
   .st-key-title-row { padding-left: 3.25rem; }
   .st-key-map-pane iframe { height: clamp(400px, calc(100svh - 330px), 600px) !important; }
+}
+
+/* Sentinel assistant (BE-029): the alerts explained as a chat, in a messaging-app layout. */
+.evidence-explain { display: inline-flex; align-items: center; gap: .35rem; margin-top: .9rem; padding: .45rem .7rem; border-radius: 999px; background: var(--cw-tint); color: var(--cw-accent) !important; font-size: .875rem; font-weight: 550; text-decoration: none; }
+.evidence-explain:hover { background: #d3ece4; }
+.chat { display: flex; flex-direction: column; height: 640px; border: 1px solid var(--cw-line); border-radius: 12px; overflow: hidden; background: var(--cw-surface); }
+.chat-head { display: flex; align-items: center; gap: .75rem; padding: .7rem .9rem; color: #fff; background: #0b5f57; }
+.chat-head strong { display: block; font-size: 1rem; font-weight: 600; color: #fff; }
+.chat-head small { display: block; font-size: .78rem; color: #cfe8e1; font-family: 'IBM Plex Mono', monospace; }
+.chat-avatar { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #0b5f57; background: #d9f2ea; font-weight: 700; }
+.chat-status { margin-left: auto; padding: .15rem .55rem; border-radius: 999px; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; color: #0b5f57; background: #d9f2ea; }
+.chat-body {
+  flex: 1; margin: 0; padding: 1rem .9rem 1.2rem; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: .45rem;
+  background-color: #ece5dd;
+  background-image: radial-gradient(rgba(11, 95, 87, .07) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.chat-body:empty::before { content: "Select an alert in the queue: its explanation appears here."; margin: auto; padding: .6rem .9rem; border-radius: 8px; font-size: .875rem; color: var(--cw-muted); background: rgba(255, 255, 255, .85); }
+.chat-msg { display: flex; margin: 0; }
+.chat-operator { justify-content: flex-end; }
+.chat-bubble { position: relative; max-width: min(82%, 560px); padding: .5rem .7rem .35rem; border-radius: 10px; font-size: .9375rem; line-height: 1.45; color: #1b2b2e; box-shadow: 0 1px .5px rgba(0, 0, 0, .13); overflow-wrap: anywhere; }
+.chat-assistant .chat-bubble { background: #fff; border-top-left-radius: 2px; }
+.chat-operator .chat-bubble { background: #d9fdd3; border-top-right-radius: 2px; }
+.chat-bubble code { padding: 0 .25rem; border-radius: 4px; font-size: .85em; background: #eef4f1; }
+.chat-meta { display: flex; justify-content: flex-end; gap: .3rem; margin-top: .15rem; font-size: .7rem; color: #667781; }
+.chat-ticks { color: #53bdeb; letter-spacing: -.15em; }
+.chat-day { align-self: center; margin: .35rem 0; }
+.chat-day span { display: inline-block; padding: .2rem .6rem; border-radius: 7px; font-size: .75rem; color: #54656f; background: #fff; box-shadow: 0 1px .5px rgba(0, 0, 0, .13); }
+.chat-sensors { margin: .4rem 0 .1rem; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: .25rem .75rem; }
+.chat-sensors li { display: flex; justify-content: space-between; gap: .5rem; font-family: 'IBM Plex Mono', monospace; font-size: .82rem; }
+.chat-sensors li span { color: var(--cw-alert); }
+.chat-sensors li.more { grid-column: 1 / -1; font-family: 'IBM Plex Sans', sans-serif; color: var(--cw-muted); }
+.chat-audited { margin-top: .45rem; border-top: 1px solid #e3ece8; padding-top: .35rem; }
+.chat-audited summary { cursor: pointer; font-size: .82rem; font-weight: 550; color: var(--cw-accent); }
+.chat-audited-text { margin: .4rem 0 0; white-space: pre-line; font-size: .82rem; color: #3b4a4d; }
+.chat-audited-note { margin: .3rem 0 0; font-size: .75rem; color: var(--cw-muted); }
+@media (max-width: 900px) {
+  .chat { height: 560px; }
+  .chat-bubble { max-width: 92%; }
 }

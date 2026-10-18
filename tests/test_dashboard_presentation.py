@@ -94,7 +94,7 @@ def test_source_strings_are_escaped_before_entering_html(monkeypatch: pytest.Mon
     hostile = alert.model_copy(
         update={"region": "<script>alert(1)</script>", "candidate_pipe": "<b>p1</b>"}
     )
-    for rendered in (evidence_pane(hostile, "<i>x</i>"), map_heading(hostile)):
+    for rendered in (evidence_pane(hostile), map_heading(hostile)):
         assert "<script>" not in rendered
         assert "&lt;script&gt;" in rendered
         assert "<b>p1" not in rendered
@@ -143,7 +143,7 @@ def test_offline_metrics_remain_unknown_instead_of_inventing_zero_counts(
 def test_evidence_pane_states_the_record_without_inventing_severity_or_lifecycle() -> None:
     (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
 
-    html = evidence_pane(alert, "explanation unavailable")
+    html = evidence_pane(alert)
 
     assert "R-SYN-A" in html
     assert "A-20190314T1705Z-1" in html
@@ -153,7 +153,7 @@ def test_evidence_pane_states_the_record_without_inventing_severity_or_lifecycle
     assert "\u22120.21 m" in html
     assert "SIMULATED" in html
     assert "Candidate pipe</dt><dd>not provided" in html
-    assert "explanation unavailable" in html
+    assert 'href="#assistant"' in html  # the explanation has its own section (BE-029)
     assert 'href="#alert-detail"' in html
     assert "critical" not in html.lower()
     assert "active" not in html.lower()
@@ -163,12 +163,12 @@ def test_evidence_pane_states_the_record_without_inventing_severity_or_lifecycle
 def test_evidence_pane_names_the_candidate_as_a_best_guess_and_handles_absences() -> None:
     (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
     with_pipe = alert.model_copy(update={"candidate_pipe": "p201"})
-    assert "<code>p201</code> <small>best guess</small>" in evidence_pane(with_pipe, "")
+    assert "<code>p201</code> <small>best guess</small>" in evidence_pane(with_pipe)
     assert "candidate pipe p201 (best guess)" in map_heading(with_pipe)
     missing = alert.model_copy(
         update={"region": None, "deviating_sensors": (), "is_mock": False, "cusum": None}
     )
-    html = evidence_pane(missing, "")
+    html = evidence_pane(missing)
     assert "Region not available" in html
     assert "No deviating sensor." in html
     assert "not provided" in html
@@ -193,8 +193,9 @@ def test_workspace_puts_queue_map_and_evidence_before_technical_metrics(
 
     assert not app.exception
     assert app.title[0].value == "Network & alerts"
-    assert [heading.value for heading in app.header][:4] == [
+    assert [heading.value for heading in app.header][:5] == [
         "Recent alerts",
+        "Sentinel assistant",  # BE-029: right after the workspace
         "Alert detail",
         "History",
         "System status",

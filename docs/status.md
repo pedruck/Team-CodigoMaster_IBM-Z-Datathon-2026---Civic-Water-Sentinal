@@ -10,6 +10,13 @@
 
 ## Summary
 
+**Sentinel assistant (BE-029, 2026-10-18, branch `feat/be-029-assistant-chat`):** the
+explanation moved from the evidence corner to its own chat section: an overview and the
+selected alert in plain words, from the alert's own numbers, with the stored audited text
+attached. The shared API's explanations are the deterministic template (no language model is
+configured: the VM has only Granite 4.0 H 350M *base*, and watsonx credentials are not set),
+so the readable wording is the dashboard's; a model's text would be shown and labelled as such.
+
 **Render deploy (BE-028, 2026-10-18):** the dashboard is public at
 https://civicwater-sentinel-dashboard.onrender.com (free plan, `render.yaml`), reading the shared
 API live through the read-only gateway (tmux `gateway` on the VM host) and a Cloudflare quick
@@ -243,6 +250,8 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| BE-029, branch `feat/be-029-assistant-chat` (Linux x86-64, Python 3.12.13): `just ci` | 194 files formatted · ruff OK · mypy: no issues in 193 files · **1173 passed, 40 skipped** (`tests/test_dashboard_assistant.py`: 11 new) |
+| BE-029 browser (Streamlit on a local port, SSH tunnel to the shared API, 2019 replayed) | two chat panels after the workspace; overview: 33 sensors, latest window 31 Dec 23:55, 895 stored, top regions of the 50 recent, biggest drop −1.09 m at n429 (Z1-R3, 20 Dec 11:10), models; alert A-20191231T0815Z-1: headline, where (p228), since (14 Dec 12:20, ~17 days), score 170.01 vs 128.0, sensors, next step, audited text seq 894; panel keeps its scroll across polls; 375 px: panels stacked, no horizontal scroll |
 | BE-027, branch `fix/be-027-dashboard-evidence` (Linux x86-64, Python 3.12.13): `just ci` | 192 files formatted · ruff OK · mypy: no issues in 191 files · **1163 passed, 40 skipped** (`tests/test_dashboard_explanation.py`: 10 new); dashboard + map tests re-run on the final commit: 170 passed |
 | BE-027 browser (Streamlit on a local port, SSH tunnel to the shared API, 2019 replayed) | queue `Z1-R3 · Dec 31 08:15`; score `170.01` vs `128.0`; onset `2019-12-14 12:20 UTC` + `404 h (16.8 days) before this window`; explanation text + "Deterministic text from the alert's fields, 2026-10-18 05:44:10 UTC."; slot 160 px, scrollable; map card onset `2019-12-14 12:20 UTC`; replay note with the full date |
 | BE-026 gates (Linux x86-64, `feat/be-026-external-dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 191 files formatted · lint passed · mypy: no issues in 190 files · **1153 passed, 40 skipped** (34 new in `tests/test_external_dashboard.py`) |

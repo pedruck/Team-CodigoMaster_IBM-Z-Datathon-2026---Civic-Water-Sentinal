@@ -46,6 +46,12 @@ def texts(app: Any) -> list[str]:
     return [str(e.value) for e in elements]
 
 
+def assistant(app: Any) -> str:
+    """The selected alert's conversation in the Sentinel assistant section."""
+    chats = [h.proto.body for h in app.get("html") if 'class="chat"' in h.proto.body]
+    return chats[-1] if chats else ""
+
+
 def test_detail_defaults_to_the_newest_alert_on_the_page(monkeypatch: pytest.MonkeyPatch) -> None:
     app = run_app(monkeypatch, EDGE)
 
@@ -87,7 +93,7 @@ def test_full_alert_shows_every_evidence_field_as_received(
         {"Sensor": "n31", "Feature": "hour_of_day", "Contribution (m)": "0.4"},
         {"Sensor": "n31", "Feature": "flow_p227", "Contribution (m)": "-0.2"},
     ]
-    assert any("explanation unavailable" in i.value for i in app.info)
+    assert "has no stored explanation" in assistant(app)  # recordings carry none (BE-029)
     assert any("SIMULATED" in w.value for w in app.warning)
 
 
@@ -103,7 +109,7 @@ def test_all_null_alert_marks_every_absent_field(monkeypatch: pytest.MonkeyPatch
     assert shown["Audit reference"] == "audit unavailable"
     assert table_with(app, "Contribution (m)") is None
     assert any("Forecast contributions: not provided" in c.value for c in app.caption)
-    assert any("explanation unavailable" in i.value for i in app.info)
+    assert "has no stored explanation" in assistant(app)  # recordings carry none (BE-029)
 
 
 def test_alert_without_deviating_sensors_still_renders(monkeypatch: pytest.MonkeyPatch) -> None:
