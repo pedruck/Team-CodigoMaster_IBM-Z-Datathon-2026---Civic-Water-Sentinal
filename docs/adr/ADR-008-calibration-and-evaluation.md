@@ -13,11 +13,11 @@
   fold files and returns the two hashes for `calibrate()`), `sweep.py` (`replay` of a `z` matrix
   with exact parity with the detector, `sweep` over a grid of `h` and `N`) and `layer1.py`
   (counts and delays; the matching rule between an alert and a leak is **provisional**, Q-UI-06,
-  and is an argument of every call, never a default), and `devcal.py` (the development run: artefact `dev-baseline-2018`, residual
-  structure, σ sensitivity, sweep and report; reproduced byte for byte on 2026-10-17).
+  and is an argument of every call, never a default).
   Final calibration tools (BE-012j): `oof.py` (reader of DEP-DET-05), `persistence.py` (§D), `selection.py`
   (selection rule, leave-one-leak-out, recovery) and `experiment.py` (the two-phase run on the protocol
   `config/calibration-protocol.xgboost-33.json`); results in `docs/p4-calibration.md`.
+  Development run (BE-012f): `devcal.py` (artefact `dev-baseline-2018`, residual structure, σ sensitivity, sweep and report; reproduced byte for byte on 2026-10-17).
 
 ## Context
 The design document fixes the models, σ, k and h on 2018 only and replays the whole of 2019
@@ -156,11 +156,11 @@ produces results labelled "exploratory" in every table.
 |---|---|---|
 | δ (→ `k = δ/2`) and rationale | **registered 2026-10-17** (amends the δ = 1σ proposal of PR #16): rule of §C, `δ_N` from the weakest abrupt leak of 2018, `k_N = δ_N/2` rounded to 0.01; rule committed in `config/calibration-protocol.xgboost-33.json` (`exploration`, commit `ae93951`) before any XGBoost residual was read; values copied from phase A into its `sweep` section before any replay: `with-neighbours` k₁..k₅ = 6.34, 1.72, 1.08, 0.45, 0.27; `without-neighbours` 4.21, 1.58, 1.49, 0.96, 0.60 | detection |
 | Persistence-test acceptance criterion | **registered 2026-10-17:** over the 6 abrupt leaks of 2018, median persistence ≥ 50 % and none < 25 % (undefined counts as 0); operational definition in `offline/persistence.py` and the protocol (`exploration.persistence`, commit `ae93951`, before any XGBoost residual was read): displacement against the 24 h before `start`, initial = first hour, remaining = the hour 24 h later, 3 most displaced sensors, ratio of sums. Result (phase A): `with-neighbours` median 0.957, minimum 0.539 (p538) **PASS**; `without-neighbours` median 0.962, minimum 0.434 (p183) **PASS** | detection |
-| False-alarm budget (alerts per week) | not yet registered (Q-TEAM-03). Candidates registered for the 2018 sweep: 0.5, 1, 2, 4 per week; the detection owner proposes **1 per week** (primary in the protocol) | team |
+| False-alarm budget (alerts per week) | **adopted for v1 on 2026-10-18 by the detection owner: 1 per week** (primary in the protocol; candidates swept: 0.5, 1, 2, 4). The team may still change it (Q-TEAM-03) before the single 2019 run; a different budget means a new artefact, a new hash here and a new row in `docs/p4-calibration.md` | team (confirms or changes) |
 | Matching rule and tolerance per leak type | not yet registered (Q-UI-06). The 2018 calibration uses the operator view of ADR-010 (`max_delay` 7 days for both types), so its false alarms compare with those of 2019 | evaluation |
 | Sensor → region mapping and pipe network (rule, D, files) | registered by ADR-011 §1–2: `config/regions.battledim.json` sha256 `ca365b7074d2bb3df2cec38d69768850ca1d37b9a717db62a9f95a71a25fe57d`, built from the data owner's `network/v1/l-town.json` sha256 `ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59` (model `L-TOWN.inp` sha256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`) | detection |
 | Pipe → region table (2019 labels) | not yet registered (Q-UI-06) | evaluation |
-| Calibration artefact hash | not yet registered | detection |
+| Calibration artefact hash | **registered 2026-10-18 (v1): `config/calibration.xgboost-33.json`, sha256 `fad6ec0bded539cd326b6e53f77d7504bdeef68d4800427fcee26acd3b874256`** — forecaster `xgboost-33@0.1.0` (with neighbours, the served model), `provenance = battledim-2018-oof`, k 0.45, h 128, N 4, c 1.5, h_close 96, budget 1 per week; pinned by `tests/detection/test_committed_calibration.py`. The variant without neighbours is a later artefact (`docs/p4-calibration.md` §7) | detection |
 | Commit of the run | not yet registered | evaluation |
 
 **H. Wording.** Every results table carries "simulated benchmark (BattLeDIM L-Town);

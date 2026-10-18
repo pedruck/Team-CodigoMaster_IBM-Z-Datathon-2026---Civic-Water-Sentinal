@@ -5,6 +5,13 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Added
+- Final calibration v1 of the CUSUM detector for the served forecaster: `config/calibration.xgboost-33.json`
+  (`provenance = battledim-2018-oof`, `xgboost-33@0.1.0` with neighbours, 1 false alarm per week,
+  sha256 `fad6ec0b…` in ADR-008 §G). With it `SENTINEL_DETECTOR=cusum` starts with
+  `models.detector.is_mock = false`. The better variant without neighbours is the documented upgrade
+  once it is exported (`docs/p4-calibration.md` §7).
+
 ### Changed
 - ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
   and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
