@@ -137,6 +137,9 @@ class ExplanationService:
         self._max_attempts = max_attempts
         self._lock = threading.Lock()
         self._entries: dict[Key, _Entry] = {}
+        # Key of the most recently stored explanation per (alert_id, language): what status()
+        # returns for an alert known only from the log (e.g. after a restart).
+        self._latest: dict[tuple[str, Language], Key] = {}
         self._alerts: dict[str, Alert] = {}
         self._pending: set[Key] = set()
         self._queue: queue.Queue[tuple[Alert, Language] | None] = queue.Queue()
@@ -175,11 +178,9 @@ class ExplanationService:
             if alert is not None:
                 key: Key = (alert_id, alert_payload_sha256(alert), language)
                 entry = None if key in self._pending else self._entries.get(key)
-            else:  # known only from the log (e.g. after a restart)
-                entry = next(
-                    (e for k, e in self._entries.items() if k[0] == alert_id and k[2] == language),
-                    None,
-                )
+            else:  # known only from the log (e.g. after a restart): the latest version
+                latest = self._latest.get((alert_id, language))
+                entry = self._entries.get(latest) if latest else None
             if entry is not None:
                 e = entry.explanation
                 return ExplanationStatus(
@@ -253,6 +254,7 @@ class ExplanationService:
                 datetime.fromisoformat(record["recorded_at"]),
                 int(record["payload"].get("attempt", 1)),
             )
+            self._latest[(explanation.alert_id, explanation.language)] = key
 
     def _run(self) -> None:
         while True:
@@ -283,3 +285,4 @@ class ExplanationService:
         record = self._store.append(explanation, alert.window_end, attempt)
         with self._lock:
             self._entries[key] = _Entry(explanation, record, datetime.now(UTC), attempt)
+            self._latest[(alert.alert_id, language)] = key

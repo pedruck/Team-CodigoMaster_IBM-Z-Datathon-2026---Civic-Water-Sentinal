@@ -354,3 +354,25 @@ def test_records_after_pages_in_seq_order(tmp_path: Path) -> None:
         assert sink.records_after(after_seq=1, limit=1)[0] == sink.records()[2]  # as stored
         with pytest.raises(ValueError):
             sink.records_after(limit=0)
+
+
+def test_reads_never_see_a_line_still_being_written(tmp_path: Path) -> None:
+    """Review of PR #17: a read concurrent with an append must not parse half a line."""
+    path = tmp_path / "chain.jsonl"
+    sink = sink_at(path)
+    fill(sink, 3)
+    with path.open("ab") as f:
+        f.write(b'{"seq": 3, "payl')  # an append in flight, as seen by a concurrent reader
+    assert [r["seq"] for r in sink.records()] == [0, 1, 2]
+    assert [r["seq"] for r in sink.records_after(after_seq=1)] == [2]
+    assert sink.get(2) is not None and sink.get(3) is None
+
+
+def test_pages_seek_to_their_first_record_after_a_restart(tmp_path: Path) -> None:
+    path = tmp_path / "chain.jsonl"
+    fill(sink_at(path), 50)
+    again = sink_at(path)  # offsets rebuilt from the file
+    again.append(event(50))
+    assert [r["seq"] for r in again.records_after(after_seq=47, limit=2)] == [48, 49]
+    assert [r["seq"] for r in again.records_after(after_seq=49)] == [50]
+    assert again.get(0) == again.records()[0] and again.get(-1) is None

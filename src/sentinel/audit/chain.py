@@ -281,6 +281,7 @@ class HashChainAuditSink:
         self._next_seq = 0
         self._prev_hash = GENESIS_HASH
         self._size = 0  # bytes this sink expects in the file
+        self._offsets: list[int] = []  # byte offset of record seq i, for O(page) reads
         if self._path is not None and self._path.exists():
             check = verify_file(self._path)
             if not check.ok:
@@ -292,6 +293,11 @@ class HashChainAuditSink:
                 self._next_seq = check.head.seq + 1
                 self._prev_hash = check.head.hash
             self._size = self._path.stat().st_size
+            offset = 0
+            with self._path.open("rb") as f:
+                for line in f:
+                    self._offsets.append(offset)
+                    offset += len(line)
 
     @property
     def path(self) -> Path | None:
@@ -335,35 +341,40 @@ class HashChainAuditSink:
 
     def records(self) -> list[dict[str, Any]]:
         """Copy of every record, oldest first."""
-        with self._lock:
-            if self._memory is not None:
-                return [json.loads(canonical_json(r)) for r in self._memory]
-        assert self._path is not None
-        return list(iter_records(self._path)) if self._path.exists() else []
+        return self.records_after(-1, limit=None)
 
     def get(self, seq: int) -> dict[str, Any] | None:
-        return next((r for r in self.records() if r["seq"] == seq), None)
+        page = self.records_after(seq - 1, limit=1) if seq >= 0 else []
+        return page[0] if page else None
 
-    def records_after(self, after_seq: int = -1, limit: int = 100) -> list[dict[str, Any]]:
-        """Up to ``limit`` records with ``seq > after_seq``, in ``seq`` order and exactly as
-        stored: the page of the read endpoint proposed in Q-AUD-06 (``GET /v1/audit``).
-        Streams the file, so a year-long log is not loaded."""
-        if limit < 1:
+    def records_after(self, after_seq: int = -1, limit: int | None = 100) -> list[dict[str, Any]]:
+        """Up to ``limit`` records (all with ``None``) with ``seq > after_seq``, in ``seq``
+        order and exactly as stored: the page of the read endpoint proposed in Q-AUD-06
+        (``GET /v1/audit``).
+
+        Reads only the bytes this sink has completely written (never a line still being
+        appended) and seeks straight to the first record of the page, so a page costs
+        O(limit), not a scan from the start of a year-long log."""
+        if limit is not None and limit < 1:
             raise ValueError("limit must be >= 1")
+        first = max(after_seq + 1, 0)
         with self._lock:
             if self._memory is not None:
-                rows = [r for r in self._memory if r["seq"] > after_seq][:limit]
+                rows = self._memory[first : None if limit is None else first + limit]
                 return [json.loads(canonical_json(r)) for r in rows]
+            if first >= len(self._offsets):
+                return []
+            start = self._offsets[first]
+            stop_index = None if limit is None else first + limit
+            if stop_index is None or stop_index >= len(self._offsets):
+                end = self._size
+            else:
+                end = self._offsets[stop_index]
         assert self._path is not None
-        if not self._path.exists():
-            return []
-        page: list[dict[str, Any]] = []
-        for record in iter_records(self._path):
-            if record.get("seq", -1) > after_seq:
-                page.append(record)
-                if len(page) == limit:
-                    break
-        return page
+        with self._path.open("rb") as f:
+            f.seek(start)
+            chunk = f.read(end - start)
+        return [json.loads(line) for line in chunk.splitlines()]
 
     def verify(self, anchor: AuditRef | None = None) -> ChainVerification:
         if self._path is None:
@@ -416,6 +427,7 @@ class HashChainAuditSink:
                 except OSError:
                     f.truncate(start)  # never leave half a record behind
                     raise
+                self._offsets.append(start)
                 self._size = start + len(line)
         except OSError as exc:
             raise AuditError(f"could not append to {self._path}: {exc}") from exc

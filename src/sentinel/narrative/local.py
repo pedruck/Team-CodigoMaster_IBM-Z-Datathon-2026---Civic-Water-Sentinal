@@ -36,7 +36,7 @@ from sentinel.schemas.alerts import Alert
 DEFAULT_URL = "http://127.0.0.1:8080"
 DEFAULT_MODEL = "granite-4.0-h-350m-base"
 DEFAULT_MODEL_PATH = Path("~/granite-4.0-h-350m-base-be.f16.gguf")
-STOP = ("\n\n", "\nRecord:", "\nRegistro:")
+STOP = ("\n\n", "\nRecord:")
 
 
 class LocalLLMError(Exception):
@@ -74,9 +74,6 @@ _REGIONAL: list[Example] = [
             "en": "Alert A-20180105T0300Z-1 reports a suspected leak in region R2. "
             "Sensors P05 and P11 read 0.74 m and 0.52 m below the expected pressure since "
             "2018-01-04 23:40 UTC. The CUSUM statistic reached 9.7 against a threshold of 8.0.",
-            "pt": "O alerta A-20180105T0300Z-1 indica suspeita de vazamento na região R2. "
-            "Os sensores P05 e P11 estão 0,74 m e 0,52 m abaixo do esperado desde "
-            "2018-01-04 23:40 UTC. O CUSUM chegou a 9,7 para um limiar de 8,0.",
         },
     ),
     (
@@ -93,9 +90,6 @@ _REGIONAL: list[Example] = [
             "en": "Alert A-20180320T1745Z-2 reports a suspected leak in region R7. "
             "Sensor P30 read 1.08 m below the expected pressure since 2018-03-20 09:05 UTC. "
             "The CUSUM statistic reached 15.2 against a threshold of 10.0.",
-            "pt": "O alerta A-20180320T1745Z-2 indica suspeita de vazamento na região R7. "
-            "O sensor P30 está 1,08 m abaixo do esperado desde 2018-03-20 09:05 UTC. "
-            "O CUSUM chegou a 15,2 para um limiar de 10,0.",
         },
     ),
 ]
@@ -114,9 +108,6 @@ _UNLOCATED: list[Example] = [
             "en": "Alert A-20180212T1015Z-1 reports a suspected leak; the region was not "
             "estimated. Sensors P27 and P26 read 1.31 m and 1.12 m below the expected pressure "
             "at 2018-02-12 10:15 UTC.",
-            "pt": "O alerta A-20180212T1015Z-1 indica suspeita de vazamento; a região não foi "
-            "estimada. Os sensores P27 e P26 estão 1,31 m e 1,12 m abaixo do esperado em "
-            "2018-02-12 10:15 UTC.",
         },
     ),
     (
@@ -133,21 +124,15 @@ _UNLOCATED: list[Example] = [
             "en": "Alert A-20180409T0630Z-1 reports a suspected leak; the region was not "
             "estimated. Sensors P18, P19 and P33 read 0.95 m, 0.88 m and 0.61 m below the "
             "expected pressure at 2018-04-09 06:30 UTC.",
-            "pt": "O alerta A-20180409T0630Z-1 indica suspeita de vazamento; a região não foi "
-            "estimada. Os sensores P18, P19 e P33 estão 0,95 m, 0,88 m e 0,61 m abaixo do "
-            "esperado em 2018-04-09 06:30 UTC.",
         },
     ),
 ]
 _HEADER: dict[Language, str] = {
     "en": "Alert records from a water network leak detector, each followed by a short "
     "explanation for the operator. The explanation only restates the record.",
-    "pt": "Registros de alerta de um detector de vazamentos, cada um seguido de uma "
-    "explicação curta para o operador. A explicação só repete o registro.",
 }
 _LABELS: dict[Language, tuple[str, str]] = {
     "en": ("Record", "Explanation"),
-    "pt": ("Registro", "Explicação"),
 }
 
 

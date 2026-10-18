@@ -10,18 +10,17 @@ once those exist in ``sentinel.main`` / ``sentinel.api``.
   ``SENTINEL_AUDIT_DIR`` (e.g. ``data/audit`` on a laptop).
 - ``SENTINEL_NARRATOR``: ``none`` (default, deterministic text only), ``llamacpp`` (Granite GGUF
   in this process), ``local`` (llama.cpp server) or ``watsonx``; see ``sentinel.narrative``.
-- ``SENTINEL_EXPLANATION_LANGUAGES``: comma list, default ``en``.
 
 Every alert recorded in the audit log is explained in the background and the result is
-appended to the explanations log. ``GET /v1/alerts/{alert_id}/explanation?language=en``
-returns ``pending`` (deterministic text meanwhile) or ``ready``. Every other ``SENTINEL_*``
-variable works as in ``sentinel.main``; ``SENTINEL_AUDIT_SINK`` is ignored.
+appended to the explanations log (English, like the rest of the project).
+``GET /v1/alerts/{alert_id}/explanation`` returns ``pending`` (deterministic text meanwhile)
+or ``ready``. Every other ``SENTINEL_*`` variable works as in ``sentinel.main``;
+``SENTINEL_AUDIT_SINK`` is ignored.
 """
 
 import logging
 import os
 from collections.abc import Mapping
-from typing import cast
 
 from fastapi import FastAPI
 
@@ -29,7 +28,6 @@ from sentinel import main
 from sentinel.audit.chain import HashChainAuditSink, audit_path_for
 from sentinel.config import ConfigError, Settings
 from sentinel.narrative.explain import Narrator
-from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language
 from sentinel.narrative.local import LlamaCppNarrator, LocalGraniteNarrator, LocalLLMError
 from sentinel.narrative.store import (
     ExplanationService,
@@ -88,15 +86,6 @@ def narrator_from_env(env: Mapping[str, str] | None = None) -> Narrator | None:
     return None
 
 
-def languages_from_env(env: Mapping[str, str] | None = None) -> tuple[Language, ...]:
-    e = os.environ if env is None else env
-    raw = [x.strip() for x in e.get("SENTINEL_EXPLANATION_LANGUAGES", DEFAULT_LANGUAGE).split(",")]
-    bad = [x for x in raw if x not in ("en", "pt")]
-    if bad or not raw:
-        raise ConfigError(f"SENTINEL_EXPLANATION_LANGUAGES must list en/pt, got {raw}")
-    return tuple(cast(Language, x) for x in raw)
-
-
 def create_app() -> FastAPI:
     settings = Settings.from_env()
     run = os.environ.get("SENTINEL_AUDIT_RUN", "local")
@@ -105,7 +94,6 @@ def create_app() -> FastAPI:
     explanations = ExplanationService(
         narrator_from_env(),
         ExplanationStore(explanations_path_for(run, root)),
-        languages=languages_from_env(),
     )
     sink = ExplainingAuditSink(audit, explanations)
     app = main.create_app(settings, main.build_pipeline(settings, audit_sink=sink))
@@ -117,8 +105,8 @@ def create_app() -> FastAPI:
         tags=["alerts"],
         summary="Explanation of an alert (P5, reference for Q-AUD-07)",
     )
-    def get_explanation(alert_id: str, language: Language = DEFAULT_LANGUAGE) -> ExplanationStatus:
-        status = explanations.status(alert_id, language)
+    def get_explanation(alert_id: str) -> ExplanationStatus:
+        status = explanations.status(alert_id)
         if status is None:
             raise NotFoundError(f"no explanation for alert {alert_id!r}")
         return status

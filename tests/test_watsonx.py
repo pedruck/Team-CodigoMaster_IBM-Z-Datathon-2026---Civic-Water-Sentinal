@@ -155,8 +155,8 @@ def test_cli_template_and_alert_file(tmp_path: Path, capsys: pytest.CaptureFixtu
 
     path = tmp_path / "alert.json"
     path.write_text(mock_alert(region="R7").model_dump_json(), encoding="utf-8")
-    assert cli_main(["--alert", str(path), "--language", "pt"]) == 0
-    assert "região R7" in json.loads(capsys.readouterr().out)["text"]
+    assert cli_main(["--alert", str(path)]) == 0
+    assert "region R7" in json.loads(capsys.readouterr().out)["text"]
 
 
 def test_cli_watsonx_exit_codes(

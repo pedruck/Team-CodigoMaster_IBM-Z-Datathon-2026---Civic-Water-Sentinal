@@ -10,9 +10,11 @@ from typing import Any, Literal
 
 from sentinel.schemas.alerts import Alert
 
-Language = Literal["pt", "en"]
-DEFAULT_LANGUAGE: Language = "en"  # team decision; "pt" stays available
-MOCK_TAG: dict[Language, str] = {"en": "[SIMULATION]", "pt": "[SIMULAÇÃO]"}
+# The project is in English: every text returned to the operator is English. The type stays a
+# Literal so stored records keep their ``language`` field.
+Language = Literal["en"]
+DEFAULT_LANGUAGE: Language = "en"
+MOCK_TAG: dict[Language, str] = {"en": "[SIMULATION]"}
 
 TOP_CONTRIBUTIONS = 3
 
@@ -72,26 +74,6 @@ def alert_facts(alert: Alert) -> dict[str, Any]:
 # ------------------------------------------------------------------------------- template
 
 _TEXT: dict[Language, dict[str, str]] = {
-    "pt": {
-        "mock": "[SIMULAÇÃO] Gerado com componentes mock: não é uma detecção real de vazamento.",
-        "head": "Alerta {id}: suspeita de vazamento",
-        "region": " na região {region}.",
-        "no_region": " (região não estimada).",
-        "pipe": "Tubo candidato (não é uma localização confirmada): {pipe}.",
-        "window": "Janela avaliada: {date} {time} UTC.",
-        "onset": "Início estimado do desvio: {date} {time} UTC",
-        "hours": ", {hours} h antes da janela.",
-        "sensors": "Sensores com desvio (observado - esperado): {items}.",
-        "sensor": "{sensor} {dev} m",
-        "z": " (z {z})",
-        "cusum": "CUSUM {stat} para limiar {thr}.",
-        "contrib": "Principais contribuições do modelo de previsão: {items}.",
-        "models": "Modelos: previsão {f}; detecção {d}.",
-        "audit": "Registro de auditoria seq {seq}.",
-        "no_audit": "Alerta sem registro de auditoria.",
-        "scope": "Esta explicação descreve a decisão do motor de detecção; ela não decide se há "
-        "vazamento.",
-    },
     "en": {
         "mock": "[SIMULATION] Produced by mock components: not a real leak detection.",
         "head": "Alert {id}: suspected leak",
@@ -115,9 +97,8 @@ _TEXT: dict[Language, dict[str, str]] = {
 }
 
 
-def fmt_number(value: float, lang: Language, decimals: int = 2, signed: bool = False) -> str:
-    text = f"{value:+.{decimals}f}" if signed else f"{value:.{decimals}f}"
-    return text.replace(".", ",") if lang == "pt" else text
+def fmt_number(value: float, decimals: int = 2, signed: bool = False) -> str:
+    return f"{value:+.{decimals}f}" if signed else f"{value:.{decimals}f}"
 
 
 def render_text(alert: Alert, lang: Language = DEFAULT_LANGUAGE) -> str:
@@ -137,31 +118,29 @@ def render_text(alert: Alert, lang: Language = DEFAULT_LANGUAGE) -> str:
         on = alert.suspected_onset
         onset = t["onset"].format(date=f"{on:%Y-%m-%d}", time=f"{on:%H:%M}")
         if alert.hours_since_onset is not None:
-            onset += t["hours"].format(hours=fmt_number(alert.hours_since_onset, lang))
+            onset += t["hours"].format(hours=fmt_number(alert.hours_since_onset))
         else:
             onset += "."
         lines.append(onset)
     items = []
     for d in alert.deviating_sensors:
-        item = t["sensor"].format(sensor=d.sensor, dev=fmt_number(d.deviation_m, lang))
+        item = t["sensor"].format(sensor=d.sensor, dev=fmt_number(d.deviation_m))
         if d.z is not None:
-            item += t["z"].format(z=fmt_number(d.z, lang))
+            item += t["z"].format(z=fmt_number(d.z))
         items.append(item)
     lines.append(t["sensors"].format(items="; ".join(items)))
     if alert.cusum:
         lines.append(
             t["cusum"].format(
-                stat=fmt_number(alert.cusum.statistic, lang),
-                thr=fmt_number(alert.cusum.threshold, lang),
+                stat=fmt_number(alert.cusum.statistic),
+                thr=fmt_number(alert.cusum.threshold),
             )
         )
     contributions = top_contributions(alert)
     if contributions:
         parts = [
             f"{sensor}: "
-            + ", ".join(
-                f"{c['feature']} {fmt_number(c['value_m'], lang, signed=True)} m" for c in feats
-            )
+            + ", ".join(f"{c['feature']} {fmt_number(c['value_m'], signed=True)} m" for c in feats)
             for sensor, feats in contributions.items()
         ]
         lines.append(t["contrib"].format(items="; ".join(parts)))

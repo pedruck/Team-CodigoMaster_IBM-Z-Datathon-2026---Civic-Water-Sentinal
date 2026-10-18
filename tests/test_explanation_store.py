@@ -19,7 +19,6 @@ from sentinel.audit import (
 from sentinel.audit.devserver import (
     ExplainingAuditSink,
     create_app,
-    languages_from_env,
     narrator_from_env,
 )
 from sentinel.config import ConfigError
@@ -85,20 +84,13 @@ def test_pending_then_ready_and_the_model_is_called_once() -> None:
     assert len(s.store.records()) == 1
 
 
-def test_every_language_is_explained_and_logged() -> None:
-    s = service(
-        Counting(
-            GOOD,
-            "[SIMULAÇÃO] O alerta A-20190314T1230Z-1 indica suspeita de vazamento na região R4.",
-        ),
-        languages=("en", "pt"),
-    )
+def test_explanations_are_english_only() -> None:
+    s = service(Counting())
     s.submit(mock_alert())
     assert s.wait_idle(5)
-    en, pt = s.status("A-20190314T1230Z-1", "en"), s.status("A-20190314T1230Z-1", "pt")
-    assert en is not None and pt is not None
-    assert (en.language, pt.language) == ("en", "pt")
-    assert [r["payload"]["language"] for r in s.store.records()] == ["en", "pt"]
+    status = s.status("A-20190314T1230Z-1")
+    assert status is not None and status.language == "en"
+    assert [r["payload"]["language"] for r in s.store.records()] == ["en"]
 
 
 def test_rejected_text_is_final_and_logged_with_the_model_text() -> None:
@@ -233,16 +225,12 @@ def test_store_failure_keeps_the_alert_pending(tmp_path: Path) -> None:
 def test_paths_and_env_parsing(tmp_path: Path) -> None:
     assert explanations_path_for("r1", tmp_path) == tmp_path / "r1.explanations.jsonl"
     assert narrator_from_env({}) is None
-    assert languages_from_env({}) == ("en",)
-    assert languages_from_env({"SENTINEL_EXPLANATION_LANGUAGES": "en, pt"}) == ("en", "pt")
     with pytest.raises(ConfigError):
         narrator_from_env({"SENTINEL_NARRATOR": "gpt"})
     with pytest.raises(ConfigError, match="model file not found"):
         narrator_from_env(
             {"SENTINEL_NARRATOR": "llamacpp", "LOCAL_LLM_MODEL_PATH": str(tmp_path / "x.gguf")}
         )
-    with pytest.raises(ConfigError):
-        languages_from_env({"SENTINEL_EXPLANATION_LANGUAGES": "es"})
 
 
 def test_devserver_explains_alerts_over_http(
@@ -253,7 +241,6 @@ def test_devserver_explains_alerts_over_http(
     """Backend with mocks (no narrator → deterministic text), real chain, real HTTP."""
     monkeypatch.setenv("SENTINEL_AUDIT_RUN", "e2e")
     monkeypatch.setenv("SENTINEL_AUDIT_DIR", str(tmp_path))
-    monkeypatch.setenv("SENTINEL_EXPLANATION_LANGUAGES", "en,pt")
     monkeypatch.setenv("SENTINEL_MIN_HISTORY_WINDOWS", "3")
     monkeypatch.setenv("SENTINEL_HISTORY_CAPACITY", "6")
     monkeypatch.setenv("SENTINEL_SENSOR_REGISTRY", str(_registry(tmp_path)))
@@ -268,11 +255,8 @@ def test_devserver_explains_alerts_over_http(
     body = client.get(f"/v1/alerts/{alert_id}/explanation").json()
     assert body["status"] == "ready" and body["language"] == "en"
     assert body["text"].startswith("[SIMULATION]") and body["record"]["seq"] == 0
-    pt = client.get(f"/v1/alerts/{alert_id}/explanation", params={"language": "pt"}).json()
-    assert pt["text"].startswith("[SIMULAÇÃO]")
     missing = client.get("/v1/alerts/A-nope/explanation")
     assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
-    assert client.get(f"/v1/alerts/{alert_id}/explanation?language=es").status_code == 422
 
     assert verify_file(tmp_path / "e2e.jsonl").ok
     assert verify_file(tmp_path / "e2e.explanations.jsonl").ok
@@ -299,3 +283,20 @@ def _registry(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def test_after_a_restart_the_latest_version_of_an_alert_is_returned(tmp_path: Path) -> None:
+    """Review of PR #17: two stored versions of one alert_id; status() must give the newer."""
+    path = tmp_path / "run.explanations.jsonl"
+    first = service(None, path)
+    v1, v2 = mock_alert(), mock_alert(region="R7")
+    first.submit(v1)
+    first.wait_idle(5)
+    first.submit(v2)
+    first.wait_idle(5)
+    first.close()
+
+    again = service(None, path)
+    status = again.status(v1.alert_id)
+    assert status is not None and status.record is not None
+    assert status.record.seq == 1 and "region R7" in status.text

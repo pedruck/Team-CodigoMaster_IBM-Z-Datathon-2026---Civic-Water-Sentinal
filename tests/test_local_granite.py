@@ -69,8 +69,7 @@ def test_few_shot_prompt_ends_with_the_alert() -> None:
         assert distractor not in last_record
     # The simulation notice is the code's job (explain adds it), not the model's.
     assert "is_mock" not in prompt and "[SIMULATION]" not in prompt
-    pt = build_completion_prompt(alert, "pt")
-    assert pt.endswith("Explicação:") and "[SIMULAÇÃO]" not in pt and "região R2" in pt
+    assert "region R2" in prompt  # the examples are English, like every returned text
 
 
 def test_examples_have_the_same_shape_as_the_alert() -> None:

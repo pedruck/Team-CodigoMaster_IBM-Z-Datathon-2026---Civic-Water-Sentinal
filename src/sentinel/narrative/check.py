@@ -3,16 +3,20 @@
 Rule (design document §6): every sensor/region/ID, number, date and time in the text must
 come from the alert payload. Anything else is rejected and the deterministic template is
 used instead. Numbers match after rounding to the decimals written in the text, and by
-absolute value ("5,1 m abaixo" restates a deviation of -5.11 m). Integers written in the
-text (counts, years, days) are matched the same way, so the check is strict but not
-pedantic about rounding.
+absolute value ("5.1 m below" restates a deviation of -5.11 m), so the check is strict but
+not pedantic about rounding. The text is English, like the rest of the project: the decimal
+separator is ".", and a comma inside a number ("0,91") is read as two numbers and rejected.
 
 Numbers must also sit next to what they belong to. In each clause (split at ". ", "; ",
 ": " and line breaks):
 - a deviation or z-score must belong to a sensor named in that clause (or, when the clause
   names no sensor, to any deviating sensor);
 - a forecaster contribution needs its feature name in the same clause;
-- global values (CUSUM, threshold, hours since onset, counts, audit seq, dates) go anywhere.
+- a number followed by "m" (metres) must be a deviation or a contribution, never a count, an
+  hour, a CUSUM value or a z-score;
+- other global values (CUSUM, threshold, hours since onset, counts, audit seq) go anywhere;
+- days and years are never bare numbers: dates are only accepted as dates (2019-03-14,
+  14/03/2019, "March 14, 2019", "14th of March") and must be dates of the alert.
 Found on the VM: Granite 350M wrote "P14 and P21 read 0.21 m and 0.17 m below", reusing the
 contributions of ``hour_of_week`` as deviations; each number existed in the payload, so only
 this rule catches it. It cannot see a swap between two named sensors ("P14 and P21 read
@@ -39,18 +43,34 @@ _TIME = re.compile(r"(?<![\d:])(\d{1,2})(?::|h)(\d{2})(?::\d{2})?(?![\d:])", _A)
 _ID = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z_-]*\d[A-Za-z0-9_-]*", _A)
 _Z_SCORE = re.compile(r"[zZ]-\d", _A)
 _SIGNS = "-\u2212\u2013+"  # hyphen, minus sign, en dash, plus
-_NUMBER = re.compile(rf"(?<![A-Za-z0-9_.,])[{_SIGNS}]?\d+(?:[.,]\d+)?(?!\d)", _A)
+_NUMBER = re.compile(rf"(?<![A-Za-z0-9_.])[{_SIGNS}]?\d+(?:\.\d+)?(?!\d)", _A)
 _FORBIDDEN = re.compile(
-    r"vazamento confirmado|confirmamos|h[áa] um vazamento|existe um vazamento"
-    r"|n[ãa]o h[áa] vazamento|com certeza|sem d[úu]vida"
-    r"|confirmed leak|leak (?:is )?confirmed|there is (?:a|no) leak|\bno leak\b"
-    r"|\bcertainly\b|\bdefinitely\b",
+    r"confirmed leak|leak (?:is )?confirmed|there is (?:a|no) leak|\bno leak\b"
+    r"|\bcertainly\b|\bdefinitely\b|\bwithout (?:a )?doubt\b",
     re.IGNORECASE,
 )
 MOCK_LABEL = re.compile(r"simula|mock", re.IGNORECASE)
 
 
 _CLAUSE = re.compile(r"(?<=[.;:!?])\s+|\n+")
+_METRES = re.compile(r"\s*m\b", re.ASCII)  # the unit right after a number: "0.91 m", "0.91m"
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+}  # fmt: skip
+_MONTH = "|".join(sorted(_MONTHS, key=len, reverse=True))
+# Dates written with a month name ("March 14, 2019", "14th of March", "March 2019"): checked
+# against the alert's dates like the numeric forms. Days and years are
+# never accepted as bare numbers (a "14 m" deviation must not pass because the alert is on the
+# 14th).
+_MONTH_DAY = re.compile(
+    rf"\b({_MONTH})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?(?!\d)", re.IGNORECASE
+)
+_DAY_MONTH = re.compile(
+    rf"(?<!\d)(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MONTH})\b(?:,?\s+(\d{{4}}))?",
+    re.IGNORECASE,
+)
+_MONTH_YEAR = re.compile(rf"\b({_MONTH})\s+(\d{{4}})(?!\d)", re.IGNORECASE)
 
 
 class NarrativeCheck(ContractModel):
@@ -77,7 +97,7 @@ def _numbers(value: Any) -> Iterator[float]:
 
 
 def _parse_number(token: str) -> tuple[float, int]:
-    digits = token.lstrip(_SIGNS).replace(",", ".")
+    digits = token.lstrip(_SIGNS)
     decimals = len(digits.split(".")[1]) if "." in digits else 0
     return float(digits), decimals
 
@@ -110,7 +130,6 @@ class _Allowed:
         self.datetimes = {(m.date(), m.hour, m.minute) for m in moments}
         self.dates = {m.date() for m in moments}
         self.times = {(m.hour, m.minute) for m in moments}
-        numbers |= {float(d.year) for d in self.dates} | {float(d.day) for d in self.dates}
         self.numbers = {abs(n) for n in numbers}
         # Longest first, so "P1" never eats the start of an allowed "P10".
         self.literals = sorted(literals, key=len, reverse=True)
@@ -120,6 +139,7 @@ class _Allowed:
             d.sensor: {abs(d.deviation_m)} | ({abs(d.z)} if d.z is not None else set())
             for d in alert.deviating_sensors
         }
+        self.deviation_m = {d.sensor: {abs(d.deviation_m)} for d in alert.deviating_sensors}
         self.feature_values: dict[str, set[float]] = {}
         for features in (alert.forecast_contributions_m or {}).values():
             for feature, v in features.items():
@@ -133,7 +153,6 @@ class _Allowed:
             global_values.add(float(alert.audit.seq))
         if alert.summary:
             global_values |= {_parse_number(n)[0] for n in _NUMBER.findall(alert.summary)}
-        global_values |= {float(d.year) for d in self.dates} | {float(d.day) for d in self.dates}
         self.global_values = global_values
 
     def number_ok(self, token: str) -> bool:
@@ -184,11 +203,23 @@ def _clean(text: str, allowed: _Allowed) -> tuple[str, list[str], list[str]]:
         except ValueError:
             return False
 
+    def named_ok(year: str | None, month: str, day: str | None) -> bool:
+        m = _MONTHS[month.lower()]
+        if day is None:
+            return any((d.year, d.month) == (int(year or 0), m) for d in allowed.dates)
+        return any(
+            (d.month, d.day) == (m, int(day)) and (year is None or d.year == int(year))
+            for d in allowed.dates
+        )
+
     work, bad_iso = _strip(_ISO, work, iso_ok)
     work, bad_dmy = _strip(_DMY, work, dmy_ok)
+    work, bad_md = _strip(_MONTH_DAY, work, lambda m: named_ok(m[3], m[1], m[2]))
+    work, bad_dm = _strip(_DAY_MONTH, work, lambda m: named_ok(m[3], m[2], m[1]))
+    work, bad_my = _strip(_MONTH_YEAR, work, lambda m: named_ok(m[2], m[1], None))
     work, bad_time = _strip(_TIME, work, lambda m: (int(m[1]), int(m[2])) in allowed.times)
     work, bad_ids = _strip(_ID, work, lambda m: bool(_Z_SCORE.match(m.group(0))))
-    return work, [*bad_iso, *bad_dmy, *bad_time], bad_ids
+    return work, [*bad_iso, *bad_dmy, *bad_md, *bad_dm, *bad_my, *bad_time], bad_ids
 
 
 def _misattributed(text: str, allowed: _Allowed) -> list[str]:
@@ -200,16 +231,25 @@ def _misattributed(text: str, allowed: _Allowed) -> list[str]:
             *(allowed.sensor_values[s] for s in (sensors or allowed.sensor_values))
         )
         feature_values: set[float] = set().union(*(allowed.feature_values[f] for f in features))
+        metre_values: set[float] = set().union(
+            *(allowed.deviation_m[s] for s in (sensors or allowed.deviation_m))
+        )
         work, _, _ = _clean(clause, allowed)
         for m in _NUMBER.finditer(work):
             token = m.group(0)
             if not allowed.number_ok(token):
                 continue  # already reported as unknown
-            if not (
-                _matches(token, allowed.global_values)
-                or _matches(token, sensor_values)
-                or _matches(token, feature_values)
-            ):
+            if _METRES.match(work, m.end()):
+                # A length in metres is a deviation or a contribution, never a count, a time,
+                # a CUSUM value or a z-score ("P14 read 3 m below" with 3 deviating sensors).
+                ok = _matches(token, metre_values) or _matches(token, feature_values)
+            else:
+                ok = (
+                    _matches(token, allowed.global_values)
+                    or _matches(token, sensor_values)
+                    or _matches(token, feature_values)
+                )
+            if not ok:
                 bad.append(f"{token} ({', '.join(sensors) or '-'})")
     return bad
 

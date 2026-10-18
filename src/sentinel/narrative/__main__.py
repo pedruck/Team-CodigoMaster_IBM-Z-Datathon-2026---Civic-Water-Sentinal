@@ -19,10 +19,8 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import cast
 
 from sentinel.narrative.explain import Narrator, explain
-from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language
 from sentinel.narrative.local import LlamaCppNarrator, LocalGraniteNarrator, LocalLLMError
 from sentinel.narrative.mock import mock_alert
 from sentinel.narrative.watsonx import WatsonxError, WatsonxNarrator
@@ -36,7 +34,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     model.add_argument("--llamacpp", action="store_true", help="load the GGUF in this process")
     model.add_argument("--local", action="store_true", help="GGUF behind a llama.cpp server")
     model.add_argument("--watsonx", action="store_true", help="Granite on watsonx.ai")
-    parser.add_argument("--language", choices=["en", "pt"], default=DEFAULT_LANGUAGE)
     args = parser.parse_args(argv)
 
     alert = (
@@ -61,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     started = time.perf_counter()
-    explanation = explain(alert, narrator, language=cast(Language, args.language))
+    explanation = explain(alert, narrator)
     report = explanation.model_dump(mode="json")
     report["elapsed_s"] = round(time.perf_counter() - started, 3)
     if load_s is not None:

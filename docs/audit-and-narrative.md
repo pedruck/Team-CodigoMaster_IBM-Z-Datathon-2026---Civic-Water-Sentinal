@@ -1,350 +1,369 @@
-# Auditoria e explicabilidade (P5)
+# Audit and explainability (P5)
 
-Dono: P5 (@Leo3107). Estado: implementado e testado **com mocks** (previsor/detector do
-backend, alerta inventado, HTTP do watsonx falso). Contrato D `Proposed` até a equipe
-confirmar. Nada aqui foi rodado com dados reais do BattLeDIM nem contra o watsonx.ai de verdade.
+Owner: P5 (@Leo3107). Status: implemented and tested **with mocks** (the backend's forecaster
+and detector, an invented alert, a fake watsonx HTTP endpoint) and run on the LinuxONE VM with
+the Granite model that is there. Contract D is `Proposed` until the team confirms it. Nothing
+here has been run on real BattLeDIM data or against the real watsonx.ai service.
 
-| O quê | Onde |
+| What | Where |
 |---|---|
-| Log encadeado (`AuditSink` real) | `src/sentinel/audit/chain.py` — `HashChainAuditSink`, `audit_path_for` |
-| Verificação por linha de comando | `src/sentinel/audit/verify.py` — `python -m sentinel.audit.verify` |
-| Fatos estruturados + texto determinístico | `src/sentinel/narrative/facts.py` |
-| Validação do texto gerado | `src/sentinel/narrative/check.py` |
-| LLM injetável + fallback | `src/sentinel/narrative/explain.py` |
-| Granite no watsonx.ai | `src/sentinel/narrative/watsonx.py` — `WatsonxNarrator` |
-| Granite na própria LinuxONE (GGUF via llama.cpp) | `src/sentinel/narrative/local.py` — `LlamaCppNarrator` (no processo) e `LocalGraniteNarrator` (servidor) |
-| Notebook para a VM (descoberta + Granite local) | `notebooks/p5_audit/p5_linuxone_granite.ipynb` |
-| Explicar um alerta pela linha de comando | `src/sentinel/narrative/__main__.py` — `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
-| API com a cadeia e as explicações ligadas (temporário, até BE-013/Q-AUD-07) | `src/sentinel/audit/devserver.py` |
-| Explicações geradas em segundo plano, guardadas e auditadas | `src/sentinel/narrative/store.py` — `ExplanationService`, `ExplanationStore` |
-| Alerta inventado para testes/notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
-| Testes | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_watsonx.py` |
-| Demonstração | `notebooks/p5_audit/p5_auditoria_narrativa.ipynb` |
+| Hash-chained log (the real `AuditSink`) | `src/sentinel/audit/chain.py`: `HashChainAuditSink`, `audit_path_for` |
+| Command-line verifier | `src/sentinel/audit/verify.py`: `python -m sentinel.audit.verify` |
+| Structured facts and deterministic text | `src/sentinel/narrative/facts.py` |
+| Validation of model-written text | `src/sentinel/narrative/check.py` |
+| Pluggable LLM and fallback | `src/sentinel/narrative/explain.py` |
+| Granite on watsonx.ai | `src/sentinel/narrative/watsonx.py`: `WatsonxNarrator` |
+| Granite on the LinuxONE itself (GGUF through llama.cpp) | `src/sentinel/narrative/local.py`: `LlamaCppNarrator` (in process), `LocalGraniteNarrator` (server) |
+| Explanations generated in the background, stored and audited | `src/sentinel/narrative/store.py`: `ExplanationService`, `ExplanationStore` |
+| Explain one alert from the command line | `src/sentinel/narrative/__main__.py`: `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
+| API with the chain and the explanations wired in (temporary, until BE-013 / Q-AUD-07) | `src/sentinel/audit/devserver.py` |
+| Invented alert for tests and notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
+| Tests | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_local_granite.py`, `tests/test_watsonx.py`, `tests/test_explanation_store.py` |
+| Walk-through | `notebooks/p5_audit/p5_audit_narrative.ipynb` |
+| Granite on the VM (discovery, load, explain) | `notebooks/p5_audit/p5_linuxone_granite.ipynb` |
 
-O sink entra no pipeline pela injeção que já existe em `build_pipeline(audit_sink=...)`; os
-arquivos do backend não foram alterados.
+The sink plugs into the pipeline through the existing injection point,
+`build_pipeline(audit_sink=...)`. No backend file is changed.
 
-## Decisões da equipe (2026-10-17)
+## Team decisions (2026-10-17/18)
 
-| Tema | Decisão |
+| Topic | Decision |
 |---|---|
-| LLM da narrativa | watsonx.ai com modelo Granite (`WatsonxNarrator`) |
-| Q-AUD-03 falha ao gravar auditoria | **fail-closed** (decisão da equipe em `team-workflow`, implementada pelo P3 na `main`, ADR-006). O alerta só é servido depois que o `alert.raised` foi gravado; eventos que falham esperam numa fila ordenada e são reenviados antes de cada janela nova; com a fila cheia (`SENTINEL_AUDIT_PENDING_CAPACITY`), a resposta é 503 `audit_backlog_full`. Status da janela: `recorded`, `pending` ou `disabled`. |
-| Q-AUD-02 onde fica o log | `~/shared/civicwater/audit/<run>.jsonl` na VM, fora dos clones do Git (`audit_path_for(run)`) |
-| Idioma da explicação | **inglês** por padrão (`DEFAULT_LANGUAGE = "en"`); `language="pt"` continua disponível |
-| Q-DET-02 sinal do z | `deviation_m = observado − esperado` (negativo numa queda) e `z = (esperado − observado)/σ` (positivo numa queda). O alerta inventado e os exemplos do prompt da P5 seguem essa convenção; a validação compara valores absolutos. |
-| Alerta 1.1 (ADR-011, P4) | Novo campo opcional `candidate_pipe` (ID de tubo, por exemplo `p147`). Regiões reais do L-Town (por exemplo `Z3-R1`). A P5 mostra o tubo como "Candidate pipe (not a confirmed location)" / "Tubo candidato (não é uma localização confirmada)"; a validação aceita esse ID e recusa outro tubo. O prompt do modelo pequeno não inclui o tubo (mesmo motivo das contribuições). |
+| Narrative model | Granite: on the LinuxONE itself (`LlamaCppNarrator`) or on watsonx.ai (`WatsonxNarrator`) |
+| Q-AUD-03, audit append fails | **Fail-closed** (team decision in `team-workflow`, implemented by P3 on `main`, ADR-006). An alert is served only after its `alert.raised` event is recorded. Failed events wait in an ordered queue and are retried before every new window; when the queue is full (`SENTINEL_AUDIT_PENDING_CAPACITY`), the answer is 503 `audit_backlog_full`. Window status: `recorded`, `pending` or `disabled`. |
+| Q-AUD-02, where the log lives | `~/shared/civicwater/audit/<run>.jsonl` on the VM, outside every git clone (`audit_path_for(run)`) |
+| Language | **English only**, like the rest of the project: every explanation, prompt and doc |
+| Q-DET-02, sign of z | `deviation_m = observed − expected` (negative on a drop) and `z = (expected − observed)/σ` (positive on a drop). P5's invented alert and prompt examples follow it; the validation compares absolute values. |
+| Alert 1.1 (ADR-011, P4) | New optional `candidate_pipe` (a pipe ID such as `p147`) and real L-Town regions (such as `Z3-R1`). P5 shows the pipe as "Candidate pipe (not a confirmed location)". The validation accepts that ID and rejects any other pipe. The small model's prompt leaves the pipe out, for the same reason as the contributions. |
 
-## Quando o `[SIMULATION]` some
+An earlier version of this document recorded fail-open, which was what the backend did at the
+time. `main` pointed out the contradiction (Q-DOC-01); this document now follows `main`.
 
-Um alerta só deixa de ser simulado quando o previsor **e** o detector são reais (`is_mock=false`).
-Situação em 2026-10-18, depois do merge da `main`:
+## When `[SIMULATION]` goes away
 
-| Peça | Situação |
+An alert stops being a simulation only when both the forecaster **and** the detector are real
+(`is_mock=false`). State on 2026-10-18, after merging `main`:
+
+| Piece | State |
 |---|---|
-| Previsor real (P2) | **Existe:** XGBoost em `~/shared/civicwater/models/xgboost-33@0.1.0` na VM (`SENTINEL_FORECASTER=xgboost`), `is_mock=false`. |
-| Dados reais de 2019 (P1) | **Existem:** o replay inteiro de 2019 passa na validação (`docs/runbook-vm.md`). |
-| Regiões e rede de tubos (P4) | **Existem:** `config/regions.battledim.json` e `l-town.json` no diretório de dados. |
-| Calibração do CUSUM (P4) | **Falta.** O detector só deixa de ser mock com `provenance = "battledim-2018-oof"`, calibrado com os resíduos fora da amostra de 2018 **do mesmo previsor** (DEP-DET-05). Para o `xgboost-33@0.1.0` essa calibração não existe; as que existem são `synthetic` ou `dev-baseline-2018`, que forçam `is_mock=true`. |
+| Real forecaster (P2) | **Exists:** XGBoost at `~/shared/civicwater/models/xgboost-33@0.1.0` on the VM (`SENTINEL_FORECASTER=xgboost`), `is_mock=false`. |
+| Real 2019 data (P1) | **Exist:** the whole 2019 replay passes validation (`docs/runbook-vm.md`). |
+| Regions and pipe network (P4) | **Exist:** `config/regions.battledim.json` and `l-town.json` in the data directory. |
+| CUSUM calibration (P4) | **Missing.** The detector stops being a mock only with `provenance = "battledim-2018-oof"`, calibrated on out-of-fold 2018 residuals **of the same forecaster** (DEP-DET-05). No such calibration exists for `xgboost-33@0.1.0`. The ones that exist (`synthetic`, `dev-baseline-2018`) force `is_mock=true`. |
 
-Ou seja, falta o P2 entregar os resíduos fora da amostra de 2018 do XGBoost, e o P4 rodar a
-calibração e commitar `config/calibration.<previsor>.json`. Com o XGBoost e o detector mock, nenhum
-alerta é gerado (σ de 1 m contra resíduos de milímetros). Quando a calibração existir, a P5 não
-muda nada: o aviso some sozinho, e esse caminho já está testado.
+So P2 has to deliver the out-of-fold 2018 residuals of the XGBoost, and P4 has to run the
+calibration and commit `config/calibration.<forecaster>.json`. With the XGBoost and the mock
+detector no alert is raised at all (σ of 1 m against millimetre residuals). Once the calibration
+exists, P5 changes nothing: the notice disappears by itself, and that path is already tested.
 
-Uma versão anterior deste documento registrava fail-open, porque era o que o backend fazia na
-época. A `main` apontou a contradição (Q-DOC-01); este documento agora segue a `main`.
+## Contract D: audit record v1.0
 
-## Contrato D — registro de auditoria v1.0
-
-Uma linha JSON por evento recebido do pipeline (`AuditEvent`: `alert.raised`,
+One JSON line per event received from the pipeline (`AuditEvent`: `alert.raised`,
 `window.scored`, `window.not_scored`):
 
-| Campo | Conteúdo |
+| Field | Content |
 |---|---|
 | `record_version` | `"1.0"` |
-| `seq` | 0, 1, 2… atribuído pelo sink; continua após reinício |
-| `recorded_at` | relógio do servidor ao gravar (UTC, `Z`) |
-| `type`, `window_end`, `alert_id` | do `AuditEvent` |
-| `payload` | do `AuditEvent` (para `alert.raised`: o alerta **sem** o campo `audit`) |
-| `payload_sha256` | `SHA-256(json_canônico(payload))` |
-| `prev_hash` | `hash` do registro anterior; o primeiro usa 64 zeros |
-| `hash` | `SHA-256(prev_hash ‖ json_canônico(registro sem prev_hash e hash))` |
+| `seq` | 0, 1, 2… assigned by the sink; continues after a restart |
+| `recorded_at` | server clock when written (UTC, `Z`) |
+| `type`, `window_end`, `alert_id` | from the `AuditEvent` |
+| `payload` | from the `AuditEvent` (for `alert.raised`: the alert **without** its `audit` field) |
+| `payload_sha256` | `SHA-256(canonical_json(payload))` |
+| `prev_hash` | `hash` of the previous record; the first record uses 64 zeros |
+| `hash` | `SHA-256(prev_hash ‖ canonical_json(record without prev_hash and hash))` |
 
-JSON canônico: `json.dumps(v, sort_keys=True, separators=(",", ":"), allow_nan=False)` em
-ASCII, a mesma regra de `SensorWindow.content_hash`. Floats seguem o `repr` do Python
-(igual em x86 e s390x). Um verificador em outra linguagem precisa reproduzir essa
-serialização; se isso for necessário, migrar para RFC 8785 (JCS) numa v2.
+Canonical JSON is `json.dumps(v, sort_keys=True, separators=(",", ":"), allow_nan=False)` in
+ASCII, the same rule as `SensorWindow.content_hash`. Floats use Python's `repr`, which is the
+same on x86 and s390x (checked: identical `payload_sha256` on both). A verifier in another
+language must reproduce that serialisation; if one is ever needed, move to RFC 8785 (JCS) in a
+v2.
 
-`AuditRef` devolvido ao pipeline: `{seq, hash}`. O alerta servido em `GET /v1/alerts/{id}`
-carrega esse par em `audit`.
+The pipeline gets back `AuditRef {seq, hash}`. The alert served by `GET /v1/alerts/{id}` carries
+that pair in `audit`.
 
-**Ligação alerta ↔ registro (Q-AUD-05):** `payload_sha256` do registro `alert.raised` é o hash
-do alerta sem `audit`. Qualquer um com o JSON do alerta confere com `verify_alert(alerta,
-registro)` ou `alert_payload_sha256(alerta)`; testado inclusive com o JSON vindo da API.
+**Alert ↔ record link (Q-AUD-05):** the `payload_sha256` of the `alert.raised` record is the hash
+of the alert without `audit`. Anyone holding the alert's JSON can check it with
+`verify_alert(alert, record)` or `alert_payload_sha256(alert)`. This is tested with the JSON
+returned by the API.
 
-**Garantias do sink:** append-only; thread-safe; cada linha passa por `flush` + `fsync` antes de
-`append` retornar; falha de escrita levanta `AuditError` sem consumir `seq` e sem deixar linha
-pela metade; ao iniciar, o arquivo existente é verificado e um arquivo quebrado **nunca** é
-estendido (o início falha com `AuditError`).
+**Sink guarantees:**
+- Append-only and thread-safe.
+- Every line is flushed and fsynced before `append` returns.
+- A failed write raises `AuditError` without using up a `seq` or leaving half a line behind.
+- On start-up the existing file is verified, and a broken file is **never** extended (start-up
+  fails with `AuditError`).
 
-Com o fail-closed, o pipeline reenvia o evento que falhou, então `AuditError` precisa
-significar "não gravado". Por isso o sink confere, antes de cada gravação, se o arquivo ainda
-tem o tamanho que ele mesmo deixou. Se outro processo escreveu no arquivo, ou se uma gravação
-falha não pôde ser desfeita, o sink recusa com `AuditError` em vez de gravar um segundo
-registro com o mesmo `seq`. O pipeline segura os alertas e o problema fica visível; reiniciar
-o processo faz a verificação de novo. Use **um arquivo por processo**.
+With fail-closed, the pipeline retries an event whose append failed, so `AuditError` must mean
+"not stored". Before every write the sink therefore checks that the file still has the size it
+left it with. If another process wrote to the file, or a failed write could not be undone, the
+sink refuses with `AuditError` instead of writing a second record with the same `seq`. The
+pipeline then holds the alerts and the problem becomes visible; restarting the process
+re-verifies the file. Use **one file per process**.
 
-**Limitação:** quem pode reescrever o arquivo inteiro consegue recalcular uma cadeia
-consistente. A defesa é a âncora: ao fim de cada replay, anotar `sink.head` (`seq` + `hash`)
-fora da VM e verificar com `--anchor-seq/--anchor-hash`. Âncora antiga continua válida quando
-a cadeia cresce; truncamento abaixo dela é detectado.
+**Reads:**
+- `records()`, `records_after(after_seq, limit)` and `get(seq)` read only the bytes the sink has
+  completely written, so a read concurrent with an append never sees half a line.
+- `records_after` seeks to a per-`seq` byte offset kept by the sink, so a page costs O(limit),
+  not a scan from the start of a year-long log (review of PR #17).
 
-## Explicações guardadas e auditadas (geradas em segundo plano)
+**Limitation:** whoever can rewrite the whole file can recompute a consistent chain. The defence
+is the anchor: at the end of every replay, write `sink.head` (`seq` + `hash`) down outside the
+VM and verify with `--anchor-seq/--anchor-hash`. An older anchor stays valid while the chain
+grows, and a truncation below it is detected.
 
-O Granite leva ~30 s por explicação na VM, então a explicação não pode ser gerada quando o
-operador abre o alerta. Além disso, o texto que o operador viu precisa ficar registrado.
+## Stored and audited explanations (generated in the background)
 
-**Como funciona:**
-1. A cadeia de auditoria grava o `alert.raised`. O `ExplainingAuditSink` (no `devserver`) põe o
-   alerta na fila do `ExplanationService`. Esse passo nunca faz a gravação falhar: com o
-   fail-closed, uma falha ali faria o backend reenviar um evento que já está no log.
-2. Um único worker em segundo plano chama `explain()` (Granite + validação + fallback), fora do
-   pipeline das janelas, que continua com a mesma ordem e a mesma latência.
-3. O resultado vai para `~/shared/civicwater/audit/<run>.explanations.jsonl`. É uma cadeia com
-   o **mesmo formato** da auditoria (`type = "explanation.generated"`), verificável com
-   `python -m sentinel.audit.verify`. O payload traz a `Explanation` inteira (texto, fatos,
-   validação, texto bruto do modelo, modelo usado), `text_sha256`, `attempt` e
-   `alert_payload_sha256`.
-4. `verify_explanation(registro_da_explicação, registro_do_alerta)` confere três coisas: que a
-   explicação é daquele `alert.raised`, da mesma versão do alerta, e que o texto bate com o hash
-   gravado.
+Granite takes ~30 s per explanation on the VM, so it cannot run when the operator opens an
+alert, and the text the operator saw has to be on record.
 
-**Regras** (uma explicação por versão do alerta e idioma):
-- Quando o modelo responde, ele é chamado **uma única vez**. Texto aceito e texto recusado são
-  finais: com `temperature=0`, chamar de novo daria o mesmo texto.
-- Quando o modelo **falha** (erro ou resposta vazia), o texto padrão é gravado e mostrado, e um
-  novo `submit` tenta o modelo de novo, até `max_attempts` (3) chamadas no total.
-- Tudo fica no log, e o registro mais recente de cada chave é o atual. Depois de um reinício, o
-  serviço lê o log e não chama o modelo de novo.
-- Se o log de explicações não puder ser gravado (por exemplo, alguém escreveu no arquivo), a
-  explicação fica `pending` com o texto padrão, e um log quebrado nunca é estendido.
+**How it works:**
+1. The audit chain records the `alert.raised` event, and the `ExplainingAuditSink` (in the
+   `devserver`) queues the alert on the `ExplanationService`. Queuing never fails the append:
+   with fail-closed, a failure there would make the backend retry an event that is already in
+   the log.
+2. A single background worker calls `explain()` (Granite + validation + fallback), outside the
+   window pipeline, whose order and latency do not change.
+3. The result goes to `~/shared/civicwater/audit/<run>.explanations.jsonl`. It is a chain with
+   the **same format** as the audit log (`type = "explanation.generated"`), so
+   `python -m sentinel.audit.verify` checks it. The payload carries the whole `Explanation`
+   (text, facts, validation, the model's raw text, the model used), plus `text_sha256`,
+   `attempt` and `alert_payload_sha256`.
+4. `verify_explanation(explanation_record, alert_record)` checks three things: the explanation
+   belongs to that `alert.raised` record, it was made for the same version of the alert, and its
+   text matches the recorded hash.
 
-**Leitura** (implementação de referência para o Q-AUD-07, no `devserver`):
-`GET /v1/alerts/{id}/explanation?language=en|pt` devolve `ExplanationStatus`:
-- `status`: `pending` (com o texto padrão enquanto isso) ou `ready`;
-- `source`, `text`, `generator`, `generated_at`, `fallback_reason`;
-- `alert_payload_sha256` e `record` (`seq`/`hash` no log de explicações).
+**Rules** (one explanation per alert version):
+- When the model answers, it is called **once**. Accepted and rejected texts are both final:
+  with `temperature=0` a new call would give the same text.
+- When the model **fails** (error or empty answer), the deterministic text is stored and shown,
+  and a later `submit` tries the model again, up to `max_attempts` (3) calls in total.
+- Everything stays in the log, and the latest record of an alert is the current one. After a
+  restart the service reads the log, returns the **latest** version of each alert (review of
+  PR #17) and does not call the model again.
+- If the explanations log cannot be written (for example, someone wrote to the file), the
+  explanation stays `pending` with the deterministic text, and a broken log is never extended.
 
-Alerta desconhecido devolve 404 `not_found`; idioma inválido, 422. Variáveis de ambiente:
-`SENTINEL_NARRATOR` = `none` (padrão, só texto padrão) | `llamacpp` | `local` | `watsonx`, e
-`SENTINEL_EXPLANATION_LANGUAGES` (padrão `en`).
+**Reading it** (reference implementation for Q-AUD-07, in the `devserver`):
+`GET /v1/alerts/{id}/explanation` returns an `ExplanationStatus`:
+- `status`: `pending` (with the deterministic text meanwhile) or `ready`;
+- `source`, `text`, `generator`, `generated_at` and `fallback_reason`;
+- `alert_payload_sha256` and `record` (the `seq`/`hash` in the explanations log).
 
-Na VM, com o Granite carregado no processo da API (1 thread):
+An unknown alert gives 404 `not_found`. Environment: `SENTINEL_NARRATOR` = `none` (default,
+deterministic text only) | `llamacpp` | `local` | `watsonx`.
+
+On the VM, with Granite loaded in the API process (1 thread):
 
 ```bash
-SENTINEL_AUDIT_RUN=leo-teste SENTINEL_NARRATOR=llamacpp SENTINEL_EXPLANATION_LANGUAGES=en uvicorn sentinel.audit.devserver:create_app --factory --host 0.0.0.0 --port $API_PORT
+SENTINEL_AUDIT_RUN=leo-test SENTINEL_NARRATOR=llamacpp uvicorn sentinel.audit.devserver:create_app --factory --host 127.0.0.1 --port $API_PORT
 ```
 
-## Explicação do alerta
+**Access:** use `--host 127.0.0.1`. The VM is shared and the API has no authentication, so with
+`0.0.0.0` alerts and explanations would be open to anyone who can reach the port. To look from
+outside the VM, use the SSH tunnel, as the dashboard does (ADR-009, `docs/runbook-vm.md`).
 
-1. `alert_facts(alert)` — JSON só com dados do alerta (região, sensores, desvios, z, início,
-   CUSUM, top-3 contribuições por sensor, modelos, `audit_seq`). É a explicação estruturada e
-   a única entrada do LLM.
-2. `render_text(alert)` — texto determinístico em inglês (ou `"pt"`); sempre disponível.
-3. `explain(alert, narrador)` — chama o LLM. O texto só é aceito se `check_narrative` não
-   encontrar nada fora do payload; senão, ou se o modelo falhar/demorar/vier vazio, volta o
-   template com `fallback_reason`.
+**Cost of fsync (review of PR #17):** every record is fsynced before `append` returns, because
+the contract requires it to be durable before returning. The 2019 replay writes one event per
+window (105 120 fsyncs). On a laptop it cost ~0.35 ms per record with fsync against ~0.11 ms
+without, and `~/shared` on the VM may be slower. Before the demo, time a replay (for example
+`scripts/replay.py --limit 2016` against the `devserver`, with and without the chain) and record
+the numbers here.
 
-`check_narrative` rejeita: sensor, região ou ID que não estão no alerta; número que não bate
-com um valor do alerta (arredondado às casas escritas, por valor absoluto); data ou horário que
-não são `window_end`, `suspected_onset` ou `since`; frases que confirmam ou descartam
-vazamento ("confirmed leak", "definitely", "vazamento confirmado"…); alerta mock sem o aviso
-"[SIMULATION]"/"[SIMULAÇÃO]".
+**Pacing the demo (review of PR #17):** with one worker and 25–45 s per explanation, a fast
+replay with hundreds of alerts builds hours of queue. That is not an error: while it waits, the
+explanation shows as `pending` with the deterministic text. For the demo, there are three
+options:
+- replay slowly (`scripts/replay.py --speed`);
+- show alerts whose explanations were generated beforehand;
+- use `SENTINEL_NARRATOR=none` (deterministic text, instant) and show Granite on its own in the
+  notebook.
 
-Também rejeita **número no lugar errado** (`misattributed_numbers`). Em cada trecho do texto
-(separado por ". ", "; ", ": " ou quebra de linha):
-- um desvio ou z precisa ser de um sensor citado no mesmo trecho;
-- uma contribuição do previsor precisa vir com o nome da feature;
-- valores globais (CUSUM, limiar, horas, contagem, seq, datas) podem aparecer em qualquer trecho.
+## Explaining an alert
 
-Essa regra nasceu de um caso real na VM: o Granite 350M escreveu "P14 and P21 read 0.21 m and
-0.17 m below", usando as contribuições de `hour_of_week` como se fossem desvios. Cada número
-existia no payload, então a regra antiga aceitou. Limites que continuam: não detecta troca
-entre dois sensores citados juntos ("P14 and P21 read 0.62 m and 0.91 m"), não confere números
-por extenso ("three") nem unidades.
+1. `alert_facts(alert)`: JSON with the alert's data only (region, candidate pipe, sensors,
+   deviations, z, onset, CUSUM, the top 3 contributions per sensor, models, `audit_seq`). It is
+   the structured explanation and the model's only input.
+2. `render_text(alert)`: deterministic English text; always available.
+3. `explain(alert, narrator)`: calls the model. The text is accepted only if `check_narrative`
+   finds nothing outside the payload; otherwise, or if the model fails, times out or answers
+   nothing, the deterministic text comes back with a `fallback_reason`. When the alert is a mock,
+   the code adds `[SIMULATION]` itself; the model is not trusted to.
 
-`Explanation` carrega `alert_payload_sha256` e `audit`, então a explicação fica presa à versão
-auditada do alerta. O LLM nunca decide se existe alerta: isso é do detector (P4).
+`check_narrative` rejects:
+- any sensor, region, pipe or other ID that is not in the alert;
+- any number that does not match a value of the alert (rounded to the decimals written, by
+  absolute value);
+- any date or time that is not `window_end`, `suspected_onset` or a `since`;
+- phrases that confirm or rule out a leak ("confirmed leak", "there is a leak", "definitely",
+  …);
+- a mock alert's text without `[SIMULATION]`.
 
-## watsonx.ai / Granite
+The text is English: the decimal separator is ".", and a comma inside a number ("0,91") is
+read as two numbers and rejected.
 
-`WatsonxNarrator` usa só a biblioteca padrão (nenhum pacote a instalar no LinuxONE):
+It also rejects **numbers in the wrong place** (`misattributed_numbers`). In each clause (split
+at ". ", "; ", ": " and line breaks):
+- a deviation or z-score must belong to a sensor named in that clause (or, when the clause names
+  no sensor, to any deviating sensor);
+- a forecaster contribution needs its feature name in the same clause;
+- a number followed by "m" (metres) must be a deviation or a contribution, never a count, an
+  hour, a CUSUM value or a z-score ("P14 read 3 m below" with 3 deviating sensors is rejected);
+- other global values (CUSUM, threshold, hours since onset, counts, audit seq) can appear in any
+  clause;
+- days and years are **never** bare numbers. Dates are only accepted as dates (`2019-03-14`,
+  `14/03/2019`, "March 14, 2019", "14th of March", "March 2019") and must be dates of the alert.
+  Before the review of PR #17, "P14 read 14 m" passed because the alert is on the 14th.
 
-1. token IAM: `POST https://iam.cloud.ibm.com/identity/token` (grant
-   `urn:ibm:params:oauth:grant-type:apikey`), reaproveitado até 60 s antes de expirar;
-2. chat: `POST {WATSONX_URL}/ml/v1/text/chat?version=2024-10-08` com `model_id`,
-   `project_id`, `messages`, `max_tokens=300`, `temperature=0`; o texto vem de
+The clause rule comes from a real case on the VM: Granite 350M wrote "P14 and P21 read 0.21 m
+and 0.17 m below", using the contributions of `hour_of_week` as deviations. Every number existed
+in the payload, so the earlier rule accepted it.
+
+Remaining limits:
+- it cannot see two values swapped between sensors named together ("P14 and P21 read 0.62 m and
+  0.91 m");
+- it does not check numbers written in words ("three");
+- the only unit it recognises is "m".
+
+`Explanation` carries `alert_payload_sha256` and `audit`, so the explanation is tied to the
+audited version of the alert. The model never decides whether an alert exists: that is the
+detector's job (P4).
+
+## Granite on watsonx.ai
+
+`WatsonxNarrator` uses the standard library only (nothing to install on the LinuxONE). It makes
+two calls:
+1. IAM token: `POST https://iam.cloud.ibm.com/identity/token` (grant
+   `urn:ibm:params:oauth:grant-type:apikey`), reused until 60 s before it expires;
+2. chat: `POST {WATSONX_URL}/ml/v1/text/chat?version=2024-10-08` with `model_id`, `project_id`,
+   `messages`, `max_tokens=300` and `temperature=0`; the text is in
    `choices[0].message.content`.
 
-| Variável | Conteúdo |
+| Variable | Content |
 |---|---|
-| `WATSONX_APIKEY` | API key do IBM Cloud — **segredo**: nunca no Git, no notebook ou em logs |
-| `WATSONX_URL` | endpoint regional, ex. `https://us-south.ml.cloud.ibm.com` |
-| `WATSONX_PROJECT_ID` | projeto do watsonx.ai |
-| `WATSONX_MODEL_ID` | modelo Granite de chat; em 2026-10-17 só `ibm/granite-4-h-small`, só em us-south e eu-de (ver abaixo) |
-| `WATSONX_API_VERSION` | opcional, padrão `2024-10-08` |
-| `WATSONX_TIMEOUT_S` | opcional, padrão 20 |
+| `WATSONX_APIKEY` | IBM Cloud API key. **Secret:** never in git, in a notebook or in logs |
+| `WATSONX_URL` | regional endpoint, e.g. `https://us-south.ml.cloud.ibm.com` |
+| `WATSONX_PROJECT_ID` | watsonx.ai project |
+| `WATSONX_MODEL_ID` | Granite chat model; on 2026-10-17 only `ibm/granite-4-h-small`, only in us-south and eu-de (see below) |
+| `WATSONX_API_VERSION` | optional, default `2024-10-08` |
+| `WATSONX_TIMEOUT_S` | optional, default 20 |
 
-Uso: `explain(alert, WatsonxNarrator.from_env())`. Erros (HTTP, rede, timeout, resposta
-inesperada) viram `WatsonxError`, e `explain` cai no template com o motivo; a API key não
-aparece em `repr`, mensagens de erro nem `fallback_reason`. Pendente: a chamada real nunca foi
-executada (sem credenciais aqui) e é preciso confirmar que a VM alcança `*.cloud.ibm.com`.
+Usage: `explain(alert, WatsonxNarrator.from_env())`. Errors (HTTP, network, timeout, unexpected
+answer) become `WatsonxError`, and `explain` falls back to the deterministic text with the
+reason. The API key never appears in `repr`, error messages or `fallback_reason`. Still pending:
+the real call was never made (no credentials here), and nobody has confirmed that the VM can
+reach `*.cloud.ibm.com`.
 
-Modelos de chat por região (consulta pública, sem token; repetir antes da demo):
+Chat models per region (public endpoint, no token; repeat before the demo):
 
 ```bash
 curl -s "https://us-south.ml.cloud.ibm.com/ml/v1/foundation_model_specs?version=2024-10-10&filters=function_text_chat&limit=200" | python -m json.tool | grep model_id
 ```
 
-Resultado em 2026-10-17: `ibm/granite-4-h-small` em us-south (Dallas) e eu-de (Frankfurt);
-nenhum Granite de chat em eu-gb, jp-tok, au-syd e ca-tor. O projeto watsonx.ai precisa estar
-numa dessas duas regiões e ter um serviço watsonx.ai Runtime (Watson Machine Learning)
-associado.
+Result on 2026-10-17: `ibm/granite-4-h-small` in us-south (Dallas) and eu-de (Frankfurt), and no
+Granite chat model in eu-gb, jp-tok, au-syd or ca-tor. The watsonx.ai project must be in one of
+those two regions and have a watsonx.ai Runtime (Watson Machine Learning) service associated.
 
-## Granite na própria LinuxONE (sem nuvem)
+## Granite on the LinuxONE itself (no cloud)
 
-O que a VM da equipe tem (seção 1 de `p5_linuxone_granite.ipynb`, 2026-10-17):
+What the team VM has (section 1 of `p5_linuxone_granite.ipynb`, 2026-10-17):
 
-| Item | Resultado |
+| Item | Result |
 |---|---|
-| Máquina | s390x, 3 CPUs, 8,2 GB de RAM (3,2 GB livres no momento), NNPA (Telum) visível |
-| Modelo | `~/granite-4.0-h-350m-base-be.f16.gguf`, 685 MB, GGUF v3 big-endian |
-| Runtime | `llama_cpp` (llama-cpp-python) **instalado no kernel do Jupyter**; sem `llama-server`; `gcc` e `cmake` presentes |
-| Exemplo da IBM | `~/Loan_Approval_Demo.ipynb` menciona o Granite |
+| Machine | s390x, 3 CPUs, 8.2 GB RAM (3.2 GB free at the time), NNPA (Telum) visible |
+| Model | `~/granite-4.0-h-350m-base-be.f16.gguf`, 685 MB, GGUF v3, big-endian |
+| Runtime | `llama_cpp` (llama-cpp-python) **installed in the Jupyter kernel**; no `llama-server`; `gcc` and `cmake` present |
+| IBM's example | `~/Loan_Approval_Demo.ipynb` mentions Granite |
 
-O modelo é o Granite 4.0 H 350M **base**: pequeno e **não** ajustado para instruções. Por isso o
-prompt traz dois exemplos inventados e depois os fatos do alerta (`prompt_for`). Se o modelo
-copiar um exemplo ou inventar algo, `check_narrative` recusa e entra o template.
+The model is Granite 4.0 H 350M **base**: small and **not** instruction-tuned. The prompt is
+therefore few-shot: two invented examples with the same shape as the alert (with or without a
+region), then the alert's facts (`prompt_for`). If the model copies an example or invents
+anything, `check_narrative` rejects it and the deterministic text is used.
 
-**Caminho principal: `LlamaCppNarrator`.** Carrega o GGUF dentro do processo Python com o
-`llama_cpp`, uma vez, e serializa as chamadas. `close()` libera a memória.
+**Main path: `LlamaCppNarrator`.** It loads the GGUF once inside the Python process with
+`llama_cpp`, serialises the calls, and frees the memory on `close()`.
 
-| Variável | Padrão |
+| Variable | Default |
 |---|---|
 | `LOCAL_LLM_MODEL_PATH` | `~/granite-4.0-h-350m-base-be.f16.gguf` |
-| `LOCAL_LLM_THREADS` | 1 (3 vCPUs para a equipe) |
+| `LOCAL_LLM_THREADS` | 1 (3 vCPUs for the whole team) |
 | `LOCAL_LLM_CTX` | 2048 tokens |
 
-Teste: `python -m sentinel.narrative --llamacpp`. A saída 0 significa texto aceito, e o
-resultado mostra `model_load_s` e `elapsed_s`. O notebook `p5_linuxone_granite.ipynb` carrega o
-modelo, explica um alerta inventado e um do pipeline (en/pt) e libera a memória.
+To test it, run `python -m sentinel.narrative --llamacpp`. Exit code 0 means the text was
+accepted, and the output shows `model_load_s`, `elapsed_s` and the token usage. The notebook
+`p5_linuxone_granite.ipynb` loads the model, explains an invented alert and a pipeline alert,
+and frees the memory.
 
-**Alternativa com servidor: `LocalGraniteNarrator`.** Usa `POST {LOCAL_LLM_URL}/v1/completions`
-(`LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`, `LOCAL_LLM_TIMEOUT_S`) com um `llama-server` ou
-`python -m llama_cpp.server`. Serve para quando o modelo precisar ficar fora do processo da
-API. Hoje a VM não tem `llama-server`.
+**Alternative with a server: `LocalGraniteNarrator`.** It calls
+`POST {LOCAL_LLM_URL}/v1/completions` (`LOCAL_LLM_URL`, `LOCAL_LLM_MODEL`,
+`LOCAL_LLM_TIMEOUT_S`) on a `llama-server` or `python -m llama_cpp.server`. Use it if the model
+must live outside the API process. The VM has no `llama-server` today.
 
-### Resultado na VM (2026-10-17, `p5_linuxone_granite.ipynb`, 1 thread)
+### Results on the VM (`p5_linuxone_granite.ipynb`, 1 thread)
 
-| Medida | Valor |
-|---|---|
-| Runtime | `/opt/venv` Python 3.12.15, llama-cpp-python 0.3.36; `system info`: `zDNN : NNPA = 1`, `CPU : LLAMAFILE = 1, OPENMP = 1, REPACK = 1` |
-| Carga do modelo | 11,1 s (primeira vez) · 0,5 s (arquivo já em cache) |
-| Alerta inventado (en) | 41,0 s · **aceito, mas errado**: contribuições apresentadas como desvios (hoje recusado pela regra acima) |
-| Alerta do pipeline (en) | 34,3 s · recusado: copiou a região `R2` do exemplo → template |
-| Alerta do pipeline (pt) | 44,1 s · aceito: "[MOCK] 3 sensores abaixo o esperado de pressão." (verdadeiro, pobre) |
+Runtime: `/opt/venv`, Python 3.12.15, llama-cpp-python 0.3.36. `system info`:
+`zDNN : NNPA = 1`, `CPU : LLAMAFILE = 1, OPENMP = 1, REPACK = 1`. The build has zDNN support and
+detected the NNPA; how much of the inference runs on the accelerator was not measured. The model
+loads in 11.1 s the first time and in 0.5 s once the file is cached.
 
-Os números do `system info` mostram que o build tem suporte a zDNN e detectou o NNPA. Não foi
-medido quanto da inferência roda no acelerador.
-
-**2ª rodada:** prompt enxuto (sem contribuições, resumo do detector, modelos e seq; números
-com 2 casas; `max_tokens` 120) e a regra de números no lugar errado.
-
-| Alerta | Tempo | Resultado |
+| Run | What changed | Outcome |
 |---|---|---|
-| Inventado (en) | 34,1 s | recusado: não escreveu `[SIMULATION]` |
-| Pipeline (en) | 31,5 s | recusado: copiou a região `R2` do exemplo e não escreveu `[SIMULATION]` |
-| Pipeline (pt) | 26,9 s | recusado: copiou a região `R2` do exemplo |
+| 1 | first version | 34–44 s each. One text accepted but **wrong**: contributions passed off as deviations. One rejected (copied region `R2` from an example). One accepted but trivial. |
+| 2 | smaller prompt (no contributions, detector summary, models or seq; 2-decimal numbers; `max_tokens` 120) and the numbers-in-the-wrong-place rule | 26.9–34.1 s; all three rejected (no `[SIMULATION]`, copied `R2`); no misattributed numbers |
+| 3 | `[SIMULATION]` added by the code; examples with the same shape as the alert; the raw text kept | **3/3 accepted and correct**, 26.0–33.6 s; tokens (prompt + answer) 677+87, 548+68, 586+79 |
+| 4 | after merging `main` (positive z in the prompt) | 3/3 accepted and correct, 25.3–33.4 s; **text and tokens identical to run 3**: with `temperature=0` the result is reproducible on s390x |
 
-Ficou 7–17 s mais rápido por explicação, e nenhum número foi parar no lugar errado. Correções
-feitas depois dessa rodada:
-- o aviso de simulação passou a ser colocado pelo código (`explain`), e saiu do prompt;
-- o prompt mostra só exemplos com o mesmo formato do alerta (com ou sem região);
-- `Explanation.model_text` guarda o texto bruto do modelo, mesmo quando recusado;
-- `LlamaCppNarrator.last_usage` guarda os tokens lidos e escritos.
+Run 3 had two Portuguese-language explanations, which the project has since dropped (English
+only); the English one was checked by hand: values, sensor order, region, times and CUSUM all
+match the alert. One imprecision the validation does not catch: the invented alert's text says
+all three sensors are low "since 02:10", but P09 has no `since` (02:10 is the alert's estimated
+onset).
 
-**3ª rodada:** aviso colocado pelo código, exemplos do mesmo formato e texto bruto guardado.
+**Where the time goes** (a rough estimate from three measurements): ~0.026 s per prompt token
+(~38 tokens/s) and ~0.17 s per generated token (~6 tokens/s). That is ~15–17 s reading the
+prompt and ~12–15 s writing, with 1 thread.
 
-| Alerta | Tempo | Tokens (prompt + resposta) | Resultado |
-|---|---|---|---|
-| Inventado (en) | 33,6 s | 677 + 87 | **aceito e correto**: R4; P14/P21/P09 a 0,91/0,62/0,48 m; CUSUM 12,4/8,0 |
-| Pipeline (en) | 26,0 s | 548 + 68 | **aceito e correto**: sem região; P03/P02/P01 a 5,06/4,96/4,95 m às 16:40 UTC |
-| Pipeline (pt) | 28,9 s | 586 + 79 | **aceito e correto**: o mesmo, em português |
+Ways to reduce it:
+- fewer prompt tokens (e.g. one example instead of two; it changes quality, so it must be
+  measured);
+- 2 threads when the VM is idle;
+- reuse the prompt prefix across alerts of the same shape (not verified for the hybrid model).
 
-Conferi os três textos contra os alertas: valores, ordem dos sensores, região, horários e CUSUM
-batem.
+Even at ~30 s, the explanation fits easily within the 300 s between windows, as long as it is
+generated in the background and stored.
 
-Uma imprecisão que a validação não pega: no alerta inventado o texto diz que os três sensores
-estão abaixo "since 02:10", mas o P09 não tem `since`. O 02:10 é o início estimado do alerta.
+**Conclusion and recommendation:**
+- The infrastructure works on the LinuxONE: the model loads and generates, the validation rejects
+  what is wrong, and the fallback takes over.
+- The quality of the 350M *base* model depends on the prompt and the validation. The current
+  version went 3/3 on a small, mock sample. The deterministic text remains the guaranteed
+  fallback, and Granite's text is shown only when the validation accepts it.
+- For better text: a Granite *instruct* model as a big-endian GGUF (e.g. a 350M or 1B instruct
+  converted with `convert_hf_to_gguf.py --bigendian`), or `ibm/granite-4-h-small` on watsonx.ai.
+- At ~30 s per explanation, generation must happen in the background, right after the alert, and
+  be stored (done: `sentinel.narrative.store`).
 
-**Para onde vai o tempo** (estimativa feita com as 3 medidas, só indicativa): ~0,026 s por
-token de prompt (~38 tokens/s) e ~0,17 s por token gerado (~6 tokens/s). Ou seja, ~15–17 s
-lendo o prompt e ~12–15 s escrevendo, com 1 thread.
+## Testing on a laptop (Windows, PowerShell)
 
-Formas de reduzir:
-- menos tokens de prompt (por exemplo, 1 exemplo em vez de 2; mudaria a qualidade, então teria
-  de ser medido);
-- 2 threads quando a VM estiver livre;
-- reaproveitar o prefixo do prompt entre alertas do mesmo formato (não verificado para o
-  modelo híbrido).
-
-Mesmo com ~30 s, a explicação cabe folgada no intervalo de 300 s entre janelas, desde que seja
-gerada em segundo plano e guardada.
-
-Limites da amostra: 3 alertas, todos mock, e com `temperature=0` a mesma entrada dá o mesmo
-texto. Para estimar a taxa de aceitação é preciso uma avaliação com mais alertas e formatos
-variados.
-
-**Conclusão e recomendação:**
-- **A infraestrutura funciona no LinuxONE:** o modelo carrega, gera, a validação recusa o que
-  está errado e o fallback entra.
-- **A qualidade do Granite 350M *base* depende do prompt e da validação.**
-  - 1ª rodada: 1 recusa, 1 texto errado aceito e 1 texto trivial.
-  - Depois de prender os números ao sensor certo, colocar o aviso pelo código e usar exemplos
-    do mesmo formato (3ª rodada): 3/3 aceitos e corretos.
-
-  Ainda é uma amostra pequena e mock. O texto padrão continua sendo o fallback garantido; o texto
-  do Granite é mostrado só quando aprovado pela validação.
-- **Para texto melhor:** um Granite *instruct* em GGUF big-endian (por exemplo, 350M ou 1B
-  instruct convertido com `convert_hf_to_gguf.py --bigendian`) ou o `ibm/granite-4-h-small` no
-  watsonx.
-- **Latência de 34–44 s por explicação com 1 thread:** a explicação precisa ser gerada em
-  segundo plano, logo depois do alerta, e guardada. Não pode ser gerada quando o operador abre
-  o alerta.
-
-## Como testar no notebook local (Windows, PowerShell)
-
-Na raiz do clone. `uv` não está instalado nesta máquina; `python -m uv` evita depender do PATH.
+From the root of the clone. `uv` was not on the PATH on this machine; `python -m uv` avoids
+depending on it.
 
 ```powershell
 python -m pip install uv
-python -m uv sync --locked
-python -m uv run pytest tests/test_audit_chain.py tests/test_narrative.py tests/test_watsonx.py
+python -m uv sync --locked --group dashboard
 python -m uv run pytest
 ```
 
-Gates da CI: `python -m uv run ruff format --check src tests scripts`,
-`python -m uv run ruff check src tests scripts`, `python -m uv run mypy`.
+CI gates: `python -m uv run ruff format --check src tests scripts dashboard`,
+`python -m uv run ruff check src tests scripts dashboard` and `python -m uv run mypy`.
 
-Notebook (no Windows use `python -m jupyter`; `uv run --with jupyter jupyter lab` falha com
-"os error 3" neste caminho):
+Notebooks (on Windows use `python -m jupyter`; `uv run --with jupyter jupyter lab` fails with
+"os error 3" on this path):
 
 ```powershell
 python -m uv run --with jupyter python -m jupyter lab
 ```
 
-Ponta a ponta pela API (dois terminais; `data/` é ignorado pelo Git):
+End to end through the API, in two terminals (`data/` is ignored by git):
 
 ```powershell
 $env:SENTINEL_AUDIT_RUN="local-test"; $env:SENTINEL_AUDIT_DIR="data/audit"; python -m uv run uvicorn sentinel.audit.devserver:create_app --factory --port 8000
@@ -355,112 +374,99 @@ python -m uv run python scripts/make_synthetic.py data/synthetic.jsonl --count 2
 python -m uv run python scripts/replay.py data/synthetic.jsonl
 curl.exe -s http://127.0.0.1:8000/v1/alerts
 curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id> -o data/alert.json
+curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id>/explanation
 python -m uv run python -m sentinel.audit.verify data/audit/local-test.jsonl --alert data/alert.json
-python -m uv run python -m sentinel.narrative --alert data/alert.json
+python -m uv run python -m sentinel.audit.verify data/audit/local-test.explanations.jsonl
 ```
 
-Esperado (mocks): 288 janelas aceitas, 1 alerta, cadeia com 289 registros `ok: true`, alerta
-`ok: true`, explicação `source: template` com `[SIMULATION]`. Ao reiniciar o servidor, a mesma
-cadeia continua; apague `data/audit/local-test.jsonl` para começar do zero.
+Expected (mocks): 288 windows accepted, 1 alert, an audit chain of 289 records with `ok: true`,
+the alert `ok: true`, and the explanation `ready` with `source: template` and `[SIMULATION]`.
+Restarting the server continues the same chains; delete the files in `data/audit/` to start
+over.
 
-Granite (precisa das credenciais; a chave é digitada sem aparecer nem ficar no histórico):
+Granite on watsonx.ai (needs credentials; the key is typed without being shown or kept in the
+history):
 
 ```powershell
 $env:WATSONX_APIKEY = [Net.NetworkCredential]::new('', (Read-Host 'API key' -AsSecureString)).Password
 $env:WATSONX_URL="https://us-south.ml.cloud.ibm.com"; $env:WATSONX_PROJECT_ID="<project id>"; $env:WATSONX_MODEL_ID="ibm/granite-4-h-small"
 python -m uv run python -m sentinel.narrative --watsonx
-python -m uv run python -m sentinel.narrative --alert data/alert.json --watsonx
 ```
 
-Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto recusado ou erro
-(ver `fallback_reason` e `check`); 2 = variável faltando.
+Exit code: 0 = Granite's text accepted; 1 = Granite was called but its text was rejected or it
+failed (see `fallback_reason` and `check`); 2 = missing configuration.
 
-## Como fazer funcionar na VM LinuxONE
+## Running on the LinuxONE VM
 
-1. **Levar o código:** branch própria (`feat/audit-chain-narrative`), `nbstripout --install`,
-   commit, push e PR para `main` com revisão de quem é afetado (P3 por `devserver.py` e pela
-   integração).
-2. **No seu clone da VM** (`~/shared/civicwater/users/<nome>/repo`): `git fetch` e trocar para
-   a branch. Sem `pip install -e`: o notebook e os comandos usam `PYTHONPATH=src` com o Python
-   de `/opt/venv`.
-3. **Testes na VM:**
-   `PYTHONPATH=src python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_watsonx.py`.
-   `test_audit_chain.py` usa o `TestClient` do FastAPI (precisa de `httpx2` em `/opt/venv`); se
-   faltar `pytest`/`httpx2`, pedir a quem administra o ambiente.
-4. **Rede:** `curl -s -o /dev/null -w "%{http_code}\n" https://iam.cloud.ibm.com/identity/token`
-   deve responder um código HTTP (400 = alcançável). Timeout ou erro de DNS = saída bloqueada;
-   aí a narrativa fica sempre no template e é preciso liberar `iam.cloud.ibm.com` e
-   `us-south.ml.cloud.ibm.com` (ou `eu-de`).
-5. **Credenciais:** a VM tem um único usuário Linux, então qualquer arquivo ou `.bashrc` é lido
-   por todos. Defina a chave só na sessão (`read -rs WATSONX_APIKEY && export WATSONX_APIKEY`
-   no terminal; `getpass` no notebook). Prefira uma API key de Service ID com acesso só ao
-   projeto, e revogue depois do evento.
-6. **Teste do Granite na VM:** `PYTHONPATH=src python -m sentinel.narrative --watsonx`
-   (saída 0 esperada).
-7. **API compartilhada com a cadeia** (depois do merge, na cópia de integração, combinado com o
-   P3, um único worker):
-   `cd ~/shared/civicwater/main && SENTINEL_AUDIT_RUN=replay-2019 uvicorn sentinel.audit.devserver:create_app --factory --host 0.0.0.0 --port 8000`.
-   Quando o BE-013 existir, trocar por `SENTINEL_AUDIT_SINK=chain` e apagar `devserver.py`.
-8. **Depois do replay:**
-   `python -m sentinel.audit.verify ~/shared/civicwater/audit/replay-2019.jsonl` e guardar o
-   `head` (`seq` + `hash`) **fora da VM** (PR, chat da equipe, seu computador). Na demo,
-   verificar com `--anchor-seq/--anchor-hash`.
-9. **Alertas reais:** só deixam de ser mock quando P1 (IDs reais, BE-010), P2 (modelo) e P4
-   (CUSUM/região) entregarem; o dashboard só mostra a explicação quando P3 criar
-   `GET /v1/alerts/{id}/explanation`.
+1. **Get the code** into your clone (`~/shared/civicwater/users/<name>/repo`) and run
+   `source ~/shared/civicwater/users/<name>/start.sh` in every new terminal. Do not
+   `pip install -e` in a personal clone: the notebooks and commands use `PYTHONPATH=src` with the
+   Python of `/opt/venv`.
+2. **Tests:**
+   `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py tests/test_explanation_store.py`.
+3. **Notebooks:** run `p5_audit_narrative.ipynb` and `p5_linuxone_granite.ipynb` with
+   *Kernel → Restart Kernel and Run All Cells*. Before pulling again, discard what Jupyter saved:
+   `git fetch origin && git switch --discard-changes -C <branch> origin/<branch>`.
+4. **API with the chain and Granite** (one worker, `127.0.0.1`): the command in "Stored and
+   audited explanations" above. Replay with `scripts/replay.py --url http://127.0.0.1:$API_PORT`,
+   then read `GET /v1/alerts/{id}/explanation` until it is `ready`.
+5. **After the replay:** run `python -m sentinel.audit.verify` on both logs and keep the `head`
+   (`seq` + `hash`) **outside the VM** (the PR, the team chat, your laptop). In the demo, verify
+   with `--anchor-seq/--anchor-hash`.
+6. **watsonx.ai, if used:** check the network with
+   `curl -s -o /dev/null -w "%{http_code}\n" https://iam.cloud.ibm.com/identity/token`. Any HTTP
+   code (400) means it is reachable; a timeout or DNS error means egress is blocked. The VM has a
+   single Linux user, so any file or `.bashrc` can be read by everyone: set the key only for the
+   session (`read -rs WATSONX_APIKEY && export WATSONX_APIKEY`, or `getpass` in a notebook).
+   Prefer a Service ID key with access to the project only, and revoke it after the event.
 
-## Perguntas ainda em aberto
+## Open questions
 
-| Pergunta | Proposta da P5 |
+| Question | P5's position |
 |---|---|
-| Q-AUD-01 porta e tipos de evento | Aceitos como estão. |
-| Q-AUD-05 circularidade | Resolvida como no ADR-006: hash do alerta sem `audit`. |
-| Q-AUD-06 leitura da cadeia por HTTP (substitui Q-AUD-04) | **De acordo com a proposta da `main`.** `GET /v1/audit?after_seq&limit` devolve os registros em ordem de `seq`, exatamente como gravados; `GET /v1/audit/head` devolve `{seq, hash}`; só leitura; o backend **não** devolve um booleano "verified", porque verificar é trabalho do cliente (`python -m sentinel.audit.verify`, `verify_records`). A P5 já fornece `HashChainAuditSink.records_after(after_seq, limit)` (lê o arquivo aos poucos) e `HashChainAuditSink.head`. As regras que o contrato deve citar estão no Contrato D acima: JSON canônico, `prev_hash` inicial com 64 zeros e a fórmula do `hash`. |
-| Q-AUD-07 explicação por HTTP | **De acordo com o formato proposto.** A implementação de referência está no `devserver` (`GET /v1/alerts/{id}/explanation`, ver "Explicações guardadas e auditadas"), com `status` `pending`/`ready`, `text`, `generator` (string, nome do narrador; vira `ModelInfo` se o P3 preferir), `alert_payload_sha256`, `generated_at` e `record`. `disabled` fica para o backend usar quando não houver serviço de explicações. O P3 move a rota para `sentinel.api` e chama `ExplanationService.submit(alert)` quando o alerta é gravado. |
-| Q-DOC-01 vocabulário de `audit` e fail-open no doc da P5 | Resolvido do lado da P5: a branch trouxe a `main` (merge, sem rebase, porque a branch já está publicada e o `AGENTS.md` proíbe `push --force`). `AuditStatus` agora é o da `main` (`recorded`, `pending`, `disabled`), e este doc registra fail-closed. |
+| Q-AUD-01, port and event types | Accepted as they are. |
+| Q-AUD-05, circular reference | Solved as in ADR-006: the alert is hashed without `audit`. |
+| Q-AUD-06, reading the chain over HTTP (replaces Q-AUD-04) | **Agree with the proposal on `main`.** `GET /v1/audit?after_seq&limit` returns records in `seq` order, exactly as stored; `GET /v1/audit/head` returns `{seq, hash}`; read only. The backend returns **no** "verified" boolean, since verifying is the client's job (`python -m sentinel.audit.verify`, `verify_records`). P5 provides `HashChainAuditSink.records_after(after_seq, limit)` (O(limit) per page) and `HashChainAuditSink.head`. The rules the contract must state are in Contract D above: canonical JSON, the 64-zero genesis `prev_hash` and the `hash` formula. |
+| Q-AUD-07, explanation over HTTP | **Agree with the proposed shape.** The reference implementation is in the `devserver` (`GET /v1/alerts/{id}/explanation`; see "Stored and audited explanations"), with `status` `pending`/`ready`, `text`, `generator` (the narrator's name as a string; it can become a `ModelInfo` if P3 prefers), `alert_payload_sha256`, `generated_at` and `record`. `disabled` is left for the backend to use when no explanation service is configured. P3 moves the route into `sentinel.api` and calls `ExplanationService.submit(alert)` when an alert is recorded. |
+| Q-DOC-01, `audit` vocabulary and fail-open in P5's doc | Solved on P5's side: the branch merged `main` (a merge, not a rebase, because the branch is published and `AGENTS.md` forbids `push --force`). `AuditStatus` is now `main`'s (`recorded`, `pending`, `disabled`), and this document records fail-closed. |
 
-## O que depende de outras pessoas
+## What depends on other owners
 
-- **P3 (backend), BE-013:** aceitar `SENTINEL_AUDIT_SINK=chain` e um caminho/execução
-  (`SENTINEL_AUDIT_PATH` ou `SENTINEL_AUDIT_RUN`) em `config.py` e criar o sink em
-  `main.build_pipeline`, por exemplo `HashChainAuditSink(audit_path_for(run))`. Na `main`
-  (depois do merge) isso ainda não existe: só `null`/`memory`. Endpoints de Q-AUD-06/07.
-  Registrar as variáveis `WATSONX_*` e `LOCAL_LLM_*` (sem valores) em `.env.example`.
-- **P4 (detecção):** o detector CUSUM com regiões já está na `main`. A explicação usa
-  `region`, `suspected_onset`, `cusum` e `since` quando eles vêm preenchidos.
-- **P1 (dados):** os IDs reais do BattLeDIM (`config/sensors.battledim.json`: `n1`, `n54`,
-  `n105`…) estão na `main`; a validação os reconhece (padrão letra+número).
-- **P2 (ML):** `contributions` (TreeSHAP) no `ForecastResult`; o backend já as restringe aos
-  sensores do alerta.
-- **P6 (dashboard):** exibir `explanation.text`, `source`/`fallback_reason`, `audit.seq` e o
-  resultado da verificação.
+- **P3 (backend), BE-013:**
+  - accept `SENTINEL_AUDIT_SINK=chain` and a path or run name (`SENTINEL_AUDIT_PATH` or
+    `SENTINEL_AUDIT_RUN`) in `config.py`;
+  - create the sink in `main.build_pipeline`, e.g. `HashChainAuditSink(audit_path_for(run))`
+    (after the merge, `main` still has only `null`/`memory`);
+  - the endpoints of Q-AUD-06/07;
+  - add `WATSONX_*` and `LOCAL_LLM_*` (no values) to `.env.example`.
+- **P4 (detection):** the calibration that makes alerts real (DEP-DET-05, with P2). The
+  explanation already uses `region`, `candidate_pipe`, `suspected_onset`, `cusum` and `since`
+  when they are filled in. Optional: `.gitattributes` with `eol=lf` for `config/*.json`, so that
+  the hash test of `regions.battledim.json` also passes on Windows checkouts.
+- **P1 (data):** the official BattLeDIM IDs (`config/sensors.battledim.json`: `n1`, `n54`,
+  `n105`…) are on `main`, and the validation recognises them (letters followed by digits).
+- **P2 (ML):** `contributions` (TreeSHAP) in the `ForecastResult`; the backend already restricts
+  them to the alert's sensors.
+- **P6 (dashboard):** show `explanation.text`, `source`/`fallback_reason`, `audit.seq` and the
+  verification result. The 3 Windows-only failures of `tests/test_eval_run.py` (`write_text`
+  without `encoding="utf-8"`, and a path compared with `/`).
 
-## Verificação (2026-10-17, Windows x86_64, Python 3.13.5, dependências do `uv.lock`)
+## Verification
 
-| Comando | Resultado |
+Windows x86_64, Python 3.13.5, dependencies from `uv.lock` (`uv sync --locked --group
+dashboard`, as in CI), unless stated otherwise.
+
+| What | Result |
 |---|---|
-| **Depois do merge da `main` (2026-10-18)**, `uv sync --locked --group dashboard` (como a CI) | — |
-| `ruff format --check` + `ruff check` (`src tests scripts dashboard`) | ok, 140 arquivos |
-| `mypy` | sem problemas em 140 arquivos |
-| `pytest` (suíte inteira) | **757 passed, 20 skipped, 3 failed**. As 3 falhas são de `tests/test_eval_run.py` (P6) e só acontecem no Windows: `write_text` sem `encoding="utf-8"` e um caminho comparado com `/`. Nenhuma toca código da P5. |
-| testes da P5 (`test_audit_chain`, `test_narrative`, `test_local_granite`, `test_watsonx`) | 107 passed |
-| Explicações em segundo plano (2026-10-18): `pytest` suíte inteira | **770 passed**, 20 skipped, 3 failed (as mesmas 3 do P6, só no Windows); P5: 120 passed |
-| Ponta a ponta com `uvicorn` real (`devserver`, `SENTINEL_NARRATOR=none`, IDs oficiais do BattLeDIM), 288 janelas | 288 × 201; 1 alerta; `GET .../explanation` `ready` em en e pt; cadeia de auditoria ok (289 registros) e de explicações ok (2) |
-| Explicações com o Granite no processo da API na VM (`SENTINEL_NARRATOR=llamacpp`) | rodado pelo P5; `verify_explanation` do último registro contra o `alert.raised`: **"explicação ligada ao alerta: OK"** (JSON da explicação não registrado aqui) |
-| **2º merge da `main` (2026-10-18)**: alerta 1.1 (`candidate_pipe`), regiões do L-Town | merge sem conflito; P5: 125 passed (com o exemplo oficial `alert.cusum-synthetic.json`); formatação e lint ok; suíte inteira **849 passed, 34 skipped, 4 failed**. As 4 falhas só acontecem no Windows e estão fora da P5: as 3 de `test_eval_run.py` (P6) e `test_topology_files.py::test_the_committed_regions_file_is_the_one_that_was_fixed` (P4: hash de `config/regions.battledim.json`, que o Git do Windows grava com CRLF, 428 bytes em vez de 415). |
-| Antes do merge: `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
-| `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
-| `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
-| `p5_linuxone_granite.ipynb` (versão `llama_cpp` no kernel) executado no Windows com um `llama_cpp` falso | 0 erros; carrega, aceita o texto válido, recusa o exemplo copiado (en/pt), descarrega |
-| Granite GGUF real na VM, `p5_linuxone_granite.ipynb` | carregou (11,1 s); 3 explicações em 34–44 s; ver "Resultado na VM" acima |
-| Granite na VM, 2ª rodada (prompt enxuto + regra de números no lugar errado) | 3 recusas em 26,9–34,1 s; ver "2ª rodada" acima |
-| Granite na VM, 3ª rodada (aviso pelo código + exemplos do mesmo formato) | **3/3 aceitos e corretos** em 26,0–33,6 s; ver "3ª rodada" acima |
-| Granite na VM depois do merge da `main` (z positivo no prompt, Q-DET-02) | 3/3 aceitos e corretos em 25,3–33,4 s; **textos e tokens idênticos aos da 3ª rodada** (677+87, 548+68, 586+79): com `temperature=0` o resultado é reproduzível no s390x |
-| Avaliação do Granite com muitos alertas variados (taxa de aceitação) | **NOT_RUN** |
-| LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
-| `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
-| Ponta a ponta local: `devserver` + `make_synthetic` + `replay` + `verify --alert` + `sentinel.narrative --alert` | 1 alerta mock; cadeia 289 registros ok; alerta ok; template |
-| `foundation_model_specs` (público) por região | Granite de chat só em us-south e eu-de (`ibm/granite-4-h-small`) |
-| LinuxONE VM (s390x): `p5_auditoria_narrativa.ipynb` completo no Jupyter da VM | todas as seções ok: cadeia de 289 registros válida, adulterações detectadas, alerta `A-20190314T1640Z-1` (mesmo ID e mesmos desvios do x86) ligado ao registro seq 200, LLM falso aceito/recusado como esperado |
-| Paridade x86 × s390x do JSON canônico | `payload_sha256` de `{"i": 1, "status": "scored"}` = `993ee9cc…20d79f` nas duas plataformas |
-| API ponta a ponta na VM, dados reais, watsonx.ai com credenciais | **NOT_RUN** |
+| Latest: English-only explanations, review of PR #17 addressed | `ruff format --check`, `ruff check`, `mypy` (152 files) clean; P5 tests **131 passed**; whole suite **855 passed**, 34 skipped, the same 4 Windows-only failures outside P5 as below (fewer tests than below because the Portuguese cases were removed); both notebooks executed in a real kernel (12/12 and 6/6 code cells, 0 errors; the VM notebook against a fake `llama_cpp`) |
+| Review of PR #17 (P1): bare days/years, metres, latest version after a restart, safe and indexed chain reads | whole suite **863 passed**, 34 skipped, 4 failed: Windows-only and outside P5 (3 in `test_eval_run.py`, P6; 1 in `test_topology_files.py`, P4, whose regions file gets CRLF line endings on a Windows checkout, 428 bytes instead of 415). The reviewer ran the suite on Linux: 853 passed, 34 skipped. |
+| Second merge of `main` (alert 1.1, L-Town regions) | no conflict; P5 tests pass with the backend's official example `alert.cusum-synthetic.json` |
+| Real `uvicorn` end to end (`devserver`, `SENTINEL_NARRATOR=none`, official BattLeDIM registry), 288 windows | 288 × 201; 1 alert; `GET .../explanation` `ready`; audit chain ok (289 records) and explanations chain ok |
+| LinuxONE VM (s390x): P5 tests on branch `leo/local-version` @ `033959d` | 93 passed (before the merges; not rerun since) |
+| LinuxONE VM: walk-through notebook in the VM's Jupyter | every section ok: 289-record chain valid, tampering detected, alert `A-20190314T1640Z-1` (same ID and deviations as on x86) linked to record seq 200 |
+| x86 vs s390x parity of canonical JSON | `payload_sha256` of `{"i": 1, "status": "scored"}` = `993ee9cc…20d79f` on both |
+| LinuxONE VM: `p5_linuxone_granite.ipynb` | see "Results on the VM" above (4 runs) |
+| LinuxONE VM: `devserver` with `SENTINEL_NARRATOR=llamacpp` | `verify_explanation` of the stored explanation against its `alert.raised` record: OK |
+| `foundation_model_specs` (public) per region | Granite chat only in us-south and eu-de (`ibm/granite-4-h-small`) |
+| Granite acceptance rate over many varied alerts | **NOT_RUN** |
+| P5 tests on s390x after the merges; real data; watsonx.ai with credentials | **NOT_RUN** |
