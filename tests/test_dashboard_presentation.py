@@ -178,7 +178,7 @@ def test_evidence_pane_names_the_candidate_as_a_best_guess_and_handles_absences(
 
 def test_queue_label_is_two_short_lines_with_escaped_markdown() -> None:
     (alert,) = PlaybackAlertSource(RUN).list_alerts(AlertQuery()).items
-    assert queue_label(alert) == "**R\\-SYN\\-A** · 17:05  \n3 sensors · \u22120\\.21 m"
+    assert queue_label(alert) == "**R\\-SYN\\-A** · Mar 14 17:05  \n3 sensors · \u22120\\.21 m"
     sneaky = alert.model_copy(update={"region": "*[x](javascript:y)*", "deviating_sensors": ()})
     assert queue_label(sneaky).startswith("**\\*\\[x\\]\\(javascript:y\\)\\***")
 

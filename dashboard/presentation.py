@@ -264,6 +264,21 @@ def _signed(value: float, digits: int = 2) -> str:
     return f"{value:+.{digits}f}".replace("-", "\u2212")
 
 
+def reading(value: float) -> str:
+    """A received number rounded for reading, as the map card does (``fmtNum``): at most three
+    decimals, ``.0`` on whole numbers. The exact value stays in the full record."""
+    return f"{value:.1f}" if float(value).is_integer() else str(round(value, 3))
+
+
+def onset_age(hours: float | None) -> str | None:
+    """The backend's ``hours_since_onset``, in days too once it is over two days."""
+    if hours is None:
+        return None
+    if hours >= 48:
+        return f"{hours:.0f} h ({hours / 24:.1f} days) before this window"
+    return f"{hours:.1f} h before this window"
+
+
 def _score_bar(alert: Alert) -> str:
     """The detector's own numbers on one scale: the alert exists because the score passed
     the threshold. Nothing is computed beyond positioning the two received values."""
@@ -272,8 +287,8 @@ def _score_bar(alert: Alert) -> str:
     stat, limit = alert.cusum.statistic, alert.cusum.threshold
     scale = max(stat, limit) * 1.2
     return (
-        f'<div class="score-bar" role="img" aria-label="Detection score {escape(str(stat))} '
-        f'against threshold {escape(str(limit))}">'
+        f'<div class="score-bar" role="img" aria-label="Detection score {reading(stat)} '
+        f'against threshold {reading(limit)}">'
         f'<span class="fill" style="width:{stat / scale * 100:.2f}%"></span>'
         f'<span class="limit" style="left:{limit / scale * 100:.2f}%"></span></div>'
         '<p class="score-note">The alert was raised when the score passed the threshold.</p>'
@@ -299,13 +314,19 @@ def map_heading(alert: Alert | None) -> str:
     )
 
 
-def evidence_pane(alert: Alert, explanation: str) -> str:
+def evidence_pane(alert: Alert, explanation: str, explanation_note: str | None = None) -> str:
     """The selected alert's key evidence beside the map. Values as received, rounded only for
-    reading; the exact values stay in the full record below."""
+    reading; the exact values stay in the full record below. ``explanation_note`` says how the
+    explanation was produced (``alert_detail.explanation_note``)."""
     region = escape(alert.region or "Region not available")
     badge = '<span class="alert-badge">SIMULATED</span>' if alert.is_mock else ""
-    score = escape(str(alert.cusum.statistic)) if alert.cusum else "not provided"
-    threshold = escape(str(alert.cusum.threshold)) if alert.cusum else "not provided"
+    score = reading(alert.cusum.statistic) if alert.cusum else "not provided"
+    threshold = reading(alert.cusum.threshold) if alert.cusum else "not provided"
+    age = onset_age(alert.hours_since_onset)
+    onset = escape(fmt_time(alert.suspected_onset)) + (
+        f'<small class="onset-age">{escape(age)}</small>' if age and alert.suspected_onset else ""
+    )
+    note = f'<p class="explanation-note">{escape(explanation_note)}</p>' if explanation_note else ""
     pipe = (
         f"<dd><code>{escape(alert.candidate_pipe)}</code> <small>best guess</small></dd>"
         if alert.candidate_pipe
@@ -333,10 +354,11 @@ def evidence_pane(alert: Alert, explanation: str) -> str:
         f"{_score_bar(alert)}"
         '<dl class="evidence-facts">'
         f"<div><dt>Window end</dt><dd>{escape(fmt_time(alert.window_end))}</dd></div>"
-        f"<div><dt>Estimated onset</dt><dd>{escape(fmt_time(alert.suspected_onset))}</dd></div>"
+        f"<div><dt>Estimated onset</dt><dd>{onset}</dd></div>"
         f"<div><dt>Candidate pipe</dt>{pipe}</div></dl>"
         f"<h3>Deviating sensors</h3>{sensors}"
-        f'<h3>Explanation</h3><p class="explanation-slot">{escape(explanation)}</p>'
+        f'<h3>Explanation</h3><p class="explanation-slot" tabindex="0">{escape(explanation)}</p>'
+        f"{note}"
         '<a class="evidence-more" href="#alert-detail" target="_self">'
         "Full record and audit reference</a></section>"
     )

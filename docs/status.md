@@ -10,6 +10,15 @@
 
 ## Summary
 
+**Dashboard evidence fixes (BE-027, 2026-10-18, branch `fix/be-027-dashboard-evidence`):** the
+evidence pane, the detail and the Jupyter view show the stored explanation from
+`GET /v1/alerts/{id}/explanation` (with how it was produced); the queue shows date and time;
+the CUSUM score is rounded for reading; the onset carries its age; the map card shows the
+onset's date. `ExplanationStatus` now lives in `sentinel.schemas.api`. Checked in the browser
+against the shared API (2019 replayed, 895 alerts). Pending: show the explanation's `record`
+and its verification (P5's wish in `docs/audit-and-narrative.md`); recordings carry no
+explanations.
+
 **Dashboard off the VM (BE-026, 2026-10-18, branch `feat/be-026-external-dashboard`):** code for
 both options of the external-dashboard plan: a read-only gateway behind an outbound tunnel, and
 snapshots pushed to pre-signed URLs; the dashboard reads either, shows a snapshot's age and falls
@@ -226,6 +235,8 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| BE-027, branch `fix/be-027-dashboard-evidence` (Linux x86-64, Python 3.12.13): `just ci` | 192 files formatted · ruff OK · mypy: no issues in 191 files · **1163 passed, 40 skipped** (`tests/test_dashboard_explanation.py`: 10 new); dashboard + map tests re-run on the final commit: 170 passed |
+| BE-027 browser (Streamlit on a local port, SSH tunnel to the shared API, 2019 replayed) | queue `Z1-R3 · Dec 31 08:15`; score `170.01` vs `128.0`; onset `2019-12-14 12:20 UTC` + `404 h (16.8 days) before this window`; explanation text + "Deterministic text from the alert's fields, 2026-10-18 05:44:10 UTC."; slot 160 px, scrollable; map card onset `2019-12-14 12:20 UTC`; replay note with the full date |
 | BE-026 gates (Linux x86-64, `feat/be-026-external-dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 191 files formatted · lint passed · mypy: no issues in 190 files · **1153 passed, 40 skipped** (34 new in `tests/test_external_dashboard.py`) |
 | BE-026 local end to end: real API (mocks, ingest token) + synthetic day, `scripts/readonly_gateway.py` in front, dashboard via gateway token, via snapshot file and with the API down + fallback | gateway: reads 200, `/docs` `/openapi.json` `/v1/audit/head` 404, no token 401, POST 405, token absent from its log; dashboard: three modes render at 1280 × 720, 0 browser errors. **VM checks NOT_RUN** |
 | BE-025 gates (Linux x86-64, Python 3.13, Streamlit 1.66, `uv sync --group dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 178 files formatted · lint passed · mypy: no issues in 177 files · **1075 passed, 40 skipped** |
