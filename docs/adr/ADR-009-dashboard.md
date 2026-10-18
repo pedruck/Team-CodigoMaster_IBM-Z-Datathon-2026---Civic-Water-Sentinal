@@ -68,6 +68,24 @@ in the container), reuses the same seam, poll, formatting and banners; the noteb
 `notebooks/p6_eval/dashboard.ipynb` mounts it. The Streamlit page stays the primary view (laptop +
 SSH tunnel); the Jupyter view has no history filters.
 
+**Presentation addendum (2026-10-17, BE-021).** The primary Streamlit page has a light
+operator workspace, section navigation, source-derived latency/history/deviation diagrams
+and an explicit refresh action. Local Geist, Phosphor and GSAP assets avoid a CDN or a second
+build toolchain. Only trusted static local scripts opt into `st.html` JavaScript; contract
+strings are escaped and never inserted into scripts. Reduced motion disables GSAP reveals;
+native controls and content remain usable without them. Raw evidence and audit references
+remain available in disclosures, and the required banners remain visible. No source/API
+contract or Jupyter renderer change. Details: `docs/dashboard-design.md`.
+
+**Readability/UX refinement (2026-10-17, BE-021).** Issued-alert summaries precede evidence,
+history and an initially collapsed technical-status disclosure. The first five summaries
+have readable region/time/sensor/deviation facts and a native evidence action; every
+loaded record and field stays available in a disclosure and the existing selector/history.
+Only explicit evidence selection requests heading focus/scroll; polling does not. Larger
+text, ordered headings, a contextual status count, stronger contrast and content-width
+reflow refine presentation without creating a lifecycle or changing source contracts.
+The requested skill review and scoped verification are in `docs/dashboard-ux-review.md`.
+
 ## Alternatives considered
 - **React SPA with types generated from OpenAPI:** better UX, but a second toolchain, CORS
   or a proxy, and generated types that still do not validate responses at runtime; too much

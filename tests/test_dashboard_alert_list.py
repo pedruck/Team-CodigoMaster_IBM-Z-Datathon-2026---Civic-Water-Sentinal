@@ -36,7 +36,7 @@ def test_recent_alerts_are_listed_newest_stored_first(monkeypatch: pytest.Monkey
         "A-20190314T1640Z-91",
         "A-20190314T1640Z-1",
     ]
-    assert any("Recent alerts" in h.value for h in app.subheader)
+    assert any("Recent alerts" in h.value for h in app.header)
 
 
 def test_mock_alert_row_shows_evidence_age_and_badge(monkeypatch: pytest.MonkeyPatch) -> None:

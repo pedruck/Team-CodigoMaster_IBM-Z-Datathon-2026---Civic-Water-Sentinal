@@ -175,6 +175,9 @@ docs/             architecture, contracts, ADRs, plan, status, testing, performa
 
 ## Documentation
 
+Operator workspace and the source-derived L-Town map:
+[design, interpretation and local preview](docs/dashboard-design.md).
+
 [Architecture](docs/architecture.md) · [Contracts](docs/integration-contracts.md) ·
 [ADRs](docs/adr/README.md) · [Plan](docs/implementation-plan.md) ·
 [Status](docs/status.md) · [Dependencies](docs/dependencies.md) ·
@@ -184,10 +187,11 @@ docs/             architecture, contracts, ADRs, plan, status, testing, performa
 
 ## Data
 
-No BattLeDIM / L-Town data is stored in this repository; obtain it from its authors under
-their terms. Tests and examples use synthetic data with placeholder sensor IDs. The network
-is simulated: nothing here is validated on a real distribution network, and mock outputs are
-never leak detections.
+No raw BattLeDIM SCADA or event labels are stored in this repository. The slim, derived
+`config/l-town-map.json` contains network segments, sensor positions and attribution for
+the operator map (CC BY 4.0; [source](https://zenodo.org/records/4017659)). Other raw data
+must be obtained from its authors under their terms. The network is simulated: nothing
+here is validated on a real distribution network, and mock outputs are never leak detections.
 
 ## License
 

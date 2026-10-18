@@ -226,7 +226,7 @@ def test_no_code_outside_the_evaluation_reads_the_2019_labels() -> None:
     offenders = [
         str(p.relative_to(root))
         for p in sources
-        if "src/sentinel/eval" not in str(p)
+        if "src/sentinel/eval" not in p.relative_to(root).as_posix()
         and ("leaks_2019" in p.read_text() or "eval/v1" in p.read_text())
     ]
     assert offenders == []

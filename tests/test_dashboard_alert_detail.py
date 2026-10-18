@@ -42,7 +42,7 @@ def facts(app: Any) -> dict[str, str]:
 
 
 def texts(app: Any) -> list[str]:
-    elements = [*app.markdown, *app.caption, *app.info, *app.warning, *app.error, *app.subheader]
+    elements = [*app.markdown, *app.caption, *app.info, *app.warning, *app.error, *app.header]
     return [str(e.value) for e in elements]
 
 
@@ -56,7 +56,7 @@ def test_detail_defaults_to_the_newest_alert_on_the_page(monkeypatch: pytest.Mon
         "A-20190314T1640Z-91",
         "A-20190314T1640Z-1",
     ]
-    assert any("Alert detail" in h.value for h in app.subheader)
+    assert any("Alert detail" in h.value for h in app.header)
 
 
 def test_full_alert_shows_every_evidence_field_as_received(

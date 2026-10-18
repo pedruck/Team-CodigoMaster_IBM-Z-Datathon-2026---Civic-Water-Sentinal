@@ -44,8 +44,17 @@ M (½–2 days), L (> 2 days).
 | BE-018 | CI (GitHub Actions running `just ci`) | P2 | DONE | BE-001 | Backend | S | workflow green on PR |
 | BE-019 | Apply team decisions: fail-closed audit with pending queue (Q-AUD-03) and z sign convention (Q-DET-02) | P0 | DONE | — | Backend | S | `tests/test_audit_fail_closed.py`, `test_pressure_drop_has_negative_deviation_and_positive_z` green; ADR-006 and contract §3–§5 updated |
 | BE-020 | Shared integration API on the VM: one ID scheme, `scripts/shared_api.sh`, runbook | P0 | DONE | BE-010 | Backend | S | API on port 8000 from `shared/civicwater/main` via the script; start/status/stop verified on the VM; `docs/runbook-vm.md` |
+| BE-021 | Redesign the Streamlit operator dashboard | P1 | DONE 2026-10-17 | UI-001..005, ADR-009 | Dashboard | M | Alerts first, 16/14 px alert text, retained full records and expandable system status; source-derived diagrams and reduced-motion-aware local GSAP; format/lint/strict typing green; **741 passed, 34 skipped**; five Chrome viewport sizes, keyboard focus, contrast and 200% text checked (`docs/dashboard-design.md`, `docs/dashboard-ux-review.md`) |
+| BE-022 | Align the operator page with the CivicWater Figma direction and show the L-Town network | P1 | IN_PROGRESS | BE-021, BE-012g/i, ADR-011 | Dashboard + Data | M | Keep issued alerts first and every existing detail; add a source-derived network map tied to the selected alert, a dedicated Streamlit map page and Jupyter view; check the map source hashes, browser rendering, accessibility and full gates |
+| BE-023 | Repair sidebar, text spacing and responsive control alignment | P1 | DONE 2026-10-18 | BE-022 | Dashboard | S | Native sidebar collapse restores page width; local typography, heading/control alignment and navigation fixed; seven Chrome widths with 200% text and history filtering passed; 894 passed, 39 skipped; reusable browser regression script in `scripts/check_dashboard_responsive.cjs` |
 
 ## P6 — Dashboard & evaluation
+
+BE-021 readability refinement: **DONE 2026-10-17** — issued-alert summaries first, all fields
+retained, technical metrics in a disclosure and 16 px main / 14 px supporting alert text.
+UI/UX Pro Max review also corrected headings, explicit-action focus, count semantics,
+contrast and enlarged-text reflow. Full gates: **741 passed, 34 skipped**; browser checks
+passed. Owner visual validation pending on the same branch/PR.
 
 Owner: P6. Spec and tickets: `.scratch/p6-dashboard-evaluation/` (spec + one file per
 ticket). Deadline 2026-10-18 10:00. UI-* are Tier 1 (mandatory); EV-* are Tier 2 and run
