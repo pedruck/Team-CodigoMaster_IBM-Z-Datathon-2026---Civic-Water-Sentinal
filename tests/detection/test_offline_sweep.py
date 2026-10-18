@@ -21,7 +21,7 @@ import pytest
 
 from sentinel.detection.cusum import CusumDetector
 from sentinel.detection.offline.layer1 import MatchRule
-from sentinel.detection.offline.sweep import Opening, replay, sweep
+from sentinel.detection.offline.sweep import Opening, replay, sweep, trajectory
 from tests.conftest import INTERVAL, ts
 from tests.detection.artefacts import make_artefact
 
@@ -607,10 +607,70 @@ def test_a_sweep_needs_two_timestamps_to_know_the_period() -> None:
 
 
 def test_the_functions_of_the_sweep_have_no_parameter_with_a_default() -> None:
-    for function in (replay, sweep):
+    for function in (replay, sweep, trajectory):
         defaults = [
             name
             for name, parameter in inspect.signature(function).parameters.items()
             if parameter.default is not inspect.Parameter.empty
         ]
         assert defaults == [], f"{function.__name__} has defaults: {defaults}"
+
+
+# --- 5. The S trajectory (BE-012j) ---------------------------------------------------------
+
+
+def detector_cusum(z: np.ndarray, p: Params) -> np.ndarray:
+    """``residuals[sensor].cusum`` of ``CusumDetector.evaluate`` at every window (T x n)."""
+    sensors = [f"P{i:02d}" for i in range(z.shape[1])]
+    artefact = make_artefact(
+        dict.fromkeys(sensors, 1.0), k=p.k, h=p.h, n_min=p.n_min, c=p.c, h_close=p.h_close
+    )
+    detector = CusumDetector(artefact, interval=INTERVAL)
+    expected = dict.fromkeys(sensors, 0.0)
+    rows = []
+    for t in range(len(z)):
+        observed = {s: -float(z[t, j]) for j, s in enumerate(sensors)}
+        result = detector.evaluate(observed, expected, ts(t))
+        rows.append([result.residuals[s].cusum for s in sensors])
+    return np.array(rows, dtype=np.float64)
+
+
+@pytest.mark.parametrize("quantised", [False, True])
+@pytest.mark.parametrize("p", PARITY_PARAMS)
+def test_trajectory_is_the_s_of_the_detector_bit_for_bit(p: Params, quantised: bool) -> None:
+    z = parity_z(0, quantised=quantised)
+
+    got = trajectory(z, k=p.k, h=p.h, c=p.c)
+
+    np.testing.assert_array_equal(got, detector_cusum(z, p))  # exact, not approximate
+
+
+def test_every_opening_statistic_is_read_on_the_trajectory() -> None:
+    # With N = 1 the statistic of an alert is the largest S of its unclaimed sensors.
+    z = parity_z(1, quantised=False)
+    p = PARITY_PARAMS[0]
+    s = trajectory(z, k=p.k, h=p.h, c=p.c)
+
+    for opening in replay_params(z, p):
+        assert opening.statistic == s[opening.index, opening.sensors[0]]
+        assert all(s[opening.index, j] > p.h for j in opening.sensors)
+
+
+@pytest.mark.parametrize(
+    ("z", "params", "match"),
+    [
+        (np.zeros(6), {}, "2-D"),
+        (np.zeros((6, 2), dtype=np.float32), {}, "float64"),
+        (np.full((6, 2), np.nan), {}, "finite"),
+        (np.zeros((6, 2)), {"k": 0.0}, "k must be positive"),
+        (np.zeros((6, 2)), {"h": -1.0}, "h must be positive"),
+        (np.zeros((6, 2)), {"c": 1.0}, "c must be finite and above 1"),
+    ],
+)
+def test_trajectory_refuses_what_the_detector_would_refuse(
+    z: np.ndarray, params: dict[str, float], match: str
+) -> None:
+    arguments = {"k": 0.5, "h": 8.0, "c": 2.0, **params}
+
+    with pytest.raises(ValueError, match=match):
+        trajectory(z, **arguments)

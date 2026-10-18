@@ -119,3 +119,40 @@ ADR-007, ADR-008, BE-012g (regions), DEP-DET-05 (final calibration), Q-DET-07, d
 ## Revisit when
 P4 delivers candidate pipes (then apply the official 300 m rule and euro score), or the
 official rules document contradicts the scoring code read here.
+
+## Review by the detection owner (P4), 2026-10-17
+
+**Verdict: accept the protocol, with the changes below applied before this ADR becomes
+Accepted.** Nothing in the primary rule (official `[start, end]` window, all 23 leaks, repeats
+neither hit nor false alarm, `layer1.evaluate` reused, `max_delay` 731 days) conflicts with the
+detector. The status stays `Proposed` until the evaluation owner applies the changes; the
+decision is then recorded in the ADR-008 §G rows.
+
+1. **Item 10 names the stale file.** `eval/v1/leaks_2019.csv` cuts the 4 inherited leaks at
+   2019-01-01 (Q-DATA-07); the data owner's `eval/v2/leaks_2019.csv` (PR #14, 23 leaks, start and
+   peak of 2018 for `p257`, `p427`, `p654`, `p810`, checked against the official list) replaces it.
+   Use `eval/v2` and register its sha256 in the manifest.
+2. **Items 6 and 7 are no longer blocked.** `config/regions.battledim.json` exists (BE-012g) and
+   every alert may carry `candidate_pipe` (BE-012i, ADR-011, `Alert` 1.1; `null` without
+   `SENTINEL_DETECTOR_NETWORK`). Region accuracy needs the pipe → region table: it is computable
+   from `l-town.json` without a label (Q-DET-08 c), and the definition must be chosen and
+   registered before the run. The official 300 m rule and the euro score can use
+   `PipeNetwork.pipe_distance`; how pumps and valves count in the distance is open (Q-DET-08 d).
+   Decide before the run whether the official pipe rule becomes the primary view (it removes the
+   "0 false alarms by construction" effect of item 2) or stays a second view. The candidate pipe
+   is a pipe to inspect, not a location, and has not been evaluated on 2018; say so in the table.
+3. **Delays of the 4 inherited leaks are not delays.** Their `start` is in 2018, so
+   "detection delay from `start`" would be hundreds of days and would dominate the median.
+   Compute delays and onset error (item 5) over the 19 leaks that start in 2019 only, and list
+   the 4 inherited ones as "active at the start of the run" with only detected / not detected.
+4. **The 7-day false-alarm view charges the detector for the 4 inherited leaks.** They stay active
+   all of 2019, so alerts that correctly report them fall outside every 7-day window and count
+   as false alarms. Report the 7-day false alarms in two parts: those that fall in the window of
+   an inherited leak (shown separately, not charged to the budget of Q-TEAM-03) and the rest.
+   State the budget it is compared with and where it was fixed (ADR-008 §G).
+5. **Manifest (item 8).** Add `diagnostics.regions_id` and the network id (`l-town.json` sha256)
+   next to `calibration_id`, and the `config/regions.battledim.json` hash, so the run identifies
+   everything the alert fields depend on.
+6. **Calibration is still a development one.** Until DEP-DET-05 is delivered and the BE-012h
+   artefact exists, any run is `is_mock = true` and watermarked "NOT A RESULT" (item 9); the
+   rehearsal with `dev-baseline-2018` is a mechanics check only.

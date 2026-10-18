@@ -7,10 +7,12 @@ The real-data test is skipped without ``SENTINEL_DATA_DIR`` (same pattern as
 
 import calendar
 import dataclasses
+import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -184,19 +186,48 @@ def sha256_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_write_oof_is_deterministic_and_returns_the_sha256_of_the_files(tmp_path: Path) -> None:
+def content_sha256_of(path: Path) -> str:
+    """sha256 of the residual CSV text (what is compressed), not of the ``.gz`` bytes."""
+    return hashlib.sha256(gzip.decompress(path.read_bytes())).hexdigest()
+
+
+def test_write_oof_is_deterministic_and_returns_the_sha256_of_the_content(tmp_path: Path) -> None:
     oof = synthetic_oof()
     first = write_oof(oof, tmp_path / "first")
     second = write_oof(oof, tmp_path / "second")
     assert first == second
     for out in ("first", "second"):
         assert (
-            sha256_of(tmp_path / out / RESIDUALS_FILE),
+            content_sha256_of(tmp_path / out / RESIDUALS_FILE),
             sha256_of(tmp_path / out / FOLDS_FILE),
         ) == first
     assert (tmp_path / "first" / RESIDUALS_FILE).read_bytes() == (
         tmp_path / "second" / RESIDUALS_FILE
     ).read_bytes()
+    # the hash is that of the CSV text, so it is not the sha256 of the .gz file
+    assert first[0] != sha256_of(tmp_path / "first" / RESIDUALS_FILE)
+
+
+def test_residuals_hash_does_not_depend_on_the_compression_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The gzip bytes depend on the zlib build (x86-64 vs s390x), the CSV text does not.
+    oof = synthetic_oof()
+    default_hash = write_oof(oof, tmp_path / "default")[0]
+    original = gzip.GzipFile
+
+    def fastest(*args: Any, **kwargs: Any) -> gzip.GzipFile:
+        return original(*args, compresslevel=1, **kwargs)
+
+    monkeypatch.setattr(gzip, "GzipFile", fastest)
+    fast_hash = write_oof(oof, tmp_path / "fast")[0]
+
+    monkeypatch.undo()
+    default_bytes = (tmp_path / "default" / RESIDUALS_FILE).read_bytes()
+    fast_bytes = (tmp_path / "fast" / RESIDUALS_FILE).read_bytes()
+    assert fast_bytes != default_bytes  # the level took effect: the .gz files differ...
+    assert gzip.decompress(fast_bytes) == gzip.decompress(default_bytes)
+    assert fast_hash == default_hash  # ...and the hash does not
 
 
 def test_gzip_header_carries_neither_a_timestamp_nor_a_file_name(tmp_path: Path) -> None:

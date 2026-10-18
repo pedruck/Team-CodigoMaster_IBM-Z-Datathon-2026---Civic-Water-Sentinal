@@ -14,6 +14,13 @@ contract versions are tracked separately (`schema_version`).
   map in current-section navigation and close the mobile sidebar after selecting a section.
   Add an optional seven-viewport Playwright regression check.
 
+### Added
+- Final calibration v1 of the CUSUM detector for the served forecaster: `config/calibration.xgboost-33.json`
+  (`provenance = battledim-2018-oof`, `xgboost-33@0.1.0` with neighbours, 1 false alarm per week,
+  sha256 `fad6ec0b…` in ADR-008 §G). With it `SENTINEL_DETECTOR=cusum` starts with
+  `models.detector.is_mock = false`. The better variant without neighbours is the documented upgrade
+  once it is exported (`docs/p4-calibration.md` §7).
+
 ### Changed
 - BE-022: align the operator workspace with the public CivicWater Figma palette and IBM Plex
   typography, keep issued alerts first, and show the source-derived L-Town map with selected
@@ -29,6 +36,11 @@ contract versions are tracked separately (`schema_version`).
   text/chart contrast and enlarged-text reflow following the requested UX skill review.
   Simulation/replay notices, source contracts, automatic refresh and history filters are
   retained (`docs/dashboard-design.md`, `docs/dashboard-ux-review.md`).
+- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
+  and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
+  team (Q-TEAM-03). Detection owner's review of
+  ADR-010 appended to it (stale `eval/v1`, regions and candidate pipe now exist, delays and
+  false alarms of the 4 inherited leaks, manifest ids); Q-DET-08 status recorded.
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
   `null` without a pipe network; new alerts carry `schema_version: "1.1"`, 1.0 payloads are still
   accepted. `docs/examples/alert.mock.json` updated. The alert JSON gained a key, so the
@@ -55,6 +67,17 @@ contract versions are tracked separately (`schema_version`).
   differs from its expected digest and is documented in `docs/dashboard-design.md`.
 - Windows verification compatibility: keep the hash-pinned regions JSON at LF on checkout,
   and normalise paths in the evaluation-boundary guard. No region data or runtime code changed.
+- Detection (BE-012j, BE-012h): calibration experiment of the CUSUM on the ML owner's 2018
+  out-of-fold residuals, `python -m sentinel.detection.offline.experiment explore | sweep`
+  (offline only). `offline/oof.py` reads DEP-DET-05 (hashes against `declaration.json`, registry
+  order, regular 5-minute 2018 grid, folds; any path naming 2019 refused); `offline/persistence.py`
+  defines the persistence test and `δ_N` (ADR-008 §D); `offline/selection.py` holds the Pareto
+  front, the budget rule, leave-one-leak-out and the recovery after a repair; `sweep.trajectory`
+  returns the `S` matrix bit for bit with the detector; `calibration.robust_sigma` is shared by
+  `calibrate()` and the tools. The protocol `config/calibration-protocol.xgboost-33.json`
+  (pydantic, no defaults) was committed in two steps: exploration rules before any residual was
+  read, sweep rules after phase A and before any replay (ADR-008 §G). Method and results:
+  `docs/p4-calibration.md`.
 - Forecasting (ML owner, DEP-DET-05): `python -m sentinel.forecasting.oof` writes out-of-fold
   2018 residuals of XGBoost for the detector calibration — calendar-month folds, each month
   predicted by models trained on the clean windows of the other 11, trees per sensor of the
@@ -174,8 +197,11 @@ contract versions are tracked separately (`schema_version`).
   with their hashes, 2018 loader checked against `MANIFEST.json`), `sweep.py` (`replay` with exact
   parity with `CusumDetector` and a parameter `sweep`) and `layer1.py` (delay and false-alarm
   counts; the matching rule is a required argument and provisional, Q-UI-06). The sweep showed that
-  false alarms are not monotone in `h` (ADR-008 §E). BE-012f is not finished: no artefact has
-  been produced from a run yet.
+  false alarms are not monotone in `h` (ADR-008 §E). `devcal.py` runs the whole development calibration
+  (artefact `dev-baseline-2018`, `is_mock`, residual structure, σ sensitivity to the leak mask,
+  sweep and report; every number a required argument) and was reproduced byte for byte from
+  data v1; `write_oof` now hashes the CSV text, not the `.gz` bytes (zlib differs between x86-64
+  and s390x). No 2019 file is opened.
 - Documentation: end-to-end check of the CUSUM selection against the real server with synthetic
   data (`docs/testing.md`) and its timings (`docs/performance.md`); ADR-007/008, contract §3,
   architecture, dependencies and plan updated. No schema change.
