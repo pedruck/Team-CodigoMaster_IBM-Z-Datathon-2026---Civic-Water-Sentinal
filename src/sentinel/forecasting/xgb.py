@@ -29,6 +29,7 @@ from sentinel.forecasting.features import (
     xgb_feature_names,
     xgb_features,
 )
+from sentinel.forecasting.integrity import versioned
 from sentinel.forecasting.interface import ForecastError
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.forecasts import ForecastRequest, ForecastResult
@@ -95,6 +96,7 @@ class XGBoostForecaster:
         engine: str = "snapml",
         tree_format: str = "auto",
         with_contributions: bool | str = True,
+        artefact_sha256: str | None = None,
     ) -> None:
         if engine not in ENGINES:
             raise ValueError(f"engine must be one of {ENGINES}, got {engine!r}")
@@ -131,7 +133,12 @@ class XGBoostForecaster:
             booster_ = getattr(first, "booster_", None)
             self.tree_format_used = str(getattr(booster_, "optimized_tree_format_", tree_format))
 
-        self._info = ModelInfo(name=MODEL_NAME, version=str(meta["version"]), is_mock=False)
+        self.artefact_sha256 = artefact_sha256
+        self._info = ModelInfo(
+            name=MODEL_NAME,
+            version=versioned(str(meta["version"]), artefact_sha256),
+            is_mock=False,
+        )
 
     @property
     def info(self) -> ModelInfo:

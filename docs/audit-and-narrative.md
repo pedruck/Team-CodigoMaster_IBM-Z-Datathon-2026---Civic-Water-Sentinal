@@ -371,7 +371,7 @@ $env:SENTINEL_AUDIT_RUN="local-test"; $env:SENTINEL_AUDIT_DIR="data/audit"; pyth
 
 ```powershell
 python -m uv run python scripts/make_synthetic.py data/synthetic.jsonl --count 288 --leak-at 200
-python -m uv run python scripts/replay.py data/synthetic.jsonl
+python -m uv run python scripts/replay.py data/synthetic.jsonl --url http://127.0.0.1:8000
 curl.exe -s http://127.0.0.1:8000/v1/alerts
 curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id> -o data/alert.json
 curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id>/explanation

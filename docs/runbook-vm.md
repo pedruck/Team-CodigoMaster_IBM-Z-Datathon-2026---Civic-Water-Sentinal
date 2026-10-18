@@ -19,10 +19,18 @@ scripts/shared_api.sh restart    # stop + start
 scripts/shared_api.sh stop
 ```
 
-Defaults: official registry `config/sensors.battledim.json`, in-memory audit sink
-(`SENTINEL_AUDIT_SINK=memory`; `chain` for the hash-chained log, below), log level INFO,
-no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
+Defaults: official registry `config/sensors.battledim.json`, **audit chain**
+(`SENTINEL_AUDIT_SINK=chain`; without `SENTINEL_AUDIT_RUN` every start opens a new chain
+`shared-<port>-<UTC time>`; `memory` only when asked for), **write token** (below), log level
+INFO, no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
+
+**Write token.** `POST` needs `Authorization: Bearer <token>`. The script creates the token once
+in `~/shared/civicwater/secrets/ingest-<port>.token` (mode 600; inside the container
+`/home/ibm-user/shared/civicwater/secrets/`) and hands the API the **file**, never the value
+(`ps` shows command lines to everyone on the VM). It stops accidents (a test sent to the shared
+API from the Jupyter terminal), not a member who reads the file: the VM has one Linux user.
+Never print or commit it.
 
 The forecaster and the detector are the mocks unless set (ADR-005). **Current shared API
 (2026-10-18, `main` @ `45f733d`):** no mocks: XGBoost (`compress_trees`, contributions
@@ -65,13 +73,20 @@ neighbours; `docs/p4-calibration.md` §7), the shared API is started with (annou
 ```bash
 SENTINEL_FORECASTER=xgboost \
 SENTINEL_FORECASTER_PATH=/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0 \
+SENTINEL_FORECASTER_SHA256=808746bc30b30f4c6e35540edf8ee4cd696ae3e398e314217f2708cdc961c407 \
 SENTINEL_FORECASTER_TREE_FORMAT=compress_trees \
 SENTINEL_DETECTOR=cusum \
 SENTINEL_DETECTOR_CALIBRATION=config/calibration.xgboost-33.json \
 SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json \
 SENTINEL_DETECTOR_NETWORK=/home/ibm-user/shared/civicwater/data/network/v1/l-town.json \
+SENTINEL_AUDIT_RUN=replay-2019-<date> \
 scripts/shared_api.sh restart
 ```
+
+`SENTINEL_FORECASTER_SHA256` is the digest of the ML owner's `xgboost-33@0.1.0` directory (36
+files, 2026-10-18; `python -c "from sentinel.forecasting.integrity import artefact_sha256;
+print(artefact_sha256('<dir>'))"`): with it, a changed or replaced weight file stops the start,
+and `status` shows the served version `0.1.0+808746bc`.
 
 To check the files on the VM first, **without starting or restarting anything**, run this in the
 Jupyter terminal (inside the container), in the integration copy:
@@ -95,7 +110,7 @@ skipped, not failed, so check the summary line for `skipped`.
 
 ### Audit chain and explanations (BE-013)
 
-Add `SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=<run>` to the start command to record every
+The script uses the chain by default; set `SENTINEL_AUDIT_RUN=<run>` to name it. It records every
 window in the audit owner's hash chain, `~/shared/civicwater/audit/<run>.jsonl` (inside the
 container: `/home/ibm-user/shared/civicwater/audit/`), with the explanations of the alerts in
 `<run>.explanations.jsonl`. Pick a new run name per replay (e.g. `replay-2019-<date>`): a
@@ -149,7 +164,17 @@ The data owner generates the replay (`docs/data.md`):
 Send it from the Jupyter terminal (same container, so `127.0.0.1` works):
 
 ```bash
-nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" --url http://127.0.0.1:8000
+nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" \
+    --url http://127.0.0.1:8000 --token-file ~/shared/civicwater/secrets/ingest-8000.token
+```
+
+`--url` is required (a forgotten one used to mean the shared API). The script first compares the
+file with `windows_2019.jsonl.manifest.json` when it exists (`docs/data.md`). Afterwards, check
+that the chain recorded exactly that file:
+
+```bash
+python -m sentinel.audit.replay_check ~/shared/civicwater/audit/<run>.jsonl \
+    "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl"
 ```
 
 Measured 2026-10-17: 105 120 × `201` in 145 s with the mocks; 247 s with XGBoost (TreeSHAP off, `compress_trees`); 2026-10-18: 338 s with XGBoost + CUSUM + audit chain on `~/shared` (`docs/performance.md`). It loads the shared

@@ -26,6 +26,14 @@ being used silently.
   `on_alert` asks the optional `ExplainingForecaster.explain` after detection, contract §2),
   `_ENGINE`, `_TREE_FORMAT`
   (`auto | compress_trees | zdnn_tensors`). Detector: `mock` and `cusum` (ADR-007, ADR-008).
+- Artefact integrity (2026-10-18): `load_forecaster` computes the artefact's SHA-256
+  (`sentinel.forecasting.integrity`: the file, or every non-hidden file of the directory by
+  relative path) **before** parsing it. The served `ModelInfo.version` carries the first 8 hex
+  digits (`0.1.0+808746bc`), so the audit names the exact weights; the full digest is logged.
+  `SENTINEL_FORECASTER_SHA256` pins it: any other artefact stops startup. A calibration naming
+  only the release (`0.1.0`) matches any artefact of that release; one naming `0.1.0+<digest>`
+  matches only that artefact (ADR-008). Limit: a file swapped after startup is not detected
+  until the next start.
 - One detector instance per process; called in order under the pipeline lock.
 - Mock usage is visible in every result (`is_mock`) and in `/v1/status.mocks_active`.
 
