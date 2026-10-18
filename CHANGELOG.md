@@ -32,7 +32,8 @@ contract versions are tracked separately (`schema_version`).
   delivered model (no early stopping on the predicted month); two variants, with and without
   the other sensors' current pressures (Q-ML-07); `residuals_long.csv.gz`
   (`timestamp, sensor, observed, expected, fold`), `folds.json` and `declaration.json` per
-  variant under `$SENTINEL_DATA_DIR/v1/oof/`; resumable per fold.
+  variant under `$SENTINEL_DATA_DIR/v1/oof/`; resumable per fold. Run on the VM with the real
+  2018 data (both variants, `docs/p2-forecasting.md`).
 - Optional extra `ml` (numpy, xgboost, snapml) in `pyproject.toml` / `uv.lock` (DEP-ML-03).
 - TreeSHAP on demand: `SENTINEL_FORECASTER_CONTRIBUTIONS` accepts `all | on_alert | off`
   (booleans still mean all/off) and defaults to `on_alert`; the pipeline asks the optional

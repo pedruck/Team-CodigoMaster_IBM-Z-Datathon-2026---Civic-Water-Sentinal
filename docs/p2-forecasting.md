@@ -200,6 +200,23 @@ PYTHONPATH=src nohup python -m sentinel.forecasting.oof \
 tail -f ~/oof.log
 ```
 
+**First run on the VM (s390x, 2026-10-17, real `data/v1`):** 3 468 960 rows per variant
+(105 120 windows × 33 sensors); ≈ 2 min per fold with neighbours, ≈ 30 s without; informative
+summary from `declaration.json` (out-of-fold, all of 2018):
+
+| Variant | Mask for the summary | Clean windows | MAE on clean windows | Leak contrast |
+|---|---|---|---|---|
+| with-neighbours (`xgboost-33@0.1.0`) | `reparados` | 45 700 | 6.7 mm | 4.71 |
+| with-neighbours | `reparados+crescimento` | 22 182 | 6.5 mm | 3.71 |
+| without-neighbours | `reparados` | 45 700 | 16.1 mm | 5.62 |
+| without-neighbours | `reparados+crescimento` | 22 182 | 15.5 mm | 4.37 |
+
+Without the neighbours the error in normal operation is ~2.4× larger but leaks stand out more
+(higher contrast): the neighbours absorb part of each drop, as expected (Q-ML-02). Which one
+detects better (delay × false alarms) is the detector owner's comparison; both are far below
+the baseline's 0.105 m. The contrast here is over all of 2018, so it is not comparable with the
+3.39 of the Nov–Dec validation.
+
 The calibration mask is the detector owner's choice (the P1 handoff recommends
 `reparados+crescimento` for σ and h); the out-of-fold models keep the delivered model's
 training mask, so the forecaster does not need retraining.
