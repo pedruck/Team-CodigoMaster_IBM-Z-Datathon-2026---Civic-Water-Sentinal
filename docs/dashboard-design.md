@@ -1,4 +1,4 @@
-# Operator workspace — BE-021 / BE-022 / BE-023
+# Operator workspace — BE-021 / BE-022 / BE-023 / BE-024
 
 The primary dashboard remains Streamlit. BE-022 aligns the page with the public preview
 of the [CivicWater Figma design](https://www.figma.com/design/vvZqt0ypTmooZpYLn93u9h/CivicWater-Sentinel-%E2%80%94-Painel-operacional?node-id=5-1518),
@@ -225,3 +225,73 @@ lint passed, strict mypy **163 files**, pytest **894 passed, 39 skipped in 40.23
 Additional review captures: [mobile sidebar](images/dashboard-sidebar-mobile.png),
 [mobile alert controls](images/dashboard-responsive-mobile.png) and
 [sidebar with 200% text](images/dashboard-sidebar-text-200.png).
+
+## Interactive network map — BE-024 (2026-10-18)
+
+The first viewport is now **queue | map | evidence** (ADR-012 addendum, chosen by the owner on
+the Impeccable decision page from three sketched structures). The sidebar starts collapsed.
+
+| Pane | Content | Notes |
+|---|---|---|
+| Recent alerts (≈220 px) | Native radio queue, newest first: region, time, sensor count, largest deviation | Selecting an alert reruns the page; map and evidence follow. Identical summaries add the alert ID. The poll still runs in its fragment and only reports count and errors. |
+| Network map (rest of the width) | Live SVG of all 909 links, 33 sensors and three landmarks in an `st.iframe` | Alert/Regions tabs, Focus alert, zoom, Whole network; replay bar; legend; attribution. |
+| Evidence (≈260 px) | Region, ID, SIMULATED badge, CUSUM score against its threshold (one scale), window end, onset, candidate pipe "best guess", deviation bars, Explanation slot, link to the full record | Values as received; "explanation unavailable" until Q-AUD-07. |
+
+Below the fold: alert detail (exact tables), all alert fields, history, system status.
+Mandatory notices sit above the panes in one line: RECORDED REPLAY, SIMULATED and the
+simulated-data caption. On narrow screens the panes stack as map, queue, evidence.
+
+### Map interactions
+
+| Input | Effect |
+|---|---|
+| Wheel / trackpad pinch, **+** / **−** buttons or keys | Zoom around the pointer or the centre |
+| Drag (mouse), two-finger pinch and pan (touch), arrow keys | Pan. On touch, one vertical finger still scrolls the page (`touch-action: pan-y`). |
+| Double click | Zoom in twice around the point |
+| **Whole network** button or **0** | Fit the network |
+| **Focus alert** or **F** | Camera flight to the alert: its candidate pipe and deviating sensors, or its region when no pipe is named. Runs on open after the whole network is shown. |
+| Hover | Pipe: ID, type, diameter, region, nearest pressure sensor. Sensor: region and, in the alert, deviation and z. |
+| Click / Enter on a focusable element | Details panel inside the map; focus moves to its title, Escape or Close returns it |
+| Regions tab | Nine region inks; the legend buttons isolate a region (press again to show all) |
+| Replay | A simulated clock walks the alerts in time order; each lights up, the camera flies to it and a card shows region, time, largest deviation and sensor, onset, CUSUM and the candidate pipe (best guess). The card stays on pause, says when the recorded alerts end, and "Back to selected alert" restores the selection. While another alert is lit, a note says the side panels still show the selected one. |
+
+Labels are laid out in priority order (leak callout, deviating sensors, region, landmarks) and
+move right/left/above/below to avoid each other and the candidate pipe. Unknown region, pipe
+or sensor IDs are listed in a warning and never drawn. `prefers-reduced-motion` removes pulses
+and camera flights. Region inks: nine colours at least 4.3:1 against the map ground, none of
+them the alert coral or the alert-region green (`REGION_PALETTE`, tested).
+
+### Data and safety
+
+`map_payload(net, alert, alerts)` is pure and returns JSON-ready data (compact link/sensor
+arrays, regions with their inks, alerts oldest first with `region_known`, `candidate_known`,
+`warnings`, strongest deviation). `map_document` escapes `<`, `>`, `&`, U+2028 and U+2029 in the
+JSON; the script only writes text and attributes (a test refuses `innerHTML`, `eval` and network
+calls in it). `map_svg` is unchanged and still provides the SVG download.
+
+### Demo data
+
+`dashboard/playback/fixture-synthetic-ltown-demo` has six **hand-authored, synthetic** alerts on
+official region, sensor and pipe IDs (values invented, `is_mock: true`, run note says it is not
+a detector output). Any recorded run in the standard format works without code changes:
+
+```sh
+SENTINEL_DASHBOARD_PLAYBACK_DIR=dashboard/playback/fixture-synthetic-ltown-demo \
+  PYTHONPATH=. uv run --group dashboard streamlit run dashboard/app.py
+```
+
+### Jupyter (VM)
+
+`NetworkMapView` shows the same document in an `<iframe srcdoc>` (`Map: Interactive`), with
+`Map: Static SVG` as the fallback when the front end does not run scripts in that frame.
+**NOT_RUN** in the VM's JupyterLab: check with `view = NetworkMapView(source); view.refresh();
+view.widget` and switch to `Static SVG` if the iframe stays blank.
+
+### Verification — BE-024
+
+See `docs/dashboard-ux-review.md` (BE-024) for the Impeccable critique, audit and detector
+results, and `docs/status.md` for the gates. Captures: [1440 × 900](images/dashboard-map.png),
+[1280 × 720](images/dashboard-map-1280.png), [390 × 844](images/dashboard-map-mobile.png),
+[replay](images/dashboard-map-replay.png), [Regions](images/dashboard-map-regions.png),
+[map page](images/dashboard-map-page.png), [full record below the map](images/dashboard-map-record.png).
+All use the synthetic demo playback.
