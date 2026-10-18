@@ -31,6 +31,7 @@ with st.container(key="sentinel-shell"):
         st.stop()
     source = source_from_env()
     try:
+        source.health()  # with a fallback recording configured, this picks the source to read
         alerts = sorted(
             source.list_alerts(AlertQuery(limit=500)).items,
             key=lambda a: (a.window_end, a.alert_id),
@@ -41,6 +42,8 @@ with st.container(key="sentinel-shell"):
 
     with st.container(key="data-notices"):
         notices = []
+        if notice := getattr(source, "notice", None):  # snapshot age or fallback reason
+            notices.append(notice)
         if source.recording is not None:
             rec = source.recording
             notices.append(f"RECORDED REPLAY — run {rec.run_id}, {rec.recorded_at}. Not live data.")

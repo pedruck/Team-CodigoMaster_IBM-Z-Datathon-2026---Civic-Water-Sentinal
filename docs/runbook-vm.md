@@ -139,6 +139,12 @@ attaches to the shared master connection and survives Ctrl-C (close it with
 changes (container recreated), get it with
 `docker inspect -f '{{.NetworkSettings.IPAddress}}' notebook` on the VM host.
 
+## Dashboard hosted off the VM
+
+Exposing anything to the internet is off by default. The read-only gateway, the snapshot push and
+the checks that decide between them are in `docs/external-dashboard.md` (BE-026, ADR-013, Q-OPS-01).
+Run them on the host only after the team agrees, and turn them off after the evaluation.
+
 ## Updating the code
 
 1. Announce it in the team channel: the update changes the default `import sentinel` of

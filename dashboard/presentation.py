@@ -90,9 +90,12 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
             + "</nav>"
         )
         st.page_link("pages/network_map_page.py", label="Open full network map")
+        live = getattr(source, "live_label", None)  # e.g. "SNAPSHOT" (BE-026)
         mode = (
             "Recorded replay"
             if source.recording
+            else live.capitalize()
+            if live
             else "API connected"
             if header.online
             else "Offline"
@@ -113,6 +116,8 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
             st.metric("Detector", header.detector)
             if source.recording and source.recording.note:
                 st.caption(source.recording.note)
+            if reason := getattr(source, "reason", ""):
+                st.caption(f"Live source not answering: {reason}")
         st.html(
             '<div class="sidebar-footer"><span class="team-avatar">CM</span>'
             "<div>Team CodigoMaster<small>IBM Z Datathon 2026</small></div></div>"
@@ -121,7 +126,8 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
 
 def render_topbar(source: AlertSource, header: Header) -> None:
     # A recording says so in the notice strip below; the chip only names a live source's state.
-    mode = None if source.recording else "CONNECTED" if header.online else "OFFLINE"
+    live = getattr(source, "live_label", None)
+    mode = None if source.recording else live or ("CONNECTED" if header.online else "OFFLINE")
     chip = f'<span class="mode-label">{icon("broadcast")}{mode}</span>' if mode else ""
     with st.container(key="title-row", horizontal=True, vertical_alignment="center"):
         st.title("Network & alerts", anchor="network-alerts")

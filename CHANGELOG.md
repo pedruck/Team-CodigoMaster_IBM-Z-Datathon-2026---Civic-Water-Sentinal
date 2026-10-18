@@ -6,6 +6,15 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- BE-026: dashboard hosted off the VM (ADR-013, `docs/external-dashboard.md`). A read-only,
+  token-protected gateway for an outbound tunnel (`scripts/readonly_gateway.py`: GET on health,
+  status and alerts only), a snapshot push to pre-signed URLs (`scripts/push_snapshot.py`,
+  `scripts/presign_url.py`), the VM checks of the plan (`scripts/external_dashboard_checks.sh`),
+  and dashboard sources for both (`SENTINEL_DASHBOARD_API_TOKEN`,
+  `SENTINEL_DASHBOARD_SNAPSHOT_URL`) plus a recorded-run fallback
+  (`SENTINEL_DASHBOARD_FALLBACK_DIR`). VM checks NOT_RUN.
+
+### Added
 - BE-025: interactive L-Town network map as the first viewport of the dashboard: queue |
   live SVG map | selected-alert evidence. Zoom (wheel, pinch, buttons, keys), pan, double-click
   zoom, hover tooltips and pinned details for pipes and sensors, Alert and Regions modes (nine

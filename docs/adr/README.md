@@ -37,3 +37,4 @@ One file per decision with impact on contracts, reliability, performance or inte
 | [ADR-010](ADR-010-layer2-evaluation.md) | Layer-2 evaluation of 2019 through the API: matching rule, metrics, manifest | Proposed |
 | [ADR-011](ADR-011-pipe-network-regions-candidate-pipe.md) | Pipe network, L-Town regions and the candidate pipe of an alert | Proposed |
 | [ADR-012](ADR-012-network-map-presentation.md) | Source-derived L-Town map in the operator dashboard | Proposed |
+| [ADR-013](ADR-013-external-dashboard-access.md) | Dashboard hosted off the VM: read-only gateway or pushed snapshots | Proposed |

@@ -132,6 +132,12 @@ item 10 is now also shown beside the map, still reading "explanation unavailable
 Q-AUD-07 exists. The selection widget is a radio queue instead of a select box; the alert
 list still offers every loaded record and field below the fold.
 
+**Off-VM hosting addendum (2026-10-18, BE-026).** The dashboard may run off the VM (ADR-013).
+Two more adapters keep the single seam: `SnapshotAlertSource` reads the JSON the VM pushes to
+storage and states its age, and `FallbackAlertSource` shows a recorded run while the live source
+does not answer. `HttpAlertSource` can send a bearer token to the read-only gateway. Answers are
+still parsed with `sentinel.schemas`; a source's `notice` joins the mandatory banners.
+
 ## Dependencies
 Read API (contract §5, P3); Q-UI-07 (P3 + P4), Q-AUD-06 and Q-AUD-07 (P5 + P3), Q-DET-07
 (P4, P1), Q-DOC-01/02 (P3) in `docs/questions-for-team.md`; DEP-UI-03, DEP-AUD-02,

@@ -10,6 +10,12 @@
 
 ## Summary
 
+**Dashboard off the VM (BE-026, 2026-10-18, branch `feat/be-026-external-dashboard`):** code for
+both options of the external-dashboard plan: a read-only gateway behind an outbound tunnel, and
+snapshots pushed to pre-signed URLs; the dashboard reads either, shows a snapshot's age and falls
+back to a recorded run while the live source is down (ADR-013, `docs/external-dashboard.md`). The
+VM checks that choose the option are NOT_RUN, and exposure needs the team's agreement (Q-OPS-01).
+
 **Interactive network map (BE-025, 2026-10-18):** the operator page opens on a three-pane
 workspace: the recent-alert queue, the live SVG map of L-Town and the selected alert's key
 evidence (with the Explanation slot reserved for Q-AUD-07). The map zooms, pans, explains a
@@ -220,6 +226,8 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
+| BE-026 gates (Linux x86-64, `feat/be-026-external-dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 191 files formatted · lint passed · mypy: no issues in 190 files · **1153 passed, 40 skipped** (34 new in `tests/test_external_dashboard.py`) |
+| BE-026 local end to end: real API (mocks, ingest token) + synthetic day, `scripts/readonly_gateway.py` in front, dashboard via gateway token, via snapshot file and with the API down + fallback | gateway: reads 200, `/docs` `/openapi.json` `/v1/audit/head` 404, no token 401, POST 405, token absent from its log; dashboard: three modes render at 1280 × 720, 0 browser errors. **VM checks NOT_RUN** |
 | BE-025 gates (Linux x86-64, Python 3.13, Streamlit 1.66, `uv sync --group dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 178 files formatted · lint passed · mypy: no issues in 177 files · **1075 passed, 40 skipped** |
 | BE-025 browser (scratch Playwright 1.61 + cached Chromium, outside the repo), `fixture-synthetic-ltown-demo` | 1440×900, 1280×720, 390×844: map frame visible without scrolling (709×558 at 1280×720, map stage 707×454), zoom buttons/wheel/drag/double click/keys, hover and click details with focus and Escape, Regions isolation, replay with card, queue selection updating the map; 0 console errors, 0 external requests, 0 horizontal overflow; map page renders; reduced motion: no running animations. `scripts/check_dashboard_responsive.cjs` still targets the BE-023 layout and fails at its first step (sidebar `#network-map` link); not updated (outside the task's paths) |
 | shared API restarted on `main` @ `6b9817a` (BE-024) with the pinned XGBoost, CUSUM v1, regions, network, token file and chain `replay-2019-20261018-be024`; 2019 replayed with `--token-file` | 105 120 × `201` in 334 s, 895 alerts, `mocks_active: false`; `replay_check` 105 120 / 105 120 matched; explanations chain ok; `POST` without token → 401; anchor in `docs/performance.md` |
