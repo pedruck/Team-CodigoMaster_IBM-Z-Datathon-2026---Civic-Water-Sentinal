@@ -72,8 +72,8 @@ Q-DET-06 belong to the detection owner (BE-012, merged in PR #5); P6 uses ADR-00
 1. Done: BE-001 → BE-002 → BE-003/004/005 → BE-006 → BE-007 → BE-008/009.
 2. Done: BE-018 (CI). Independent next: BE-017 (load test), BE-016 once Q-UI answered.
 3. As owners deliver: BE-011, BE-012, BE-013, then BE-015 (BE-010 and BE-014 are done).
-4. BE-012: BE-012a..e and the `SENTINEL_DETECTOR=cusum` selection done; BE-012f in progress
-   (parts 1 and 2 done) → BE-012g and BE-012i (done, ADR-011) → BE-012j (done) → BE-012h (run done;
+4. BE-012: BE-012a..e and the `SENTINEL_DETECTOR=cusum` selection done; BE-012f done
+   (development run reproduced) → BE-012g and BE-012i (done, ADR-011) → BE-012j (done) → BE-012h (run done;
    v1 artefact committed; upgrade to the variant without neighbours after Q-ML-07).
 
 **BE-012 slices.** Each slice is vertical (detector, wiring and a test through the pipeline or

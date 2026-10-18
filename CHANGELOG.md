@@ -13,8 +13,9 @@ contract versions are tracked separately (`schema_version`).
   once it is exported (`docs/p4-calibration.md` §7).
 
 ### Changed
-- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`) and the persistence-test threshold registered;
-  false-alarm budget ≤ 1 per week proposed to the team (Q-TEAM-03). Detection owner's review of
+- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
+  and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
+  team (Q-TEAM-03). Detection owner's review of
   ADR-010 appended to it (stale `eval/v1`, regions and candidate pipe now exist, delays and
   false alarms of the 4 inherited leaks, manifest ids); Q-DET-08 status recorded.
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
