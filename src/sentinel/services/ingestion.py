@@ -22,6 +22,23 @@ def _diff(kind: str, got: dict[str, float], expected: tuple[str, ...]) -> dict[s
     return out
 
 
+def _out_of_range(window: SensorWindow, registry: SensorRegistry) -> dict[str, float]:
+    if not registry.limits:
+        return {}
+    bad: dict[str, float] = {}
+    for kind, readings in (
+        ("pressure", window.pressures),
+        ("flow", window.flows),
+        ("tank_level", window.tank_levels),
+    ):
+        limit = registry.limits.get(kind)
+        if limit is None:
+            continue
+        low, high = limit
+        bad.update({sensor: v for sensor, v in readings.items() if not low <= v <= high})
+    return bad
+
+
 def normalize_window(window: SensorWindowIn, naive_tz: str) -> tuple[SensorWindow, bool]:
     """Return the window with a UTC timestamp and whether its timezone was assumed.
 
@@ -60,6 +77,13 @@ def validate_window(
             "sensor_set_mismatch",
             "window sensors do not match the sensor registry",
             problems,
+        )
+    out_of_range = _out_of_range(window, registry)
+    if out_of_range:
+        raise WindowRejectedError(
+            "reading_out_of_range",
+            "readings outside the physical range of their sensor kind (sensor registry limits)",
+            {"readings": out_of_range, "limits": registry.limits},
         )
     ts = window.timestamp
     if require_aligned and (ts.microsecond or int(ts.timestamp()) % interval_seconds):

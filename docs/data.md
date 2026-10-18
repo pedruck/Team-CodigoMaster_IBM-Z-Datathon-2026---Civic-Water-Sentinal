@@ -153,6 +153,15 @@ python scripts/replay.py $SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl \
     --url http://127.0.0.1:$API_PORT --speed 2
 ```
 
+Integrity (2026-10-18): `replay_windows` compares `scada_<year>.csv.gz` with the version's
+`MANIFEST.json` before reading it (it stops on a different or missing hash) and writes
+`<output>.manifest.json` next to the JSONL: its SHA-256 and window count, first/last timestamp,
+the source file and MANIFEST hashes and the registry hash. `scripts/replay.py` checks the JSONL
+against it before sending anything (a file without one is sent with a warning: the
+`windows_2019.jsonl` of 2026-10-17 predates it; regenerate it to seal it). After a replay into
+an API with the audit chain, `python -m sentinel.audit.replay_check <run>.jsonl <windows.jsonl>`
+recomputes every window's `content_hash` and compares it with the chain.
+
 - `--speed` is in windows per second; `0` = as fast as possible. Real time
   (1 window every 5 min) is `--speed 0.00333`.
 - Checkpoint 1 (2026-10-17, mock forecaster and detector): 2,016 windows, 100% accepted

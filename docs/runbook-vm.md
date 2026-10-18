@@ -19,15 +19,25 @@ scripts/shared_api.sh restart    # stop + start
 scripts/shared_api.sh stop
 ```
 
-Defaults: official registry `config/sensors.battledim.json`, in-memory audit sink
-(`SENTINEL_AUDIT_SINK=memory`, until the audit owner delivers the real sink), log level INFO,
-no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
+Defaults: official registry `config/sensors.battledim.json`, **audit chain**
+(`SENTINEL_AUDIT_SINK=chain`; without `SENTINEL_AUDIT_RUN` every start opens a new chain
+`shared-<port>-<UTC time>`; `memory` only when asked for), **write token** (below), log level
+INFO, no access log, one worker, BLAS threads = 1. Override with the variables listed at the top of
 the script, e.g. `SENTINEL_LOG_LEVEL=WARNING scripts/shared_api.sh start`.
 
+**Write token.** `POST` needs `Authorization: Bearer <token>`. The script creates the token once
+in `~/shared/civicwater/secrets/ingest-<port>.token` (mode 600; inside the container
+`/home/ibm-user/shared/civicwater/secrets/`) and hands the API the **file**, never the value
+(`ps` shows command lines to everyone on the VM). It stops accidents (a test sent to the shared
+API from the Jupyter terminal), not a member who reads the file: the VM has one Linux user.
+Never print or commit it.
+
 The forecaster and the detector are the mocks unless set (ADR-005). **Current shared API
-(2026-10-17):** the real XGBoost below with `SENTINEL_FORECASTER_CONTRIBUTIONS=false` and
-`SENTINEL_FORECASTER_TREE_FORMAT=compress_trees`, mock detector, 2019 replayed. Restart it with
-the same variables to keep that configuration. Real XGBoost (ML owner's artefact):
+(2026-10-18, `main` @ `6b9817a`):** no mocks: XGBoost pinned (`0.1.0+808746bc`, `compress_trees`,
+contributions `on_alert`), CUSUM with `config/calibration.xgboost-33.json`, regions and pipe
+network, write token, audit chain run `replay-2019-20261018-be024` (the full command is under
+"Regions and pipe network"), 2019 replayed and checked with `replay_check`. Restart it with
+the same variables to keep that configuration, and a **new** run name if you replay again. Real XGBoost (ML owner's artefact):
 
 ```bash
 SENTINEL_FORECASTER=xgboost \
@@ -47,8 +57,9 @@ and prints the log: the API never falls back to the mock. `status` shows `foreca
 The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION`,
 `SENTINEL_DETECTOR_REGIONS` and `SENTINEL_DETECTOR_NETWORK` (only the variables that are set). The CUSUM detector refuses to start
 with a calibration made for another forecaster ([README](../README.md#running-with-the-cusum-detector),
-ADR-008); no calibration for `xgboost-33@0.1.0` exists yet (DEP-DET-05), so with XGBoost keep
-the mock detector, which raises no alerts with millimetre residuals (`docs/performance.md`).
+ADR-008): `config/calibration.xgboost-33.json` is for `xgboost-33@0.1.0`, so it needs
+`SENTINEL_FORECASTER=xgboost` in the **same** command. The mock detector raises no alerts with
+the millimetre residuals of XGBoost (`docs/performance.md`).
 
 ### Regions and pipe network for the CUSUM detector (ADR-011)
 
@@ -60,12 +71,22 @@ forecaster served, `config/calibration.xgboost-33.json` (v1, sha256 `fad6ec0b…
 neighbours; `docs/p4-calibration.md` §7), the shared API is started with (announce before restarting it):
 
 ```bash
+SENTINEL_FORECASTER=xgboost \
+SENTINEL_FORECASTER_PATH=/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0 \
+SENTINEL_FORECASTER_SHA256=808746bc30b30f4c6e35540edf8ee4cd696ae3e398e314217f2708cdc961c407 \
+SENTINEL_FORECASTER_TREE_FORMAT=compress_trees \
 SENTINEL_DETECTOR=cusum \
 SENTINEL_DETECTOR_CALIBRATION=config/calibration.xgboost-33.json \
 SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json \
 SENTINEL_DETECTOR_NETWORK=/home/ibm-user/shared/civicwater/data/network/v1/l-town.json \
+SENTINEL_AUDIT_RUN=replay-2019-<date> \
 scripts/shared_api.sh restart
 ```
+
+`SENTINEL_FORECASTER_SHA256` is the digest of the ML owner's `xgboost-33@0.1.0` directory (36
+files, 2026-10-18; `python -c "from sentinel.forecasting.integrity import artefact_sha256;
+print(artefact_sha256('<dir>'))"`): with it, a changed or replaced weight file stops the start,
+and `status` shows the served version `0.1.0+808746bc`.
 
 To check the files on the VM first, **without starting or restarting anything**, run this in the
 Jupyter terminal (inside the container), in the integration copy:
@@ -86,6 +107,19 @@ file in place none of them is skipped, `test_topology_files.py` pins its hash, a
 `test_detector_network_startup.py` starts the server from environment variables only (official
 registry, regions, `l-town.json`) and localises a synthetic ramp. If the file is missing they are
 skipped, not failed, so check the summary line for `skipped`.
+
+### Audit chain and explanations (BE-013)
+
+The script uses the chain by default; set `SENTINEL_AUDIT_RUN=<run>` to name it. It records every
+window in the audit owner's hash chain, `~/shared/civicwater/audit/<run>.jsonl` (inside the
+container: `/home/ibm-user/shared/civicwater/audit/`), with the explanations of the alerts in
+`<run>.explanations.jsonl`. Pick a new run name per replay (e.g. `replay-2019-<date>`): a
+restart with the same name **continues** that chain (seq goes on) but the replay starts again
+from January, so the log would hold the year twice. `SENTINEL_NARRATOR=llamacpp` loads Granite in
+the API process (`LOCAL_LLM_*` are forwarded); `watsonx` is not forwarded on purpose, its key would
+be visible in `ps`. `status` then prints the chain head; keep that `seq`/`hash` outside the VM and
+verify with `python -m sentinel.audit.verify <file> --anchor-seq … --anchor-hash …`. Every
+record is fsynced: time a short replay with the chain before a demo (`docs/audit-and-narrative.md`).
 
 Logs: `~/shared/civicwater/logs/api-8000-<UTC start time>.log` (one JSON line per window,
 ≈ 26 MB for a full year at INFO; use `SENTINEL_LOG_LEVEL=WARNING` for long runs).
@@ -130,10 +164,20 @@ The data owner generates the replay (`docs/data.md`):
 Send it from the Jupyter terminal (same container, so `127.0.0.1` works):
 
 ```bash
-nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" --url http://127.0.0.1:8000
+nice -n 10 python scripts/replay.py "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl" \
+    --url http://127.0.0.1:8000 --token-file ~/shared/civicwater/secrets/ingest-8000.token
 ```
 
-Measured 2026-10-17: 105 120 × `201` in 145 s with the mocks; 247 s with XGBoost (TreeSHAP off, `compress_trees`) (`docs/performance.md`). It loads the shared
+`--url` is required (a forgotten one used to mean the shared API). The script first compares the
+file with `windows_2019.jsonl.manifest.json` when it exists (`docs/data.md`). Afterwards, check
+that the chain recorded exactly that file:
+
+```bash
+python -m sentinel.audit.replay_check ~/shared/civicwater/audit/<run>.jsonl \
+    "$SENTINEL_DATA_DIR/replay/v1/windows_2019.jsonl"
+```
+
+Measured 2026-10-17: 105 120 × `201` in 145 s with the mocks; 247 s with XGBoost (TreeSHAP off, `compress_trees`); 2026-10-18: 338 s with XGBoost + CUSUM + audit chain on `~/shared` (`docs/performance.md`). It loads the shared
 VM: announce it and avoid running it during someone's latency measurement. Expected: every window `201` (or `200` if re-sent), 144
 `insufficient_history`, the rest `scored`; mock alerts until the real models are wired.
 

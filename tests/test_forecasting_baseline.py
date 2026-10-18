@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from sentinel.forecasting.baseline import SLOTS, HourOfWeekForecaster, hour_of_week
+from sentinel.forecasting.integrity import artefact_sha256
 from sentinel.forecasting.interface import Forecaster, ForecastError
 from sentinel.forecasting.registry import load_forecaster
 from tests.forecasting_helpers import LAYOUT, T0, request, short_ids
@@ -49,7 +50,8 @@ def test_load_through_registry(tmp_path: Path) -> None:
     path = tmp_path / "baseline-hourofweek@0.1.0.json"
     path.write_text(json.dumps({"version": "0.1.0", "profile": {"Pressure_n1": [1.0] * SLOTS}}))
     model = load_forecaster("baseline", path)
-    assert model.info.version == "0.1.0"
+    # The registry appends the artefact digest, so the audit names the exact file (ADR-005).
+    assert model.info.version == f"0.1.0+{artefact_sha256(path)[:8]}"
 
 
 def test_registry_rejects_unknown_kind(tmp_path: Path) -> None:

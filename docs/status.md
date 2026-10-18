@@ -1,12 +1,16 @@
 # Project status — Backend & Ingestion
 
+**Backend update:** 2026-10-18 — branch `zanetti/ingest-hardening` (BE-024): the gaps of the pre-integration review are closed in code (physical limits, clock and gap limits, write token and body cap, chain by default on the shared API, forecaster digest/pin, replay file sealed and checked against the chain); see CHANGELOG "Security". The dashboard items of that review belong to the dashboard owner.
+
+**Backend update:** 2026-10-18 — branch `zanetti/be-013-audit-chain`: BE-013, `SENTINEL_AUDIT_SINK=chain` selects the audit owner's hash-chained log (`SENTINEL_AUDIT_RUN`, `SENTINEL_AUDIT_DIR`) with stored explanations (`SENTINEL_NARRATOR`), and the read endpoints `GET /v1/audit`, `/v1/audit/head` (Q-AUD-06) and `/v1/alerts/{id}/explanation` (Q-AUD-07) exist. The runbook's CUSUM start command now includes the XGBoost forecaster its calibration needs.
+
 **Last update:** 2026-10-18 — branch `feat/be-012h-final-calibration-v1` (detection owner): v1 of the final calibration is committed. `config/calibration.xgboost-33.json` (sha256 `fad6ec0b…`, `provenance = battledim-2018-oof`, forecaster `xgboost-33@0.1.0` with neighbours, budget 1 false alarm per week as adopted by the detection owner, still open to the team in Q-TEAM-03) makes `SENTINEL_DETECTOR=cusum` start with `models.detector.is_mock = false` for the model the shared API serves; the better variant without neighbours is the documented upgrade once P2 exports it (`docs/p4-calibration.md` §7). The shared API on the VM is **not** restarted by this change. BE-012f is closed (merged from `feat/be-012f-dev-calibration`): the development run (`offline/devcal.py`, artefact `dev-baseline-2018`, `is_mock`) reproduces byte for byte from data v1, and the detection owner's review of ADR-010 is appended to it. Before: branch `feat/be-012j-calibration-experiment` (detection owner): the CUSUM calibration experiment on the ML owner's 2018 out-of-fold residuals (BE-012j tools, BE-012h run, `docs/p4-calibration.md`). Pre-registered in two commits (`ae93951` exploration rules before any residual was read, `6c0be6c` sweep rules before any replay). Both XGBoost variants pass the persistence test; at the proposed budget of 1 false alarm per week (ADR-010 operator view) the served model (with neighbours) detects 8/14 leaks (abrupt 6/6, median delay 4.4 h) and the variant without neighbours 12/14 (abrupt 6/6, 1.5 h); the incipient counts are at chance level (post-hoc placebo). Candidate artefacts `battledim-2018-oof` exist outside git; the final one waits for Q-TEAM-03 and Q-ML-07. Before: branch `feat/p2-oof-residuals` (ML owner, PR #19, merged): the out-of-fold XGBoost residual generator for DEP-DET-05 (both Q-ML-07 variants; run on the VM with the real data, files in `data/v1/oof/xgboost-33@0.1.0/`: MAE on clean windows 6.7 mm with neighbours vs 16.1 mm without, leak contrast 4.71 vs 5.62), the optional `ml` extra (DEP-ML-03) and TreeSHAP only for the sensors of an alert (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`, new default; optional `ExplainingForecaster`, proposed to P3). Before: the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
-**Dashboard update:** 2026-10-18 — branch `feat/be-024-interactive-map` (from `feat/be-021-dashboard-redesign`): BE-024 makes the interactive L-Town map the first viewport (queue | map | evidence), with zoom/pan, hover, details, Alert/Regions modes, focus-alert flight and an in-map replay; offline, keyboard and reduced-motion aware. Gates: 1075 passed, 40 skipped. Before: branch `feat/be-021-dashboard-redesign` (PR #18): BE-023 repairs sidebar collapse, typography, heading margins and responsive controls. Seven Chrome viewport widths and enlarged text checked; 894 tests passed, 39 skipped. BE-022's map source hash matches the prompt; the exported JSON digest discrepancy and exact Figma frame review remain documented below.
+**Dashboard update:** 2026-10-18 — branch `feat/be-024-interactive-map` (from `feat/be-021-dashboard-redesign`): BE-025 (numbered BE-024 on the branch before `main` used that ID) makes the interactive L-Town map the first viewport (queue | map | evidence), with zoom/pan, hover, details, Alert/Regions modes, focus-alert flight and an in-map replay; offline, keyboard and reduced-motion aware. Gates: 1075 passed, 40 skipped. Before: branch `feat/be-021-dashboard-redesign` (PR #18): BE-023 repairs sidebar collapse, typography, heading margins and responsive controls. Seven Chrome viewport widths and enlarged text checked; 894 tests passed, 39 skipped. BE-022's map source hash matches the prompt; the exported JSON digest discrepancy and exact Figma frame review remain documented below.
 
 ## Summary
 
-**Interactive network map (BE-024, 2026-10-18):** the operator page opens on a three-pane
+**Interactive network map (BE-025, 2026-10-18):** the operator page opens on a three-pane
 workspace: the recent-alert queue, the live SVG map of L-Town and the selected alert's key
 evidence (with the Explanation slot reserved for Q-AUD-07). The map zooms, pans, explains a
 pipe or sensor on hover/click, isolates regions, flies to the alert and replays the loaded
@@ -78,7 +82,8 @@ BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · 
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
 BE-009 metrics/logs/benchmark (x86, mocks) · BE-010 real sensor registry · BE-018 CI (GitHub Actions) · BE-019 fail-closed audit + z sign
 convention · BE-014 full 2019 HTTP replay (mocks) · BE-020 shared API script + runbook ·
-BE-011 real forecaster wired (`SENTINEL_FORECASTER`) ·
+BE-011 real forecaster wired (`SENTINEL_FORECASTER`) · BE-013 audit chain selected by
+configuration (`SENTINEL_AUDIT_SINK=chain`) + audit and explanation read endpoints ·
 BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefact, `calibrate()`,
 `for_pipeline`, region ranking · BE-012 selection `SENTINEL_DETECTOR=cusum` in `build_pipeline`
 (startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
@@ -112,17 +117,14 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 | Task | Waiting for |
 |---|---|
 | BE-012h upgrade to the variant without neighbours (v1 is committed) | Q-ML-07 (export of that model, ML owner); Q-TEAM-03 (team confirms the budget) |
-| BE-013 real audit sink | DEP-AUD-01 (audit owner) |
 
 ## Pending (independent, not started)
 
 BE-016 dashboard needs (after Q-UI answers) · BE-017 load test with keep-alive client.
 
 Small leftovers of the CUSUM selection, outside the scope of the documentation pass that
-recorded them: the comment above `SENTINEL_FORECASTER` in `.env.example` still says that only
-`mock` exists and the file does not list the new detector variables; `scripts/bench_pipeline.py`
-builds its `Settings` without the environment, so `just bench` cannot measure the CUSUM;
-`scripts/shared_api.sh` does not forward `SENTINEL_DETECTOR*`; a refused startup prints a Python
+recorded them: `scripts/bench_pipeline.py`
+builds its `Settings` without the environment, so `just bench` cannot measure the CUSUM; a refused startup prints a Python
 traceback whose last line is the `ConfigError` (for pydantic errors, a documentation URL).
 
 P6 dashboard & evaluation: UI-001 DONE (dashboard tracer), UI-002 DONE (playback + fixtures), UI-003..006 DONE (recent alerts, detail, polling + history, cross-team proposals + ADR-009); UI-007 IN_PROGRESS (runbook `docs/demo-runbook.md`, two technical rehearsals OK on 2026-10-17: live via tunnel and forced fallback to `fixture-cusum`; presenter rehearsal pending); EV-001 IN_PROGRESS (ADR-010 `Proposed`, awaiting P4 review); EV-002 DONE (metrics + report, `src/sentinel/eval/`); EV-003 IN_PROGRESS (recorder + CLI `python -m sentinel.eval` done and tested; the 2019 run waits for the final calibration and for Q-DATA-07: the real `leaks_2019.csv` clips the 4 inherited leaks to 2019-01-01, found by the official-list check), spec and tickets in
@@ -137,6 +139,8 @@ Q-AUD-01/03); Q-PLAT-01 answered, Q-PLAT-02 (P1) open.
 
 ## Risks
 
+- Alert volume with the real stack on 2019: 895 alerts (~100/month from April), several per
+  episode (Q-DET-09); not yet compared with the labels (EV-003). The dashboard will show them all.
 - The candidate pipe (ADR-011 §3) is a topological guess, not a hydraulic localisation. On the 6
   abrupt 2018 leaks, with a development calibration and its first alert, it was within about 360 m
   of the leaking pipe five times and 2.9 km once; that is six events, not a result, and it is
@@ -208,17 +212,26 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Start the shared API with `SENTINEL_DETECTOR=cusum` and `config/calibration.xgboost-33.json` (runbook, announce
-first) so the integration shows a real detector; the team confirms the budget (Q-TEAM-03) and P2 exports the variant without
-neighbours (Q-ML-07), which is the planned upgrade; P6 can run 2019 (EV-003); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
+The shared API runs the real detector and the audit chain with 2019 loaded (2026-10-18); the team confirms the budget (Q-TEAM-03) and P2 exports the variant without
+neighbours (Q-ML-07), which is the planned upgrade; P6 can run 2019 (EV-003); run that replay with `SENTINEL_AUDIT_SINK=chain` (BE-013, runbook) and keep the head outside the VM; then p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-18 and before)
 
 | Command | Result |
 |---|---|
-| BE-024 gates (Linux x86-64, Python 3.13, Streamlit 1.66, `uv sync --group dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 178 files formatted · lint passed · mypy: no issues in 177 files · **1075 passed, 40 skipped** |
-| BE-024 browser (scratch Playwright 1.61 + cached Chromium, outside the repo), `fixture-synthetic-ltown-demo` | 1440×900, 1280×720, 390×844: map frame visible without scrolling (709×558 at 1280×720, map stage 707×454), zoom buttons/wheel/drag/double click/keys, hover and click details with focus and Escape, Regions isolation, replay with card, queue selection updating the map; 0 console errors, 0 external requests, 0 horizontal overflow; map page renders; reduced motion: no running animations. `scripts/check_dashboard_responsive.cjs` still targets the BE-023 layout and fails at its first step (sidebar `#network-map` link); not updated (outside the task's paths) |
+| BE-025 gates (Linux x86-64, Python 3.13, Streamlit 1.66, `uv sync --group dashboard`): `uv run ruff format --check src tests scripts dashboard`, `uv run ruff check src tests scripts dashboard`, `uv run mypy`, `uv run pytest -q` | 178 files formatted · lint passed · mypy: no issues in 177 files · **1075 passed, 40 skipped** |
+| BE-025 browser (scratch Playwright 1.61 + cached Chromium, outside the repo), `fixture-synthetic-ltown-demo` | 1440×900, 1280×720, 390×844: map frame visible without scrolling (709×558 at 1280×720, map stage 707×454), zoom buttons/wheel/drag/double click/keys, hover and click details with focus and Escape, Regions isolation, replay with card, queue selection updating the map; 0 console errors, 0 external requests, 0 horizontal overflow; map page renders; reduced motion: no running animations. `scripts/check_dashboard_responsive.cjs` still targets the BE-023 layout and fails at its first step (sidebar `#network-map` link); not updated (outside the task's paths) |
+| shared API restarted on `main` @ `6b9817a` (BE-024) with the pinned XGBoost, CUSUM v1, regions, network, token file and chain `replay-2019-20261018-be024`; 2019 replayed with `--token-file` | 105 120 × `201` in 334 s, 895 alerts, `mocks_active: false`; `replay_check` 105 120 / 105 120 matched; explanations chain ok; `POST` without token → 401; anchor in `docs/performance.md` |
+| branch `zanetti/ingest-hardening` (BE-024, x86-64): `just check` | ruff format/lint OK · mypy: no issues in 185 files · **1096 passed, 40 skipped** (29 new: `tests/test_ingest_hardening.py`, `test_artefact_integrity.py`, `test_replay_integrity.py`) |
+| same commit `896f785` on the VM (s390x, P3 clone): `python -m pytest -q` | **1068 passed, 14 skipped** |
+| VM: `replay_windows --year 2019` on the official v1 files (MANIFEST checked) into a temporary directory | 105 120 windows; sidecar sha256 `0df9df009ecd…`; **byte-identical** to the shared `replay/v1/windows_2019.jsonl` |
+| VM: private API 127.0.0.1:8003, XGBoost + `SENTINEL_FORECASTER_SHA256` + CUSUM v1 + regions + network + chain + token file | wrong pin: startup refused; served version `0.1.0+808746bc`; no token → 401; 4 sensors at −1000 m + 1 at 10⁹ m → 422 `reading_out_of_range`; 2099 window → 422 `timestamp_in_future`; full 2019 with `--token-file`: 105 120 × `201` in 328 s (no real window outside the limits), 895 alerts; `replay_check` chain vs file: 105 120 / 105 120 matched, ok |
+| shared API restarted on `main` @ `45f733d` with XGBoost + CUSUM v1 + regions + network + chain `replay-2019-1018`; full 2019 replayed (`scripts/replay.py`) | 105 120 × `201` in 338 s, `mocks_active: false`, 895 alerts, chain 106 015 records and 895 explanations `verify_file` ok; anchor in `docs/performance.md` |
+| branch `zanetti/be-013-audit-chain` (x86-64, CPython 3.14.7): `just ci` (ruff format --check, ruff check, mypy, pytest) | 170 files formatted · ruff OK · mypy: no issues in 170 files · **1042 passed, 40 skipped** (`tests/test_audit_wiring.py`: 15 new) |
+| local integration `main` + PR #18 + BE-013 (`e8be180`): `just ci` | 180 files formatted · ruff OK · mypy: no issues in 179 files · **1067 passed, 40 skipped** |
+| same commit on the VM (s390x, `/opt/venv`, P3 clone): `python -m pytest -q` | **1039 passed, 14 skipped** |
+| same commit on the VM: private API 127.0.0.1:8003, XGBoost + CUSUM v1 + regions + network + `SENTINEL_AUDIT_SINK=chain`, full 2019 via `scripts/replay.py` | 105 120 accepted, `mocks_active: false`, 895 alerts, chain 106 015 records verified (file and HTTP), 895 explanations verified, restart continues the chain; 301.67 windows/s (`docs/performance.md`) |
 | BE-023: `python -m ruff format src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q -o cache_dir=E:/Codex/civicwater-sentinel/pytest-cache --basetemp=E:/Codex/civicwater-sentinel/pytest-tmp` | **164 files unchanged**, lint OK, **163 source files** with no mypy issues; **894 passed, 39 skipped in 40.23s** (external data/optional ML dependencies absent) |
 | BE-023: `node scripts/check_dashboard_responsive.cjs http://127.0.0.1:8501 E:/Codex/civicwater-sentinel/ui-check`; existing focused accessibility/map scripts (`docs/dashboard-design.md`) | Passed at **360, 390, 768, 1024, 1280, 1440 and 1920 px**, 900 px height: sidebar open/collapse and restored main width, current map section/mobile dismissal, evidence selection, raw audit disclosure, history filtering/reset, local typography, 44 px main targets and 200% text without page/sidebar horizontal overflow. Primary-feed contrast ≥5.27:1; keyboard focus retained through polling. Map page/navigation/SVG control rechecked. No browser page errors |
 | BE-022 integration with `origin/main` at `8aed1b9`: same four Python gate commands and browser map check below | **164 files formatted**, lint OK, **163 source files** with no mypy issues; **894 passed, 39 skipped in 40.38s**. Changelog/status conflicts resolved by retaining both changes; desktop/mobile map, navigation and download rechecked successfully |

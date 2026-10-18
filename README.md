@@ -54,6 +54,9 @@ just replay data/synthetic.jsonl
 | GET | `/v1/status` | history, models (`mocks_active`), registry, counters, latency p50/p95/p99, throughput, error rate |
 | GET | `/v1/alerts` | alerts, newest first; `limit`, `offset`, `since`, `until`, `region` |
 | GET | `/v1/alerts/{alert_id}` | one alert |
+| GET | `/v1/alerts/{alert_id}/explanation` | stored explanation of the alert (`pending` / `ready`); needs the audit chain |
+| GET | `/v1/audit` | audit records exactly as stored, `after_seq`, `limit`; needs the audit chain |
+| GET | `/v1/audit/head` | `{seq, hash}` of the last audit record (the anchor to keep outside the VM) |
 
 Contracts: [`docs/integration-contracts.md`](docs/integration-contracts.md); OpenAPI at
 `/docs`.
@@ -64,9 +67,16 @@ Environment variables `SENTINEL_*`, all with defaults — see [`.env.example`](.
 Main ones: `SENTINEL_HISTORY_CAPACITY` (288), `SENTINEL_MIN_HISTORY_WINDOWS` (144),
 `SENTINEL_NAIVE_TIMESTAMP_TZ` (`UTC`: timestamps without timezone are read as UTC; `reject`),
 `SENTINEL_SENSOR_REGISTRY` (placeholder JSON by default; `config/sensors.battledim.json`, the
-official registry, for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory`), `SENTINEL_DETECTOR`
+official registry, for real data), `SENTINEL_AUDIT_SINK` (`null` | `memory` | `chain`, below), `SENTINEL_DETECTOR`
 (`mock` | `cusum`, below). Invalid values fail at startup. State is **in memory** and lost on
 restart (ADR-003).
+
+Write path safety (contracts §1): `SENTINEL_INGEST_TOKEN` or `SENTINEL_INGEST_TOKEN_FILE` makes
+every `POST` require `Authorization: Bearer <token>` (reads stay open; without a token the API
+logs a warning); `SENTINEL_MAX_BODY_BYTES` (64 KiB); `SENTINEL_MAX_GAP_SECONDS` (1 day: a window
+further ahead of the last one is refused, `0` = off); `SENTINEL_FUTURE_TOLERANCE_SECONDS` (1 h
+past the server clock). Readings outside the registry's `limits` get 422. `scripts/replay.py`
+needs `--url` and takes `--token-file` (or `SENTINEL_INGEST_TOKEN`).
 
 ## Running with a real forecaster
 
@@ -74,7 +84,8 @@ restart (ADR-003).
 |---|---|
 | `SENTINEL_FORECASTER` | `mock` (default), `baseline`, `xgboost` or `gru` |
 | `SENTINEL_FORECASTER_PATH` | artefact of the ML owner (`docs/p2-forecasting.md`). **Required** unless `mock` |
-| `SENTINEL_FORECASTER_CONTRIBUTIONS` | XGBoost TreeSHAP contributions in alerts (`true`, default) or not (`false`, long replays) |
+| `SENTINEL_FORECASTER_CONTRIBUTIONS` | XGBoost TreeSHAP: `on_alert` (default; only the deviating sensors of an alert), `all` or `off` |
+| `SENTINEL_FORECASTER_SHA256` | optional pin: the artefact's SHA-256 (`sentinel.forecasting.integrity`); any other artefact stops startup. The served version always carries the first 8 digits (`0.1.0+808746bc`) |
 | `SENTINEL_FORECASTER_ENGINE` | `snapml` (default) or `xgboost` |
 | `SENTINEL_FORECASTER_TREE_FORMAT` | Snap ML: `auto` (default; NNPA on LinuxONE), `compress_trees` or `zdnn_tensors` |
 
@@ -153,8 +164,27 @@ keeps falling by about the same amount each window) leaves a constant residual a
 accumulates (ADR-007 §1). A step larger than `(h + k)·σ` on `N` sensors in a single window still
 opens an alert, because `S` jumps in that one window. Only an artefact with `provenance =
 battledim-2018-oof` gives `is_mock=false`; any other provenance makes the detector, its alerts
-and `mocks_active` mock. No such artefact exists yet (DEP-DET-05). Mechanics checked end to end
+and `mocks_active` mock. `config/calibration.xgboost-33.json` is the one for the served
+`xgboost-33@0.1.0` (BE-012h v1, ADR-008 §G). Mechanics checked end to end
 with synthetic data: `docs/testing.md`.
+
+## Running with the audit chain
+
+`SENTINEL_AUDIT_SINK=chain` uses the audit owner's hash-chained log (`docs/audit-and-narrative.md`,
+contracts §4): one JSON line per event in `<SENTINEL_AUDIT_DIR>/<SENTINEL_AUDIT_RUN>.jsonl`
+(default directory `~/shared/civicwater/audit`, outside every clone), fsynced before the window
+is answered, verified at startup and extended across restarts. A broken file stops the API.
+Every recorded alert also gets a stored explanation in `<run>.explanations.jsonl`, written in
+the background by `SENTINEL_NARRATOR` (`none` = deterministic text; `llamacpp`, `local`,
+`watsonx` = Granite, configured by `LOCAL_LLM_*` / `WATSONX_*`).
+
+```bash
+SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=local-test SENTINEL_AUDIT_DIR=data/audit just dev
+python -m sentinel.audit.verify data/audit/local-test.jsonl   # anyone can check the chain
+```
+
+Use one run name per process: two APIs writing the same file make the second append fail
+(fail-closed, 503 after the backlog fills).
 
 ## Layout
 

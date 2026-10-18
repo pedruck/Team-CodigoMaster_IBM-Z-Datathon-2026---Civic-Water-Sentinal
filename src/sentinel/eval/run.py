@@ -50,8 +50,12 @@ class RunSummary:
         return self.windows - self.rejected
 
 
-def _request(url: str, body: bytes | None, timeout: float) -> tuple[int, bytes]:
+def _request(
+    url: str, body: bytes | None, timeout: float, token: str | None = None
+) -> tuple[int, bytes]:
     headers = {"content-type": "application/json"} if body is not None else {}
+    if body is not None and token:
+        headers["authorization"] = f"Bearer {token}"  # writes only (SENTINEL_INGEST_TOKEN)
     request = urllib.request.Request(url, data=body, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -76,6 +80,7 @@ def record_run(
     note: str = "",
     timeout: float = 10.0,
     check_every: int = 288,
+    token: str | None = None,
 ) -> RunSummary:
     api = api.rstrip("/")
     out.mkdir(parents=True, exist_ok=True)
@@ -92,7 +97,7 @@ def record_run(
     with windows.open() as source, (out / "responses.jsonl").open("w") as responses:
         for count, line in enumerate((x for x in source if x.strip()), 1):
             began = time.perf_counter()
-            code, body = _request(f"{api}/v1/windows", line.strip().encode(), timeout)
+            code, body = _request(f"{api}/v1/windows", line.strip().encode(), timeout, token)
             latency_ms = (time.perf_counter() - began) * 1000.0
             record: dict[str, object] = {"line": count, "http": code, "latency_ms": latency_ms}
             if code in (200, 201):

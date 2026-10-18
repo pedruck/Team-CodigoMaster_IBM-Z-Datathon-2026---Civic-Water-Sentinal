@@ -1,9 +1,12 @@
 # Audit and explainability (P5)
 
-Owner: P5 (@Leo3107). Status: implemented and tested **with mocks** (the backend's forecaster
-and detector, an invented alert, a fake watsonx HTTP endpoint) and run on the LinuxONE VM with
-the Granite model that is there. Contract D is `Proposed` until the team confirms it. Nothing
-here has been run on real BattLeDIM data or against the real watsonx.ai service.
+Owner: P5 (@Leo3107). Status: **running on the real stack.** Since 2026-10-18 the shared API on
+the VM runs `main` with no mocks (XGBoost, CUSUM v1, regions, pipe network) and with the audit
+chain and the stored explanations (BE-013), and the whole of 2019 was replayed into it (see "On
+the shared API"). In that run every explanation is the deterministic text: Granite was not
+enabled there; it was run on its own on the VM (see "Granite on the LinuxONE itself"). Contract D
+(contracts §4) is `Proposed` until the team confirms it. The real watsonx.ai service has never
+been called.
 
 | What | Where |
 |---|---|
@@ -16,14 +19,16 @@ here has been run on real BattLeDIM data or against the real watsonx.ai service.
 | Granite on the LinuxONE itself (GGUF through llama.cpp) | `src/sentinel/narrative/local.py`: `LlamaCppNarrator` (in process), `LocalGraniteNarrator` (server) |
 | Explanations generated in the background, stored and audited | `src/sentinel/narrative/store.py`: `ExplanationService`, `ExplanationStore` |
 | Explain one alert from the command line | `src/sentinel/narrative/__main__.py`: `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
-| API with the chain and the explanations wired in (temporary, until BE-013 / Q-AUD-07) | `src/sentinel/audit/devserver.py` |
+| API with the chain and the explanations wired in | `SENTINEL_AUDIT_SINK=chain` in `sentinel.main` since BE-013 (README); `src/sentinel/audit/devserver.py` only keeps the earlier command working; the wrapper and `narrator_for` live in `src/sentinel/narrative/runtime.py` |
 | Invented alert for tests and notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
-| Tests | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_local_granite.py`, `tests/test_watsonx.py`, `tests/test_explanation_store.py` |
+| Tests | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_local_granite.py`, `tests/test_watsonx.py`, `tests/test_explanation_store.py`; the backend wiring (P3) in `tests/test_audit_wiring.py` |
 | Walk-through | `notebooks/p5_audit/p5_audit_narrative.ipynb` |
 | Granite on the VM (discovery, load, explain) | `notebooks/p5_audit/p5_linuxone_granite.ipynb` |
 
-The sink plugs into the pipeline through the existing injection point,
-`build_pipeline(audit_sink=...)`. No backend file is changed.
+Since BE-013 the backend selects the chain by configuration: with `SENTINEL_AUDIT_SINK=chain`
+(plus `SENTINEL_AUDIT_RUN`, `SENTINEL_AUDIT_DIR` and `SENTINEL_NARRATOR`), `sentinel.main` opens
+the chain, verifies it and wraps it with the explanation service. Tests and notebooks can still
+inject a sink with `build_pipeline(audit_sink=...)`.
 
 ## Team decisions (2026-10-17/18)
 
@@ -39,22 +44,32 @@ The sink plugs into the pipeline through the existing injection point,
 An earlier version of this document recorded fail-open, which was what the backend did at the
 time. `main` pointed out the contradiction (Q-DOC-01); this document now follows `main`.
 
-## When `[SIMULATION]` goes away
+## `[SIMULATION]`: gone on the real stack
 
-An alert stops being a simulation only when both the forecaster **and** the detector are real
-(`is_mock=false`). State on 2026-10-18, after merging `main`:
+An alert is a simulation when its forecaster **or** its detector is a mock (`is_mock=true`); the
+code then adds `[SIMULATION]` to its explanation. State on 2026-10-18:
 
 | Piece | State |
 |---|---|
-| Real forecaster (P2) | **Exists:** XGBoost at `~/shared/civicwater/models/xgboost-33@0.1.0` on the VM (`SENTINEL_FORECASTER=xgboost`), `is_mock=false`. |
-| Real 2019 data (P1) | **Exist:** the whole 2019 replay passes validation (`docs/runbook-vm.md`). |
-| Regions and pipe network (P4) | **Exist:** `config/regions.battledim.json` and `l-town.json` in the data directory. |
-| CUSUM calibration (P4) | **Missing.** The detector stops being a mock only with `provenance = "battledim-2018-oof"`, calibrated on out-of-fold 2018 residuals **of the same forecaster** (DEP-DET-05). No such calibration exists for `xgboost-33@0.1.0`. The ones that exist (`synthetic`, `dev-baseline-2018`) force `is_mock=true`. |
+| Real forecaster (P2) | XGBoost `xgboost-33@0.1.0` in `~/shared/civicwater/models/` on the VM (`SENTINEL_FORECASTER=xgboost`), `is_mock=false`; TreeSHAP only for the sensors of an alert (`on_alert`). |
+| CUSUM calibration (P4) | `config/calibration.xgboost-33.json` (v1, PR #21): `provenance = battledim-2018-oof`, so `is_mock=false`; sha256 `fad6ec0b…` (ADR-008 §G, pinned by `tests/detection/test_committed_calibration.py`); k 0.45, h 128, N 4, c 1.5, h_close 96. |
+| Regions and pipe network (P4) | `config/regions.battledim.json` and `l-town.json` in the data directory. |
+| Real 2019 data (P1) | The whole 2019 replay passes validation (`docs/runbook-vm.md`). |
 
-So P2 has to deliver the out-of-fold 2018 residuals of the XGBoost, and P4 has to run the
-calibration and commit `config/calibration.<forecaster>.json`. With the XGBoost and the mock
-detector no alert is raised at all (σ of 1 m against millimetre residuals). Once the calibration
-exists, P5 changes nothing: the notice disappears by itself, and that path is already tested.
+So on the shared API the alerts come with `is_mock=false` and their explanations carry **no**
+`[SIMULATION]`; P5 did not have to change anything. Checked on this laptop on 2026-10-18:
+`sentinel.main` with the committed calibration, the chain and the explanations, and a stand-in
+forecaster that reports the served identity (the XGBoost weights only exist on the VM), gives
+`mocks_active: false`, alerts with `is_mock=false`, explanations without `[SIMULATION]` and
+`verify_explanation` OK. That check covers the wiring, not the quality of the detection.
+Anything run with a mock (tests, notebooks, the invented alert) still carries the notice, as it
+must.
+
+**Windows checkouts:** with `core.autocrlf=true` the calibration file is checked out with CRLF
+line endings. Its sha256 then becomes `e55ca826…` instead of `fad6ec0b…`, the detector version
+reads `0.1.0+e55ca826` and `test_committed_calibration.py` fails. The VM and CI (Linux) are not
+affected. `.gitattributes` pins LF only for `config/regions.battledim.json`; the calibration file
+needs the same line (P4).
 
 ## Contract D: audit record v1.0
 
@@ -117,8 +132,9 @@ Granite takes ~30 s per explanation on the VM, so it cannot run when the operato
 alert, and the text the operator saw has to be on record.
 
 **How it works:**
-1. The audit chain records the `alert.raised` event, and the `ExplainingAuditSink` (in the
-   `devserver`) queues the alert on the `ExplanationService`. Queuing never fails the append:
+1. The audit chain records the `alert.raised` event, and the `ExplainingAuditSink`
+   (`sentinel.narrative.runtime`, selected by `SENTINEL_AUDIT_SINK=chain` since BE-013) queues
+   the alert on the `ExplanationService`. Queuing never fails the append:
    with fail-closed, a failure there would make the backend retry an event that is already in
    the log.
 2. A single background worker calls `explain()` (Granite + validation + fallback), outside the
@@ -143,20 +159,26 @@ alert, and the text the operator saw has to be on record.
 - If the explanations log cannot be written (for example, someone wrote to the file), the
   explanation stays `pending` with the deterministic text, and a broken log is never extended.
 
-**Reading it** (reference implementation for Q-AUD-07, in the `devserver`):
+**Reading it** (Q-AUD-07, in `sentinel.api` since BE-013, contracts §5):
 `GET /v1/alerts/{id}/explanation` returns an `ExplanationStatus`:
 - `status`: `pending` (with the deterministic text meanwhile) or `ready`;
 - `source`, `text`, `generator`, `generated_at` and `fallback_reason`;
 - `alert_payload_sha256` and `record` (the `seq`/`hash` in the explanations log).
 
-An unknown alert gives 404 `not_found`. Environment: `SENTINEL_NARRATOR` = `none` (default,
-deterministic text only) | `llamacpp` | `local` | `watsonx`.
+An unknown alert, or a server whose audit sink is not `chain`, gives 404 `not_found`. The chain
+itself is read with `GET /v1/audit?after_seq&limit` and `GET /v1/audit/head` (Q-AUD-06).
+Environment: `SENTINEL_NARRATOR` = `none` (default, deterministic text only) | `llamacpp` |
+`local` | `watsonx`.
 
-On the VM, with Granite loaded in the API process (1 thread):
+On the VM, a private API with Granite loaded in the process (1 thread):
 
 ```bash
-SENTINEL_AUDIT_RUN=leo-test SENTINEL_NARRATOR=llamacpp uvicorn sentinel.audit.devserver:create_app --factory --host 127.0.0.1 --port $API_PORT
+SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=leo-test SENTINEL_NARRATOR=llamacpp uvicorn sentinel.main:create_app --factory --host 127.0.0.1 --port $API_PORT
 ```
+
+The earlier command, `uvicorn sentinel.audit.devserver:create_app --factory`, still works: it is
+`sentinel.main` with `SENTINEL_AUDIT_SINK=chain` forced. The shared API is started only with
+`scripts/shared_api.sh` (`docs/runbook-vm.md`, "Audit chain and explanations").
 
 **Access:** use `--host 127.0.0.1`. The VM is shared and the API has no authentication, so with
 `0.0.0.0` alerts and explanations would be open to anyone who can reach the port. To look from
@@ -165,9 +187,9 @@ outside the VM, use the SSH tunnel, as the dashboard does (ADR-009, `docs/runboo
 **Cost of fsync (review of PR #17):** every record is fsynced before `append` returns, because
 the contract requires it to be durable before returning. The 2019 replay writes one event per
 window (105 120 fsyncs). On a laptop it cost ~0.35 ms per record with fsync against ~0.11 ms
-without, and `~/shared` on the VM may be slower. Before the demo, time a replay (for example
-`scripts/replay.py --limit 2016` against the `devserver`, with and without the chain) and record
-the numbers here.
+without. Measured on the shared API (P3, `docs/performance.md`): the chain on `~/shared` costs
+**0.79 ms p50 per window**, about as much as the forecast (0.70 ms), and the whole of 2019 took
+338 s with it.
 
 **Pacing the demo (review of PR #17):** with one worker and 25–45 s per explanation, a fast
 replay with hundreds of alerts builds hours of queue. That is not an error: while it waits, the
@@ -177,6 +199,39 @@ options:
 - show alerts whose explanations were generated beforehand;
 - use `SENTINEL_NARRATOR=none` (deterministic text, instant) and show Granite on its own in the
   notebook.
+
+With the 895 alerts of 2019 (below), Granite at 25–34 s each would need about 6–8 h of
+background work for the year.
+
+### On the shared API (2019, 2026-10-18)
+
+Run by P3 (PR #23; `docs/performance.md`, `docs/runbook-vm.md`): `main` @ `45f733d` started by
+`scripts/shared_api.sh` with XGBoost, CUSUM v1, regions, pipe network and
+`SENTINEL_AUDIT_SINK=chain SENTINEL_AUDIT_RUN=replay-2019-1018`, no narrator (deterministic
+text). The whole of 2019 was replayed into it with `scripts/replay.py`.
+
+| Measure | Value |
+|---|---|
+| Windows | 105 120 × `201` in 338 s: 144 `insufficient_history`, 104 976 `scored`; audit backlog 0 |
+| Alerts | 895, all `is_mock=false` |
+| Audit chain `replay-2019-1018.jsonl` | 106 015 records (105 120 windows + 895 alerts), `verify_file` ok; `verify_alert` of an alert against its record ok |
+| Explanations `replay-2019-1018.explanations.jsonl` | 895 records, `source: template`, `verify_file` ok |
+| Chain fsync on `~/shared` | 0.79 ms p50 per window |
+| Anchor at the end of the run | audit seq 106 014, hash `96fa38333d56681f5de7aa09e0ce46d42977e712869b7ed951cb02c6a15b0856`; explanations seq 894, hash `2c93bfe6c39709e3faae9b704607b1dd917ea02079c3efbb5ee393edbed97b03` |
+
+To check it later (from the integration copy on the VM):
+
+```bash
+cd ~/shared/civicwater/main && PYTHONPATH=src python -m sentinel.audit.verify ~/shared/civicwater/audit/replay-2019-1018.jsonl --anchor-seq 106014 --anchor-hash 96fa38333d56681f5de7aa09e0ce46d42977e712869b7ed951cb02c6a15b0856
+```
+
+The anchor is also recorded in git (`docs/performance.md`), outside the VM, which is what makes
+a rewrite of the whole file detectable.
+
+**Alert volume.** 895 alerts is about 17 per week; P3 counted up to 28 alerts for one region and
+onset, and 37 % of consecutive alerts within 30 min of each other. Whether they are leaks is the
+2019 evaluation's job (EV-003); the repeated alerts of one episode are Q-DET-09 (P4). For P5 it
+means one explanation per alert, and many explanations of the same episode.
 
 ## Explaining an alert
 
@@ -340,7 +395,9 @@ generated in the background and stored.
 - For better text: a Granite *instruct* model as a big-endian GGUF (e.g. a 350M or 1B instruct
   converted with `convert_hf_to_gguf.py --bigendian`), or `ibm/granite-4-h-small` on watsonx.ai.
 - At ~30 s per explanation, generation must happen in the background, right after the alert, and
-  be stored (done: `sentinel.narrative.store`).
+  be stored (done: `sentinel.narrative.store`, wired into the backend by BE-013).
+- Granite has not run on the shared API yet: the 2019 run used the deterministic text for its
+  895 alerts (see "On the shared API").
 
 ## Testing on a laptop (Windows, PowerShell)
 
@@ -366,12 +423,12 @@ python -m uv run --with jupyter python -m jupyter lab
 End to end through the API, in two terminals (`data/` is ignored by git):
 
 ```powershell
-$env:SENTINEL_AUDIT_RUN="local-test"; $env:SENTINEL_AUDIT_DIR="data/audit"; python -m uv run uvicorn sentinel.audit.devserver:create_app --factory --port 8000
+$env:SENTINEL_AUDIT_SINK="chain"; $env:SENTINEL_AUDIT_RUN="local-test"; $env:SENTINEL_AUDIT_DIR="data/audit"; python -m uv run uvicorn sentinel.main:create_app --factory --port 8000
 ```
 
 ```powershell
 python -m uv run python scripts/make_synthetic.py data/synthetic.jsonl --count 288 --leak-at 200
-python -m uv run python scripts/replay.py data/synthetic.jsonl
+python -m uv run python scripts/replay.py data/synthetic.jsonl --url http://127.0.0.1:8000
 curl.exe -s http://127.0.0.1:8000/v1/alerts
 curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id> -o data/alert.json
 curl.exe -s http://127.0.0.1:8000/v1/alerts/<alert_id>/explanation
@@ -379,8 +436,9 @@ python -m uv run python -m sentinel.audit.verify data/audit/local-test.jsonl --a
 python -m uv run python -m sentinel.audit.verify data/audit/local-test.explanations.jsonl
 ```
 
-Expected (mocks): 288 windows accepted, 1 alert, an audit chain of 289 records with `ok: true`,
-the alert `ok: true`, and the explanation `ready` with `source: template` and `[SIMULATION]`.
+Expected (the default mocks): 288 windows accepted, 1 alert, an audit chain of 289 records with
+`ok: true`, the alert `ok: true`, and the explanation `ready` with `source: template` and
+`[SIMULATION]` (the laptop has no XGBoost weights, so the mocks stay on).
 Restarting the server continues the same chains; delete the files in `data/audit/` to start
 over.
 
@@ -403,16 +461,19 @@ failed (see `fallback_reason` and `check`); 2 = missing configuration.
    `pip install -e` in a personal clone: the notebooks and commands use `PYTHONPATH=src` with the
    Python of `/opt/venv`.
 2. **Tests:**
-   `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py tests/test_explanation_store.py`.
+   `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py tests/test_explanation_store.py tests/test_audit_wiring.py`.
 3. **Notebooks:** run `p5_audit_narrative.ipynb` and `p5_linuxone_granite.ipynb` with
    *Kernel → Restart Kernel and Run All Cells*. Before pulling again, discard what Jupyter saved:
    `git fetch origin && git switch --discard-changes -C <branch> origin/<branch>`.
-4. **API with the chain and Granite** (one worker, `127.0.0.1`): the command in "Stored and
-   audited explanations" above. Replay with `scripts/replay.py --url http://127.0.0.1:$API_PORT`,
-   then read `GET /v1/alerts/{id}/explanation` until it is `ready`.
+4. **Private API with the chain and Granite** (one worker, `127.0.0.1`): the command in "Stored
+   and audited explanations" above. Replay with
+   `scripts/replay.py --url http://127.0.0.1:$API_PORT` (always pass `--url`: its default,
+   port 8000, is the shared API), then read `GET /v1/alerts/{id}/explanation` until it is
+   `ready`. The shared API on port 8000 already runs the real stack with the chain (see "On the
+   shared API"); only `scripts/shared_api.sh` restarts it, after telling the team.
 5. **After the replay:** run `python -m sentinel.audit.verify` on both logs and keep the `head`
-   (`seq` + `hash`) **outside the VM** (the PR, the team chat, your laptop). In the demo, verify
-   with `--anchor-seq/--anchor-hash`.
+   (`seq` + `hash`) **outside the VM** (the PR, the team chat, your laptop), as P3 did for the
+   2019 run in `docs/performance.md`. In the demo, verify with `--anchor-seq/--anchor-hash`.
 6. **watsonx.ai, if used:** check the network with
    `curl -s -o /dev/null -w "%{http_code}\n" https://iam.cloud.ibm.com/identity/token`. Any HTTP
    code (400) means it is reachable; a timeout or DNS error means egress is blocked. The VM has a
@@ -426,30 +487,34 @@ failed (see `fallback_reason` and `check`); 2 = missing configuration.
 |---|---|
 | Q-AUD-01, port and event types | Accepted as they are. |
 | Q-AUD-05, circular reference | Solved as in ADR-006: the alert is hashed without `audit`. |
-| Q-AUD-06, reading the chain over HTTP (replaces Q-AUD-04) | **Agree with the proposal on `main`.** `GET /v1/audit?after_seq&limit` returns records in `seq` order, exactly as stored; `GET /v1/audit/head` returns `{seq, hash}`; read only. The backend returns **no** "verified" boolean, since verifying is the client's job (`python -m sentinel.audit.verify`, `verify_records`). P5 provides `HashChainAuditSink.records_after(after_seq, limit)` (O(limit) per page) and `HashChainAuditSink.head`. The rules the contract must state are in Contract D above: canonical JSON, the 64-zero genesis `prev_hash` and the `hash` formula. |
-| Q-AUD-07, explanation over HTTP | **Agree with the proposed shape.** The reference implementation is in the `devserver` (`GET /v1/alerts/{id}/explanation`; see "Stored and audited explanations"), with `status` `pending`/`ready`, `text`, `generator` (the narrator's name as a string; it can become a `ModelInfo` if P3 prefers), `alert_payload_sha256`, `generated_at` and `record`. `disabled` is left for the backend to use when no explanation service is configured. P3 moves the route into `sentinel.api` and calls `ExplanationService.submit(alert)` when an alert is recorded. |
+| Q-AUD-06, reading the chain over HTTP (replaces Q-AUD-04) | **Done (BE-013, P3).** `GET /v1/audit?after_seq&limit` returns records in `seq` order, exactly as stored, through `HashChainAuditSink.records_after` (O(limit) per page); `GET /v1/audit/head` returns `{seq, hash}`; read only. The backend returns **no** "verified" boolean: verifying is the client's job (`python -m sentinel.audit.verify`, `verify_records`). The rules are in Contract D above (contracts §4). |
+| Q-AUD-07, explanation over HTTP | **Done (BE-013, P3).** `GET /v1/alerts/{id}/explanation` in `sentinel.api` (contracts §5), with `status` `pending`/`ready`, `text`, `generator` (the narrator's name), `alert_payload_sha256`, `generated_at` and `record`; 404 for an unknown alert or when the sink is not `chain`. The wrapper that queues the explanation moved to `sentinel.narrative.runtime` unchanged. |
 | Q-DOC-01, `audit` vocabulary and fail-open in P5's doc | Solved on P5's side: the branch merged `main` (a merge, not a rebase, because the branch is published and `AGENTS.md` forbids `push --force`). `AuditStatus` is now `main`'s (`recorded`, `pending`, `disabled`), and this document records fail-closed. |
 
 ## What depends on other owners
 
-- **P3 (backend), BE-013:**
-  - accept `SENTINEL_AUDIT_SINK=chain` and a path or run name (`SENTINEL_AUDIT_PATH` or
-    `SENTINEL_AUDIT_RUN`) in `config.py`;
-  - create the sink in `main.build_pipeline`, e.g. `HashChainAuditSink(audit_path_for(run))`
-    (after the merge, `main` still has only `null`/`memory`);
-  - the endpoints of Q-AUD-06/07;
-  - add `WATSONX_*` and `LOCAL_LLM_*` (no values) to `.env.example`.
-- **P4 (detection):** the calibration that makes alerts real (DEP-DET-05, with P2). The
-  explanation already uses `region`, `candidate_pipe`, `suspected_onset`, `cusum` and `since`
-  when they are filled in. Optional: `.gitattributes` with `eol=lf` for `config/*.json`, so that
-  the hash test of `regions.battledim.json` also passes on Windows checkouts.
+- **P3 (backend): done.** BE-013 (PR #22, 2026-10-18): `SENTINEL_AUDIT_SINK=chain` with
+  `SENTINEL_AUDIT_RUN` / `SENTINEL_AUDIT_DIR` / `SENTINEL_NARRATOR`, `GET /v1/audit`,
+  `/v1/audit/head` and `/v1/alerts/{id}/explanation` (contracts §4–5), `WATSONX_*` and
+  `LOCAL_LLM_*` in `.env.example`. The shared API runs the real stack with the chain (PR #23).
+- **P4 (detection):** the final calibration is done (`config/calibration.xgboost-33.json`,
+  PR #21), so alerts are real. Pending:
+  - `.gitattributes` with `eol=lf` for the calibration file, as for `regions.battledim.json`,
+    so that its hash is the same on Windows checkouts;
+  - the repeated alerts of one episode (Q-DET-09), each of which gets its own explanation.
+
+  The explanation already uses `region`, `candidate_pipe`, `suspected_onset`, `cusum` and
+  `since`.
 - **P1 (data):** the official BattLeDIM IDs (`config/sensors.battledim.json`: `n1`, `n54`,
   `n105`…) are on `main`, and the validation recognises them (letters followed by digits).
-- **P2 (ML):** `contributions` (TreeSHAP) in the `ForecastResult`; the backend already restricts
-  them to the alert's sensors.
-- **P6 (dashboard):** show `explanation.text`, `source`/`fallback_reason`, `audit.seq` and the
-  verification result. The 3 Windows-only failures of `tests/test_eval_run.py` (`write_text`
-  without `encoding="utf-8"`, and a path compared with `/`).
+- **P2 (ML): done.** `contributions` (TreeSHAP) only for the sensors of an alert
+  (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`), which the explanation lists.
+- **P6 (dashboard): pending.**
+  - The detail still shows a fixed "explanation unavailable", although
+    `GET /v1/alerts/{id}/explanation` exists since BE-013. It should show `explanation.text`,
+    `source`/`fallback_reason`, `audit.seq` and the verification result.
+  - Two Windows-only failures remain in `tests/test_eval_run.py` (`write_text` without
+    `encoding="utf-8"`).
 
 ## Verification
 
@@ -458,15 +523,18 @@ dashboard`, as in CI), unless stated otherwise.
 
 | What | Result |
 |---|---|
-| Latest: English-only explanations, review of PR #17 addressed | `ruff format --check`, `ruff check`, `mypy` (152 files) clean; P5 tests **131 passed**; whole suite **855 passed**, 34 skipped, the same 4 Windows-only failures outside P5 as below (fewer tests than below because the Portuguese cases were removed); both notebooks executed in a real kernel (12/12 and 6/6 code cells, 0 errors; the VM notebook against a fake `llama_cpp`) |
+| Shared API on the real stack, full 2019 (P3, PR #23, VM, 2026-10-18) | 105 120 × `201` in 338 s; 895 alerts with `is_mock=false`; audit chain 106 015 records and 895 explanations (`template`), `verify_file` ok on both, `verify_alert` ok; anchors in "On the shared API" |
+| `main` @ `d22c8a7` after BE-013, this laptop (2026-10-18) | `ruff format --check`, `ruff check`, `mypy` (179 files) clean; P5 tests plus `tests/test_audit_wiring.py` **150 passed** (the 2 failures of `test_committed_calibration.py` are the CRLF hash above); whole suite 1034 passed, 40 skipped, 33 failed, all Windows-only (CRLF of the calibration and regions files, the fixture and symlink of P4's offline tests, encoding in P6's evaluation tests). CI on `main` (Linux): green, 1067 passed, 40 skipped |
+| `sentinel.main` end to end with the committed calibration, the chain and the explanations (stand-in forecaster with the served identity), 300 windows | 300 × `201`; `mocks_active: false`; 5 alerts with `is_mock=false`; explanations `ready` without `[SIMULATION]`, `verify_explanation` OK; `/v1/audit` and `/v1/audit/head` answer; both chains ok |
+| English-only explanations, review of PR #17 addressed | `ruff format --check`, `ruff check`, `mypy` (152 files) clean; P5 tests **131 passed**; whole suite **855 passed**, 34 skipped, the same 4 Windows-only failures outside P5 as below (fewer tests than below because the Portuguese cases were removed); both notebooks executed in a real kernel (12/12 and 6/6 code cells, 0 errors; the VM notebook against a fake `llama_cpp`) |
 | Review of PR #17 (P1): bare days/years, metres, latest version after a restart, safe and indexed chain reads | whole suite **863 passed**, 34 skipped, 4 failed: Windows-only and outside P5 (3 in `test_eval_run.py`, P6; 1 in `test_topology_files.py`, P4, whose regions file gets CRLF line endings on a Windows checkout, 428 bytes instead of 415). The reviewer ran the suite on Linux: 853 passed, 34 skipped. |
 | Second merge of `main` (alert 1.1, L-Town regions) | no conflict; P5 tests pass with the backend's official example `alert.cusum-synthetic.json` |
-| Real `uvicorn` end to end (`devserver`, `SENTINEL_NARRATOR=none`, official BattLeDIM registry), 288 windows | 288 × 201; 1 alert; `GET .../explanation` `ready`; audit chain ok (289 records) and explanations chain ok |
+| Real `uvicorn` end to end (`devserver`, before BE-013; `SENTINEL_NARRATOR=none`, official BattLeDIM registry, mocks), 288 windows | 288 × 201; 1 alert; `GET .../explanation` `ready`; audit chain ok (289 records) and explanations chain ok |
 | LinuxONE VM (s390x): P5 tests on branch `leo/local-version` @ `033959d` | 93 passed (before the merges; not rerun since) |
 | LinuxONE VM: walk-through notebook in the VM's Jupyter | every section ok: 289-record chain valid, tampering detected, alert `A-20190314T1640Z-1` (same ID and deviations as on x86) linked to record seq 200 |
 | x86 vs s390x parity of canonical JSON | `payload_sha256` of `{"i": 1, "status": "scored"}` = `993ee9cc…20d79f` on both |
 | LinuxONE VM: `p5_linuxone_granite.ipynb` | see "Results on the VM" above (4 runs) |
-| LinuxONE VM: `devserver` with `SENTINEL_NARRATOR=llamacpp` | `verify_explanation` of the stored explanation against its `alert.raised` record: OK |
+| LinuxONE VM: `devserver` (before BE-013, mocks) with `SENTINEL_NARRATOR=llamacpp` | `verify_explanation` of the stored explanation against its `alert.raised` record: OK |
 | `foundation_model_specs` (public) per region | Granite chat only in us-south and eu-de (`ibm/granite-4-h-small`) |
-| Granite acceptance rate over many varied alerts | **NOT_RUN** |
-| P5 tests on s390x after the merges; real data; watsonx.ai with credentials | **NOT_RUN** |
+| Granite acceptance rate over many varied alerts; Granite on real alerts (the 2019 run used the deterministic text) | **NOT_RUN** |
+| P5 tests on s390x after the merges; watsonx.ai with credentials | **NOT_RUN** |

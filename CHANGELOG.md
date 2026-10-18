@@ -6,7 +6,7 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
-- BE-024: interactive L-Town network map as the first viewport of the dashboard: queue |
+- BE-025: interactive L-Town network map as the first viewport of the dashboard: queue |
   live SVG map | selected-alert evidence. Zoom (wheel, pinch, buttons, keys), pan, double-click
   zoom, hover tooltips and pinned details for pipes and sensors, Alert and Regions modes (nine
   region inks, clickable legend), focus-alert camera flight (also on open) and an in-map replay
@@ -14,6 +14,28 @@ contract versions are tracked separately (`schema_version`).
   iframe document (`map_document`, `st.iframe`), same component on the map page and in the
   Jupyter view (`srcdoc`, static SVG fallback). Labelled synthetic demo playback
   `fixture-synthetic-ltown-demo`. PRODUCT.md and DESIGN.md (Impeccable). ADR-012 addendum.
+
+### Security
+- BE-024 (pre-integration review, 2026-10-18), write path:
+  - readings outside the registry's physical `limits` get 422 `reading_out_of_range` (the
+    official registry carries the data owner's cleaning ranges: pressure 0–100 m, flow 0–500
+    m³/h, level 0–10 m; `build_registry` copies them from `MANIFEST.json`);
+  - a window later than the server clock + 1 h gets 422 `timestamp_in_future`, and one more
+    than `SENTINEL_MAX_GAP_SECONDS` (1 day) after the last accepted gets 409 `gap_too_large`, so
+    a wrong year can no longer block the stream until a restart;
+  - `SENTINEL_INGEST_TOKEN` / `_FILE`: every `POST` needs `Authorization: Bearer`, checked before
+    the body is read (401 `unauthorized`); bodies above `SENTINEL_MAX_BODY_BYTES` get 413;
+  - `scripts/replay.py` needs `--url` and sends the token (`--token-file`); the evaluation CLI
+    takes `--token-file` too;
+  - `scripts/shared_api.sh` defaults to the audit chain (new run per start unless named) and
+    creates and passes a token file (mode 600, never on a command line).
+- Forecaster artefact integrity: `load_forecaster` hashes the artefact before parsing it, the
+  served version carries the digest (`0.1.0+808746bc`) and `SENTINEL_FORECASTER_SHA256` pins it.
+  The CUSUM matches a calibration naming the release against any artefact of it, and one naming a
+  digest only against that artefact.
+- Replay data integrity: `replay_windows` checks the SCADA source against the version's
+  `MANIFEST.json` and writes `<file>.manifest.json`; `scripts/replay.py` checks the file against
+  it; `python -m sentinel.audit.replay_check` compares the audit chain with the replay file.
 
 ### Fixed
 
@@ -23,6 +45,21 @@ contract versions are tracked separately (`schema_version`).
   allow map links, status labels and footer text to reflow at 200% text. Include the network
   map in current-section navigation and close the mobile sidebar after selecting a section.
   Add an optional seven-viewport Playwright regression check.
+
+### Added
+- BE-013: `SENTINEL_AUDIT_SINK=chain` selects the audit owner's hash-chained log
+  (`SENTINEL_AUDIT_RUN`, optional `SENTINEL_AUDIT_DIR`), verified at startup (a broken file stops
+  the API) and continued across restarts; every recorded alert gets a stored explanation
+  (`SENTINEL_NARRATOR`). Read endpoints `GET /v1/audit?after_seq&limit`, `GET /v1/audit/head`
+  (Q-AUD-06) and `GET /v1/alerts/{id}/explanation` (Q-AUD-07), contracts §4–5. The wrapper and
+  narrator factory moved from `sentinel.audit.devserver` (now a compatibility shim) to
+  `sentinel.narrative.runtime`. `scripts/shared_api.sh` forwards the audit, narrator and
+  `LOCAL_LLM_*` variables (not `WATSONX_*`) and `status` prints the chain head.
+
+### Fixed
+- `docs/runbook-vm.md`: the CUSUM start command lacked `SENTINEL_FORECASTER=xgboost`, so the
+  calibration for `xgboost-33@0.1.0` would have been refused against the mock forecaster;
+  README and runbook no longer say that no calibration exists for the served model.
 
 ### Added
 - Final calibration v1 of the CUSUM detector for the served forecaster: `config/calibration.xgboost-33.json`

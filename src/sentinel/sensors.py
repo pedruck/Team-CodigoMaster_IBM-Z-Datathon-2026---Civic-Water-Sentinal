@@ -7,6 +7,11 @@
   and tests only.
 
 Registry order is the canonical sensor order (array order for models).
+
+Optional ``limits`` give the physically valid range of each sensor kind, in the registry's
+units (inclusive). A reading outside it is refused (422 ``reading_out_of_range``): it is a
+broken sensor or a bad client, never a leak. The official registry copies the data owner's
+cleaning ranges from the data ``MANIFEST.json`` (``cleaning.valid_ranges``).
 """
 
 import json
@@ -16,6 +21,21 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sentinel.schemas.windows import SensorId
+
+KINDS = ("pressure", "flow", "tank_level")
+
+
+class Limit(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    min: float
+    max: float
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "Limit":
+        if not self.min < self.max:
+            raise ValueError(f"limit min ({self.min}) must be below max ({self.max})")
+        return self
 
 
 class SensorRegistryFile(BaseModel):
@@ -28,6 +48,14 @@ class SensorRegistryFile(BaseModel):
     tank_level: list[SensorId] = Field(default_factory=list)
     # Optional {"pressure": "m", ...}; shown in /v1/status when present.
     units: dict[str, str] | None = None
+    limits: dict[str, Limit] | None = None
+
+    @model_validator(mode="after")
+    def _known_limit_kinds(self) -> "SensorRegistryFile":
+        unknown = sorted(set(self.limits or {}) - set(KINDS))
+        if unknown:
+            raise ValueError(f"limits for unknown sensor kinds {unknown}; expected {KINDS}")
+        return self
 
     @model_validator(mode="after")
     def _unique_ids(self) -> "SensorRegistryFile":
@@ -46,6 +74,7 @@ class SensorRegistry:
     provisional: bool
     source: str
     units: dict[str, str] | None = None
+    limits: dict[str, tuple[float, float]] | None = None
 
     @classmethod
     def load(cls, path: Path) -> "SensorRegistry":
@@ -57,6 +86,11 @@ class SensorRegistry:
             provisional=data.provisional,
             source=str(path),
             units=data.units,
+            limits=(
+                {kind: (lim.min, lim.max) for kind, lim in data.limits.items()}
+                if data.limits
+                else None
+            ),
         )
 
     @property

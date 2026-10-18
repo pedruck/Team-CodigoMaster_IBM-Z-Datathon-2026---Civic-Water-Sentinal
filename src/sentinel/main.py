@@ -9,15 +9,19 @@ from fastapi import FastAPI, Request, Response
 
 from sentinel import __version__
 from sentinel.api.errors import install_error_handlers
-from sentinel.api.routes import alerts, health, status, windows
-from sentinel.audit.sinks import AuditSink, InMemoryAuditSink, NullAuditSink
+from sentinel.api.guard import WriteGuard
+from sentinel.api.routes import alerts, audit, health, status, windows
+from sentinel.audit.chain import HashChainAuditSink
+from sentinel.audit.sinks import AuditError, AuditSink, InMemoryAuditSink, NullAuditSink
 from sentinel.config import ConfigError, Settings
 from sentinel.detection.cusum import CusumDetector
 from sentinel.detection.interface import Detector
 from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import Forecaster
 from sentinel.forecasting.mock import PersistenceMockForecaster
-from sentinel.forecasting.registry import load_forecaster
+from sentinel.forecasting.registry import ArtefactMismatchError, load_forecaster
+from sentinel.narrative.runtime import ExplainingAuditSink, narrator_for
+from sentinel.narrative.store import ExplanationService, ExplanationStore, explanations_path_for
 from sentinel.observability.logging import configure_logging
 from sentinel.observability.metrics import Metrics
 from sentinel.sensors import SensorRegistry
@@ -50,7 +54,7 @@ def build_pipeline(
             )
         )
     if audit_sink is None:
-        audit_sink = InMemoryAuditSink() if settings.audit_sink == "memory" else NullAuditSink()
+        audit_sink = _configured_audit_sink(settings)
     return Pipeline(
         settings=settings,
         registry=registry,
@@ -73,13 +77,17 @@ def _configured_forecaster(settings: Settings) -> Forecaster:
         raise ConfigError(
             f"SENTINEL_FORECASTER={settings.forecaster} needs SENTINEL_FORECASTER_PATH"
         )
-    forecaster = load_forecaster(
-        settings.forecaster,
-        settings.forecaster_path,
-        engine=settings.forecaster_engine,
-        tree_format=settings.forecaster_tree_format,
-        with_contributions=settings.forecaster_contributions,
-    )
+    try:
+        forecaster = load_forecaster(
+            settings.forecaster,
+            settings.forecaster_path,
+            engine=settings.forecaster_engine,
+            tree_format=settings.forecaster_tree_format,
+            with_contributions=settings.forecaster_contributions,
+            expected_sha256=settings.forecaster_sha256,
+        )
+    except ArtefactMismatchError as exc:
+        raise ConfigError(f"SENTINEL_FORECASTER_SHA256: {exc}") from exc
     log.info(
         "forecaster loaded",
         extra={
@@ -87,6 +95,8 @@ def _configured_forecaster(settings: Settings) -> Forecaster:
                 "kind": settings.forecaster,
                 "path": str(settings.forecaster_path),
                 "model": forecaster.info.model_dump(),
+                "artefact_sha256": getattr(forecaster, "artefact_sha256", None),
+                "artefact_pinned": settings.forecaster_sha256 is not None,
                 "contributions": settings.forecaster_contributions,
                 "tree_format_used": getattr(forecaster, "tree_format_used", None),
             }
@@ -122,6 +132,40 @@ def _cusum_detector(
         raise ConfigError(f"cannot start the CUSUM detector from {files}: {exc}") from exc
 
 
+def _configured_audit_sink(settings: Settings) -> AuditSink:
+    """``chain``: the audit owner's hash chain (verified at startup, extended across restarts)
+    wrapped so that every recorded alert gets a stored explanation (BE-013). A broken or
+    unreadable log stops the process: the API never falls back to a sink that is not
+    tamper-evident."""
+    if settings.audit_sink == "memory":
+        return InMemoryAuditSink()
+    if settings.audit_sink != "chain":
+        return NullAuditSink()
+    path = settings.audit_path
+    assert path is not None and settings.audit_run is not None  # Settings enforces it
+    explanations_path = explanations_path_for(settings.audit_run, settings.audit_dir)
+    try:
+        chain = HashChainAuditSink(path)
+        store = ExplanationStore(explanations_path)
+    except (AuditError, OSError, ValueError) as exc:
+        raise ConfigError(f"cannot open the audit chain {path}: {exc}") from exc
+    service = ExplanationService(narrator_for(settings.narrator), store)
+    head = chain.head
+    log.info(
+        "audit chain opened",
+        extra={
+            "fields": {
+                "audit_path": str(path),
+                "explanations_path": str(explanations_path),
+                "narrator": service.narrator_name,
+                "head_seq": head.seq if head else None,
+                "head_hash": head.hash if head else None,
+            }
+        },
+    )
+    return ExplainingAuditSink(chain, service)
+
+
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     configure_logging(settings.log_level)
@@ -133,9 +177,15 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         description="Ingestion of 5-minute SCADA windows (simulated BattLeDIM L-Town data).",
     )
     app.state.pipeline = pipeline
+    sink = pipeline.audit_sink
+    app.state.explanations = sink.service if isinstance(sink, ExplainingAuditSink) else None
     install_error_handlers(app)
-    for module in (health, windows, alerts, status):
+    for module in (health, windows, alerts, audit, status):
         app.include_router(module.router)
+    # Added before the counting middleware below, so that one (outermost) also counts 401/413.
+    app.add_middleware(
+        WriteGuard, token=settings.ingest_token, max_body_bytes=settings.max_body_bytes
+    )
 
     @app.middleware("http")
     async def _count_window_requests(
@@ -161,11 +211,16 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
                 "audit_sink": pipeline.audit_sink.name,
                 "mocks_active": pipeline.mocks_active,
                 "registry_provisional": pipeline.registry.provisional,
+                "ingest_token_required": settings.ingest_token is not None,
             }
         },
     )
     if pipeline.mocks_active:
         log.warning("MOCK forecaster/detector active: results are not leak detections")
+    if settings.ingest_token is None:
+        log.warning(
+            "POST /v1/windows is open: set SENTINEL_INGEST_TOKEN(_FILE) outside development"
+        )
     if pipeline.registry.provisional:
         log.warning("PROVISIONAL sensor registry: IDs are placeholders, not BattLeDIM IDs")
     return app
