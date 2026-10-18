@@ -47,7 +47,7 @@ _FORBIDDEN = re.compile(
     r"|\bcertainly\b|\bdefinitely\b",
     re.IGNORECASE,
 )
-_MOCK_LABEL = re.compile(r"simula|mock", re.IGNORECASE)
+MOCK_LABEL = re.compile(r"simula|mock", re.IGNORECASE)
 
 
 _CLAUSE = re.compile(r"(?<=[.;:!?])\s+|\n+")
@@ -219,7 +219,7 @@ def check_narrative(text: str, alert: Alert) -> NarrativeCheck:
     misattributed = _misattributed(text, allowed)
 
     forbidden = tuple(m.group(0) for m in _FORBIDDEN.finditer(text))
-    missing_mock = alert.is_mock and not _MOCK_LABEL.search(text)
+    missing_mock = alert.is_mock and not MOCK_LABEL.search(text)
     return NarrativeCheck(
         ok=not (bad_ids or bad_numbers or misattributed or unknown_dt or forbidden or missing_mock),
         unknown_references=tuple(bad_ids),

@@ -12,6 +12,7 @@ from sentinel.schemas.alerts import Alert
 
 Language = Literal["pt", "en"]
 DEFAULT_LANGUAGE: Language = "en"  # team decision; "pt" stays available
+MOCK_TAG: dict[Language, str] = {"en": "[SIMULATION]", "pt": "[SIMULAÇÃO]"}
 
 TOP_CONTRIBUTIONS = 3
 

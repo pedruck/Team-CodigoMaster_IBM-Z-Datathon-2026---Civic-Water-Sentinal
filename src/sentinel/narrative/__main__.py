@@ -66,6 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     report["elapsed_s"] = round(time.perf_counter() - started, 3)
     if load_s is not None:
         report["model_load_s"] = load_s
+    if isinstance(narrator, LlamaCppNarrator):
+        report["usage"] = narrator.last_usage
     sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     return 1 if narrator is not None and explanation.source != "llm" else 0
 

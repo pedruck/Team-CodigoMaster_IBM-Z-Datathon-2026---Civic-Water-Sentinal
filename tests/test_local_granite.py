@@ -67,8 +67,29 @@ def test_few_shot_prompt_ends_with_the_alert() -> None:
     assert "null" not in last_record and 'deviation_m": -0.91' in last_record
     for distractor in ("top_contributions_m", "detector_summary", "audit_seq", "models"):
         assert distractor not in last_record
+    # The simulation notice is the code's job (explain adds it), not the model's.
+    assert "is_mock" not in prompt and "[SIMULATION]" not in prompt
     pt = build_completion_prompt(alert, "pt")
-    assert pt.endswith("Explicação:") and "[SIMULAÇÃO]" in pt
+    assert pt.endswith("Explicação:") and "[SIMULAÇÃO]" not in pt and "região R2" in pt
+
+
+def test_examples_have_the_same_shape_as_the_alert() -> None:
+    """On the VM the model copied the region of an example into an alert without one."""
+    unlocated = build_completion_prompt(mock_alert(region=None))
+    records = [line for line in unlocated.splitlines() if line.startswith("Record:")]
+    assert len(records) == 3 and all('"region"' not in r for r in records)
+    assert "R2" not in unlocated and "R7" not in unlocated
+    located = build_completion_prompt(mock_alert())
+    assert all('"region"' in r for r in located.splitlines() if r.startswith("Record:"))
+
+
+def test_explain_adds_the_simulation_notice_the_model_left_out() -> None:
+    plain = GOOD.removeprefix("[SIMULATION] ")
+    e = explain(mock_alert(), narrator(FakeLlamaServer(plain)))
+    assert e.source == "llm" and e.text == "[SIMULATION] " + plain
+    assert e.model_text == plain
+    real = explain(mock_alert(is_mock=False), narrator(FakeLlamaServer(plain)))
+    assert real.text == plain  # no notice on a real alert
 
 
 def test_explain_sends_the_few_shot_prompt_to_the_completions_endpoint() -> None:
@@ -148,7 +169,10 @@ class FakeLlama:
     def create_completion(self, prompt: str, **kwargs: Any) -> Any:
         self.prompts.append(prompt)
         self.completion_kwargs = kwargs
-        return {"choices": [{"text": " " + GOOD}]}
+        return {
+            "choices": [{"text": " " + GOOD}],
+            "usage": {"prompt_tokens": 412, "completion_tokens": 58, "total_tokens": 470},
+        }
 
     def close(self) -> None:
         self.closed = True
@@ -177,6 +201,7 @@ def test_llamacpp_loads_once_with_safe_defaults(tmp_path: Path) -> None:
     assert llm.prompts[0] == build_completion_prompt(alert)
     assert llm.completion_kwargs["temperature"] == 0.0
     assert "\n\n" in llm.completion_kwargs["stop"]
+    assert n.last_usage == {"prompt_tokens": 412, "completion_tokens": 58, "total_tokens": 470}
 
     n.close()
     assert llm.closed and not n.loaded
@@ -220,6 +245,7 @@ def test_cli_llamacpp(
     out = json.loads(capsys.readouterr().out)
     assert out["source"] == "llm" and out["generator"] == "llamacpp:m.gguf"
     assert "model_load_s" in out and "elapsed_s" in out
+    assert out["usage"]["prompt_tokens"] == 412
 
     monkeypatch.setattr(
         LlamaCppNarrator, "from_env", classmethod(lambda cls: cls(tmp_path / "x.gguf"))

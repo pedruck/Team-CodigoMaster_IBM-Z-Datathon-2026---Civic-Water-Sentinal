@@ -309,3 +309,10 @@ def test_known_limit_swap_between_named_sensors_passes() -> None:
     """Documented limit: both values belong to sensors named in the same clause."""
     text = "[SIMULATION] Sensors P14 and P21 read 0.62 m and 0.91 m below expected."
     assert check_narrative(text, mock_alert()).ok
+
+
+def test_rejected_model_text_is_kept_for_diagnosis() -> None:
+    bad = GOOD_EN + " Sensor P07 also dropped 7.3 m."
+    e = explain(mock_alert(), fixed(bad))
+    assert e.source == "template" and e.model_text == bad
+    assert explain(mock_alert()).model_text is None

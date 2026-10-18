@@ -19,8 +19,14 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from sentinel.audit.chain import alert_payload_sha256
-from sentinel.narrative.check import NarrativeCheck, check_narrative
-from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language, alert_facts, render_text
+from sentinel.narrative.check import MOCK_LABEL, NarrativeCheck, check_narrative
+from sentinel.narrative.facts import (
+    DEFAULT_LANGUAGE,
+    MOCK_TAG,
+    Language,
+    alert_facts,
+    render_text,
+)
 from sentinel.schemas.alerts import Alert, AuditRef
 from sentinel.schemas.common import ContractModel
 
@@ -61,6 +67,7 @@ class Explanation(ContractModel):
     facts: dict[str, Any]  # structured explanation; the only input the model sees
     check: NarrativeCheck | None  # validation of the model's text (accepted or rejected)
     fallback_reason: str | None
+    model_text: str | None = None  # what the model wrote, kept even when it was rejected
 
 
 _PROMPT: dict[Language, str] = {
@@ -113,8 +120,10 @@ def explain(
         text: str,
         check: NarrativeCheck | None = None,
         fallback_reason: str | None = None,
+        model_text: str | None = None,
     ) -> Explanation:
         return Explanation(
+            model_text=model_text,
             alert_id=alert.alert_id,
             alert_payload_sha256=alert_payload_sha256(alert),
             audit=alert.audit,
@@ -140,11 +149,15 @@ def explain(
         return build("template", template, fallback_reason=f"narrator_error: {exc!r}")
     if not text:
         return build("template", template, fallback_reason="narrator_empty")
+    raw = text
+    if alert.is_mock and not MOCK_LABEL.search(text):
+        # The simulation notice is a safety rule: the code guarantees it, not the model.
+        text = f"{MOCK_TAG[language]} {text}"
     check = check_narrative(text, alert)
     if not check.ok:
         log.warning(
             "narrative rejected",
             extra={"fields": {"alert_id": alert.alert_id, "check": check.model_dump()}},
         )
-        return build("template", template, check, fallback_reason="narrative_rejected")
-    return build("llm", text, check)
+        return build("template", template, check, "narrative_rejected", model_text=raw)
+    return build("llm", text, check, model_text=raw)

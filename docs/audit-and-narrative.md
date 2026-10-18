@@ -185,9 +185,23 @@ API. Hoje a VM não tem `llama-server`.
 Os números do `system info` mostram que o build tem suporte a zDNN e detectou o NNPA. Não foi
 medido quanto da inferência roda no acelerador.
 
-O prompt local foi enxugado depois dessas medidas: sem contribuições, resumo do detector,
-modelos e seq; números com 2 casas; `max_tokens` 120. O efeito no tempo e na aceitação ainda não
-foi medido.
+**2ª rodada:** prompt enxuto (sem contribuições, resumo do detector, modelos e seq; números
+com 2 casas; `max_tokens` 120) e a regra de números no lugar errado.
+
+| Alerta | Tempo | Resultado |
+|---|---|---|
+| Inventado (en) | 34,1 s | recusado: não escreveu `[SIMULATION]` |
+| Pipeline (en) | 31,5 s | recusado: copiou a região `R2` do exemplo e não escreveu `[SIMULATION]` |
+| Pipeline (pt) | 26,9 s | recusado: copiou a região `R2` do exemplo |
+
+Ficou 7–17 s mais rápido por explicação, e nenhum número foi parar no lugar errado. Correções
+feitas depois dessa rodada:
+- o aviso de simulação passou a ser colocado pelo código (`explain`), e saiu do prompt;
+- o prompt mostra só exemplos com o mesmo formato do alerta (com ou sem região);
+- `Explanation.model_text` guarda o texto bruto do modelo, mesmo quando recusado;
+- `LlamaCppNarrator.last_usage` guarda os tokens lidos e escritos.
+
+O efeito dessas correções na VM ainda não foi medido.
 
 **Conclusão e recomendação:**
 - **A infraestrutura funciona no LinuxONE:** o modelo carrega, gera, a validação recusa o que
@@ -316,12 +330,13 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 |---|---|
 | `ruff format --check` + `ruff check` (`src tests scripts`) | ok |
 | `mypy` (configuração do projeto, 69 arquivos) | sem problemas |
-| `pytest` (suíte inteira) | 191 passed (89 do backend + 102 da P5) |
+| `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
 | `p5_linuxone_granite.ipynb` (versão `llama_cpp` no kernel) executado no Windows com um `llama_cpp` falso | 0 erros; carrega, aceita o texto válido, recusa o exemplo copiado (en/pt), descarrega |
 | Granite GGUF real na VM, `p5_linuxone_granite.ipynb` | carregou (11,1 s); 3 explicações em 34–44 s; ver "Resultado na VM" acima |
-| Granite na VM depois do prompt enxuto e da regra de números no lugar errado | **NOT_RUN** |
+| Granite na VM, 2ª rodada (prompt enxuto + regra de números no lugar errado) | 3 recusas em 26,9–34,1 s; ver "2ª rodada" acima |
+| Granite na VM com aviso pelo código e exemplos do mesmo formato | **NOT_RUN** |
 | LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
 | `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
 | Ponta a ponta local: `devserver` + `make_synthetic` + `replay` + `verify --alert` + `sentinel.narrative --alert` | 1 alerta mock; cadeia 289 registros ok; alerta ok; template |

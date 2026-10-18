@@ -50,58 +50,95 @@ def http_post(url: str, headers: Mapping[str, str], body: bytes, timeout_s: floa
         raise LocalLLMError(str(exc)) from exc
 
 
-# Invented records: they only teach the model the shape of the answer. If the model copies
-# any of their IDs or numbers into a real explanation, check_narrative rejects it.
-_EXAMPLES: dict[Language, list[tuple[dict[str, Any], str]]] = {
-    "en": [
-        (
-            {
-                "alert_id": "A-20180105T0300Z-1",
-                "is_mock": True,
-                "window_end": "2018-01-05T03:00:00Z",
-                "region": "R2",
-                "suspected_onset": "2018-01-04T23:40:00Z",
-                "hours_since_onset": 3.33,
-                "cusum": {"statistic": 9.7, "threshold": 8.0},
-                "deviating_sensors": [
-                    {"sensor": "P05", "deviation_m": -0.74, "z": -3.9},
-                    {"sensor": "P11", "deviation_m": -0.52, "z": -3.1},
-                ],
-            },
-            "[SIMULATION] Alert A-20180105T0300Z-1 reports a suspected leak in region R2. "
+# Invented records: they only teach the model the shape of the answer. Only records with the
+# same shape as the alert are shown: on the VM the model copied the region "R2" of an example
+# into an alert without a region. The simulation notice is added by ``explain``, not asked of
+# the model. If the model still copies an example's IDs or numbers, check_narrative rejects it.
+Example = tuple[dict[str, Any], dict[Language, str]]
+
+_REGIONAL: list[Example] = [
+    (
+        {
+            "alert_id": "A-20180105T0300Z-1",
+            "window_end": "2018-01-05T03:00:00Z",
+            "region": "R2",
+            "suspected_onset": "2018-01-04T23:40:00Z",
+            "hours_since_onset": 3.33,
+            "cusum": {"statistic": 9.7, "threshold": 8.0},
+            "deviating_sensors": [
+                {"sensor": "P05", "deviation_m": -0.74, "z": -3.9},
+                {"sensor": "P11", "deviation_m": -0.52, "z": -3.1},
+            ],
+        },
+        {
+            "en": "Alert A-20180105T0300Z-1 reports a suspected leak in region R2. "
             "Sensors P05 and P11 read 0.74 m and 0.52 m below the expected pressure since "
             "2018-01-04 23:40 UTC. The CUSUM statistic reached 9.7 against a threshold of 8.0.",
-        ),
-        (
-            {
-                "alert_id": "A-20180212T1015Z-1",
-                "is_mock": False,
-                "window_end": "2018-02-12T10:15:00Z",
-                "deviating_sensors": [{"sensor": "P27", "deviation_m": -1.31, "z": -5.2}],
-            },
-            "Alert A-20180212T1015Z-1 reports a suspected leak; the region was not estimated. "
-            "Sensor P27 read 1.31 m below the expected pressure at 2018-02-12 10:15 UTC.",
-        ),
-    ],
-    "pt": [
-        (
-            {
-                "alert_id": "A-20180105T0300Z-1",
-                "is_mock": True,
-                "window_end": "2018-01-05T03:00:00Z",
-                "region": "R2",
-                "suspected_onset": "2018-01-04T23:40:00Z",
-                "deviating_sensors": [
-                    {"sensor": "P05", "deviation_m": -0.74, "z": -3.9},
-                    {"sensor": "P11", "deviation_m": -0.52, "z": -3.1},
-                ],
-            },
-            "[SIMULAÇÃO] O alerta A-20180105T0300Z-1 indica suspeita de vazamento na região R2. "
+            "pt": "O alerta A-20180105T0300Z-1 indica suspeita de vazamento na região R2. "
             "Os sensores P05 e P11 estão 0,74 m e 0,52 m abaixo do esperado desde "
-            "2018-01-04 23:40 UTC.",
-        ),
-    ],
-}
+            "2018-01-04 23:40 UTC. O CUSUM chegou a 9,7 para um limiar de 8,0.",
+        },
+    ),
+    (
+        {
+            "alert_id": "A-20180320T1745Z-2",
+            "window_end": "2018-03-20T17:45:00Z",
+            "region": "R7",
+            "suspected_onset": "2018-03-20T09:05:00Z",
+            "hours_since_onset": 8.67,
+            "cusum": {"statistic": 15.2, "threshold": 10.0},
+            "deviating_sensors": [{"sensor": "P30", "deviation_m": -1.08, "z": -4.6}],
+        },
+        {
+            "en": "Alert A-20180320T1745Z-2 reports a suspected leak in region R7. "
+            "Sensor P30 read 1.08 m below the expected pressure since 2018-03-20 09:05 UTC. "
+            "The CUSUM statistic reached 15.2 against a threshold of 10.0.",
+            "pt": "O alerta A-20180320T1745Z-2 indica suspeita de vazamento na região R7. "
+            "O sensor P30 está 1,08 m abaixo do esperado desde 2018-03-20 09:05 UTC. "
+            "O CUSUM chegou a 15,2 para um limiar de 10,0.",
+        },
+    ),
+]
+_UNLOCATED: list[Example] = [
+    (
+        {
+            "alert_id": "A-20180212T1015Z-1",
+            "window_end": "2018-02-12T10:15:00Z",
+            "suspected_onset": "2018-02-12T10:15:00Z",
+            "deviating_sensors": [
+                {"sensor": "P27", "deviation_m": -1.31, "z": -5.2},
+                {"sensor": "P26", "deviation_m": -1.12, "z": -4.4},
+            ],
+        },
+        {
+            "en": "Alert A-20180212T1015Z-1 reports a suspected leak; the region was not "
+            "estimated. Sensors P27 and P26 read 1.31 m and 1.12 m below the expected pressure "
+            "at 2018-02-12 10:15 UTC.",
+            "pt": "O alerta A-20180212T1015Z-1 indica suspeita de vazamento; a região não foi "
+            "estimada. Os sensores P27 e P26 estão 1,31 m e 1,12 m abaixo do esperado em "
+            "2018-02-12 10:15 UTC.",
+        },
+    ),
+    (
+        {
+            "alert_id": "A-20180409T0630Z-1",
+            "window_end": "2018-04-09T06:30:00Z",
+            "deviating_sensors": [
+                {"sensor": "P18", "deviation_m": -0.95, "z": -3.8},
+                {"sensor": "P19", "deviation_m": -0.88, "z": -3.5},
+                {"sensor": "P33", "deviation_m": -0.61, "z": -3.1},
+            ],
+        },
+        {
+            "en": "Alert A-20180409T0630Z-1 reports a suspected leak; the region was not "
+            "estimated. Sensors P18, P19 and P33 read 0.95 m, 0.88 m and 0.61 m below the "
+            "expected pressure at 2018-04-09 06:30 UTC.",
+            "pt": "O alerta A-20180409T0630Z-1 indica suspeita de vazamento; a região não foi "
+            "estimada. Os sensores P18, P19 e P33 estão 0,95 m, 0,88 m e 0,61 m abaixo do "
+            "esperado em 2018-04-09 06:30 UTC.",
+        },
+    ),
+]
 _HEADER: dict[Language, str] = {
     "en": "Alert records from a water network leak detector, each followed by a short "
     "explanation for the operator. The explanation only restates the record.",
@@ -124,13 +161,13 @@ def _drop_empty(value: Any) -> Any:
 
 def prompt_facts(alert: Alert) -> dict[str, Any]:
     """What the small model sees: the core of the alert, rounded to 2 decimals, without empty
-    fields. Contributions, the detector summary, model names and the audit seq stay out: on
-    the VM the 350M model passed contributions off as deviations and echoed the summary. They
-    remain in the evidence table and in the template."""
+    fields. Contributions, the detector summary, model names, the audit seq and ``is_mock``
+    stay out: on the VM the 350M model passed contributions off as deviations, echoed the
+    summary and ignored the simulation rule (``explain`` adds that notice itself). They remain
+    in the evidence table and in the template."""
     facts = alert_facts(alert)
     core: dict[str, Any] = {
-        key: facts[key]
-        for key in ("alert_id", "is_mock", "window_end", "region", "suspected_onset")
+        key: facts[key] for key in ("alert_id", "window_end", "region", "suspected_onset")
     }
     core["hours_since_onset"] = facts["hours_since_onset"]
     if alert.cusum:
@@ -154,10 +191,10 @@ def prompt_facts(alert: Alert) -> dict[str, Any]:
 def build_completion_prompt(alert: Alert, language: Language = DEFAULT_LANGUAGE) -> str:
     record, explanation = _LABELS[language]
     parts = [_HEADER[language], ""]
-    for facts, text in _EXAMPLES[language]:
+    for facts, texts in _REGIONAL if alert.region else _UNLOCATED:
         parts += [
             f"{record}: {json.dumps(facts, ensure_ascii=False)}",
-            f"{explanation}: {text}",
+            f"{explanation}: {texts[language]}",
             "",
         ]
     parts += [
@@ -253,6 +290,9 @@ class LlamaCppNarrator:
         self._factory = llama_factory
         self._llm: Any = None
         self._lock = threading.Lock()
+        # Token counts of the last completion (prompt_tokens, completion_tokens), when the
+        # runtime reports them: they explain where the generation time goes.
+        self.last_usage: dict[str, Any] | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "LlamaCppNarrator":
@@ -288,6 +328,8 @@ class LlamaCppNarrator:
             out = self._load().create_completion(
                 prompt, max_tokens=self.max_tokens, temperature=0.0, stop=list(STOP)
             )
+            usage = out.get("usage") if isinstance(out, dict) else None
+            self.last_usage = dict(usage) if isinstance(usage, dict) else None
         return _completion_text(out)
 
     def close(self) -> None:
