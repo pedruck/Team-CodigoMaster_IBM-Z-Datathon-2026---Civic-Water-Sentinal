@@ -293,7 +293,7 @@ def test_devserver_runs_the_backend_with_the_chain(
     monkeypatch.setenv("SENTINEL_AUDIT_RUN", "devtest")
     monkeypatch.setenv("SENTINEL_AUDIT_DIR", str(tmp_path))
     app = create_devserver_app()
-    sink = app.state.pipeline.audit_sink
+    sink = app.state.pipeline.audit_sink.inner  # wrapped by ExplainingAuditSink
     assert isinstance(sink, HashChainAuditSink) and sink.path == tmp_path / "devtest.jsonl"
 
     body = json.loads(Path("docs/examples/window.valid.json").read_text(encoding="utf-8"))
@@ -304,7 +304,7 @@ def test_devserver_runs_the_backend_with_the_chain(
 
     # A restart continues the same log.
     again = create_devserver_app()
-    assert again.state.pipeline.audit_sink.head == check.head
+    assert again.state.pipeline.audit_sink.inner.head == check.head
 
 
 def test_verify_alert_without_audit_reference() -> None:

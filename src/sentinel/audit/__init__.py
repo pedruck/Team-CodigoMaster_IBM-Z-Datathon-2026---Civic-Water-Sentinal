@@ -6,6 +6,7 @@ from sentinel.audit.chain import (
     audit_path_for,
     canonical_json,
     verify_alert,
+    verify_explanation,
     verify_file,
     verify_records,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "audit_path_for",
     "canonical_json",
     "verify_alert",
+    "verify_explanation",
     "verify_file",
     "verify_records",
 ]

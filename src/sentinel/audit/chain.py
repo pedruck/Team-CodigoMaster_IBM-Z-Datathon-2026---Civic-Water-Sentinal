@@ -224,6 +224,26 @@ def verify_alert(alert: Alert | Mapping[str, Any], record: Mapping[str, Any]) ->
     return None
 
 
+def verify_explanation(
+    explanation_record: Mapping[str, Any], alert_record: Mapping[str, Any]
+) -> str | None:
+    """Check that an ``explanation.generated`` record explains the alert of ``alert_record``
+    (its ``alert.raised`` record in the audit chain), and that the stored text is the one
+    whose hash was recorded. Returns the problem, or None."""
+    if explanation_record.get("type") != "explanation.generated":
+        return "not an explanation.generated record"
+    payload = explanation_record.get("payload") or {}
+    if alert_record.get("type") != "alert.raised":
+        return "the second record is not an alert.raised record"
+    if payload.get("alert_id") != alert_record.get("alert_id"):
+        return "explanation and alert record have different alert_id"
+    if payload.get("alert_payload_sha256") != alert_record.get("payload_sha256"):
+        return "explanation was made for another version of the alert"
+    if payload.get("text_sha256") != sha256_hex(str(payload.get("text", "")).encode("utf-8")):
+        return "explanation text differs from its recorded hash"
+    return None
+
+
 # ----------------------------------------------------------------------------------- sink
 
 
@@ -286,9 +306,21 @@ class HashChainAuditSink:
             return AuditRef(seq=self._next_seq - 1, hash=self._prev_hash)
 
     def append(self, event: AuditEvent) -> AuditRef:
+        return self.append_entry(event.type, event.window_end, event.alert_id, event.payload)
+
+    def append_entry(
+        self,
+        type_: str,
+        window_end: datetime,
+        alert_id: str | None,
+        payload: Mapping[str, Any],
+    ) -> AuditRef:
+        """Append a record of any ``type``. The pipeline's events go through ``append``; P5's
+        own logs (e.g. ``explanation.generated``) use this with the same record format, so
+        ``verify_file`` and the CLI verify them too."""
         with self._lock:
             try:
-                record = self._build(event)
+                record = self._build(type_, window_end, alert_id, payload)
                 line = canonical_json(record) + b"\n"
             except (TypeError, ValueError) as exc:
                 raise AuditError(f"event payload is not canonical JSON: {exc}") from exc
@@ -340,17 +372,23 @@ class HashChainAuditSink:
             return verify_records([], anchor)
         return verify_file(self._path, anchor)
 
-    def _build(self, event: AuditEvent) -> dict[str, Any]:
+    def _build(
+        self,
+        type_: str,
+        window_end: datetime,
+        alert_id: str | None,
+        event_payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
         # Round trip: the stored payload is exactly what was hashed (tuples become lists,
         # and later changes to the caller's dict cannot reach the log).
-        payload = json.loads(canonical_json(event.payload))
+        payload = json.loads(canonical_json(dict(event_payload)))
         record: dict[str, Any] = {
             "record_version": RECORD_VERSION,
             "seq": self._next_seq,
             "recorded_at": _iso(self._clock()),
-            "type": event.type,
-            "window_end": _iso(event.window_end),
-            "alert_id": event.alert_id,
+            "type": type_,
+            "window_end": _iso(window_end),
+            "alert_id": alert_id,
             "payload": payload,
             "payload_sha256": sha256_hex(canonical_json(payload)),
             "prev_hash": self._prev_hash,

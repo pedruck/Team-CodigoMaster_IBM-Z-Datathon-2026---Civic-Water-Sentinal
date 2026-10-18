@@ -15,7 +15,8 @@ confirmar. Nada aqui foi rodado com dados reais do BattLeDIM nem contra o watson
 | Granite na própria LinuxONE (GGUF via llama.cpp) | `src/sentinel/narrative/local.py` — `LlamaCppNarrator` (no processo) e `LocalGraniteNarrator` (servidor) |
 | Notebook para a VM (descoberta + Granite local) | `notebooks/p5_audit/p5_linuxone_granite.ipynb` |
 | Explicar um alerta pela linha de comando | `src/sentinel/narrative/__main__.py` — `python -m sentinel.narrative [--llamacpp \| --local \| --watsonx]` |
-| API com a cadeia ligada (temporário, até BE-013) | `src/sentinel/audit/devserver.py` |
+| API com a cadeia e as explicações ligadas (temporário, até BE-013/Q-AUD-07) | `src/sentinel/audit/devserver.py` |
+| Explicações geradas em segundo plano, guardadas e auditadas | `src/sentinel/narrative/store.py` — `ExplanationService`, `ExplanationStore` |
 | Alerta inventado para testes/notebooks | `src/sentinel/narrative/mock.py` (`is_mock=True`) |
 | Testes | `tests/test_audit_chain.py`, `tests/test_narrative.py`, `tests/test_watsonx.py` |
 | Demonstração | `notebooks/p5_audit/p5_auditoria_narrativa.ipynb` |
@@ -80,6 +81,52 @@ o processo faz a verificação de novo. Use **um arquivo por processo**.
 consistente. A defesa é a âncora: ao fim de cada replay, anotar `sink.head` (`seq` + `hash`)
 fora da VM e verificar com `--anchor-seq/--anchor-hash`. Âncora antiga continua válida quando
 a cadeia cresce; truncamento abaixo dela é detectado.
+
+## Explicações guardadas e auditadas (geradas em segundo plano)
+
+O Granite leva ~30 s por explicação na VM, então a explicação não pode ser gerada quando o
+operador abre o alerta. Além disso, o texto que o operador viu precisa ficar registrado.
+
+**Como funciona:**
+1. A cadeia de auditoria grava o `alert.raised`. O `ExplainingAuditSink` (no `devserver`) põe o
+   alerta na fila do `ExplanationService`. Esse passo nunca faz a gravação falhar: com o
+   fail-closed, uma falha ali faria o backend reenviar um evento que já está no log.
+2. Um único worker em segundo plano chama `explain()` (Granite + validação + fallback), fora do
+   pipeline das janelas, que continua com a mesma ordem e a mesma latência.
+3. O resultado vai para `~/shared/civicwater/audit/<run>.explanations.jsonl`. É uma cadeia com
+   o **mesmo formato** da auditoria (`type = "explanation.generated"`), verificável com
+   `python -m sentinel.audit.verify`. O payload traz a `Explanation` inteira (texto, fatos,
+   validação, texto bruto do modelo, modelo usado), `text_sha256`, `attempt` e
+   `alert_payload_sha256`.
+4. `verify_explanation(registro_da_explicação, registro_do_alerta)` confere três coisas: que a
+   explicação é daquele `alert.raised`, da mesma versão do alerta, e que o texto bate com o hash
+   gravado.
+
+**Regras** (uma explicação por versão do alerta e idioma):
+- Quando o modelo responde, ele é chamado **uma única vez**. Texto aceito e texto recusado são
+  finais: com `temperature=0`, chamar de novo daria o mesmo texto.
+- Quando o modelo **falha** (erro ou resposta vazia), o texto padrão é gravado e mostrado, e um
+  novo `submit` tenta o modelo de novo, até `max_attempts` (3) chamadas no total.
+- Tudo fica no log, e o registro mais recente de cada chave é o atual. Depois de um reinício, o
+  serviço lê o log e não chama o modelo de novo.
+- Se o log de explicações não puder ser gravado (por exemplo, alguém escreveu no arquivo), a
+  explicação fica `pending` com o texto padrão, e um log quebrado nunca é estendido.
+
+**Leitura** (implementação de referência para o Q-AUD-07, no `devserver`):
+`GET /v1/alerts/{id}/explanation?language=en|pt` devolve `ExplanationStatus`:
+- `status`: `pending` (com o texto padrão enquanto isso) ou `ready`;
+- `source`, `text`, `generator`, `generated_at`, `fallback_reason`;
+- `alert_payload_sha256` e `record` (`seq`/`hash` no log de explicações).
+
+Alerta desconhecido devolve 404 `not_found`; idioma inválido, 422. Variáveis de ambiente:
+`SENTINEL_NARRATOR` = `none` (padrão, só texto padrão) | `llamacpp` | `local` | `watsonx`, e
+`SENTINEL_EXPLANATION_LANGUAGES` (padrão `en`).
+
+Na VM, com o Granite carregado no processo da API (1 thread):
+
+```bash
+SENTINEL_AUDIT_RUN=leo-teste SENTINEL_NARRATOR=llamacpp SENTINEL_EXPLANATION_LANGUAGES=en uvicorn sentinel.audit.devserver:create_app --factory --host 0.0.0.0 --port $API_PORT
+```
 
 ## Explicação do alerta
 
@@ -351,7 +398,7 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 | Q-AUD-01 porta e tipos de evento | Aceitos como estão. |
 | Q-AUD-05 circularidade | Resolvida como no ADR-006: hash do alerta sem `audit`. |
 | Q-AUD-06 leitura da cadeia por HTTP (substitui Q-AUD-04) | **De acordo com a proposta da `main`.** `GET /v1/audit?after_seq&limit` devolve os registros em ordem de `seq`, exatamente como gravados; `GET /v1/audit/head` devolve `{seq, hash}`; só leitura; o backend **não** devolve um booleano "verified", porque verificar é trabalho do cliente (`python -m sentinel.audit.verify`, `verify_records`). A P5 já fornece `HashChainAuditSink.records_after(after_seq, limit)` (lê o arquivo aos poucos) e `HashChainAuditSink.head`. As regras que o contrato deve citar estão no Contrato D acima: JSON canônico, `prev_hash` inicial com 64 zeros e a fórmula do `hash`. |
-| Q-AUD-07 explicação por HTTP | **De acordo com o formato proposto** `{status, text, generator, alert_payload_sha256, generated_at}`. Correspondência com `Explanation`: `text` → `text`; `alert_payload_sha256` → `alert_payload_sha256`; `generator` → nome do narrador (hoje string; vira `ModelInfo` no endpoint); `status = ready` quando há explicação guardada, `pending` enquanto o Granite gera, `unavailable` se o modelo falhou e não há template, `disabled` sem narrador. Como o Granite leva ~30 s, a explicação precisa ser gerada em segundo plano e guardada (tarefa pendente da P5: guardar e auditar explicações). |
+| Q-AUD-07 explicação por HTTP | **De acordo com o formato proposto.** A implementação de referência está no `devserver` (`GET /v1/alerts/{id}/explanation`, ver "Explicações guardadas e auditadas"), com `status` `pending`/`ready`, `text`, `generator` (string, nome do narrador; vira `ModelInfo` se o P3 preferir), `alert_payload_sha256`, `generated_at` e `record`. `disabled` fica para o backend usar quando não houver serviço de explicações. O P3 move a rota para `sentinel.api` e chama `ExplanationService.submit(alert)` quando o alerta é gravado. |
 | Q-DOC-01 vocabulário de `audit` e fail-open no doc da P5 | Resolvido do lado da P5: a branch trouxe a `main` (merge, sem rebase, porque a branch já está publicada e o `AGENTS.md` proíbe `push --force`). `AuditStatus` agora é o da `main` (`recorded`, `pending`, `disabled`), e este doc registra fail-closed. |
 
 ## O que depende de outras pessoas
@@ -379,6 +426,9 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 | `mypy` | sem problemas em 140 arquivos |
 | `pytest` (suíte inteira) | **757 passed, 20 skipped, 3 failed**. As 3 falhas são de `tests/test_eval_run.py` (P6) e só acontecem no Windows: `write_text` sem `encoding="utf-8"` e um caminho comparado com `/`. Nenhuma toca código da P5. |
 | testes da P5 (`test_audit_chain`, `test_narrative`, `test_local_granite`, `test_watsonx`) | 107 passed |
+| Explicações em segundo plano (2026-10-18): `pytest` suíte inteira | **770 passed**, 20 skipped, 3 failed (as mesmas 3 do P6, só no Windows); P5: 120 passed |
+| Ponta a ponta com `uvicorn` real (`devserver`, `SENTINEL_NARRATOR=none`, IDs oficiais do BattLeDIM), 288 janelas | 288 × 201; 1 alerta; `GET .../explanation` `ready` em en e pt; cadeia de auditoria ok (289 registros) e de explicações ok (2) |
+| Explicações com o Granite no processo da API na VM (`SENTINEL_NARRATOR=llamacpp`) | **NOT_RUN** |
 | Antes do merge: `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
@@ -386,6 +436,7 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 | Granite GGUF real na VM, `p5_linuxone_granite.ipynb` | carregou (11,1 s); 3 explicações em 34–44 s; ver "Resultado na VM" acima |
 | Granite na VM, 2ª rodada (prompt enxuto + regra de números no lugar errado) | 3 recusas em 26,9–34,1 s; ver "2ª rodada" acima |
 | Granite na VM, 3ª rodada (aviso pelo código + exemplos do mesmo formato) | **3/3 aceitos e corretos** em 26,0–33,6 s; ver "3ª rodada" acima |
+| Granite na VM depois do merge da `main` (z positivo no prompt, Q-DET-02) | 3/3 aceitos e corretos em 25,3–33,4 s; **textos e tokens idênticos aos da 3ª rodada** (677+87, 548+68, 586+79): com `temperature=0` o resultado é reproduzível no s390x |
 | Avaliação do Granite com muitos alertas variados (taxa de aceitação) | **NOT_RUN** |
 | LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
 | `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
