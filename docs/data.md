@@ -194,3 +194,9 @@ python -m pytest -q tests/test_p1_data.py
   Zenodo record <https://zenodo.org/records/4017659>), whose hash it records. The detector reads
   only the nodes and the links (ADR-011); `config/regions.battledim.json` is derived from it by
   `python -m sentinel.detection.offline.topology`. Like the rest of `data/`, it is not in git.
+- **Map drawing:** `config/l-town-map.json` (in git, about 115 KB) is a slim copy of the topology
+  for the dashboard map: the segment of each link, the nearest pressure sensor and region of each
+  pipe, the 33 pressure sensors and the tanks/reservoirs, with the BattLeDIM attribution. Rebuild
+  it with `python -m sentinel.data.export_map --version v1 --force` after `build_network`, and
+  whenever `config/regions.battledim.json` changes. It is drawn by `dashboard/network_map.py`
+  (Streamlit page "Network map"; JupyterLab: `notebooks/p1_data/mapa_rede.ipynb`).

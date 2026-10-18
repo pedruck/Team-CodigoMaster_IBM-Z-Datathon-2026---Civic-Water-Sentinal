@@ -1,0 +1,15 @@
+[theme]
+base = "light"
+primaryColor = "#08796f"
+backgroundColor = "#f3f7f5"
+secondaryBackgroundColor = "#e4f3ee"
+textColor = "#15343a"
+font = "IBM Plex Sans, sans-serif"
+headingFont = "IBM Plex Sans, sans-serif"
+baseFontSize = 16
+codeFont = "IBM Plex Mono, monospace"
+baseRadius = "medium"
+showWidgetBorder = true
+
+[browser]
+gatherUsageStats = false

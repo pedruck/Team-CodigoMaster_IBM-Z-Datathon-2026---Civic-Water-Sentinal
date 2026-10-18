@@ -5,6 +5,15 @@ contract versions are tracked separately (`schema_version`).
 
 ## [Unreleased]
 
+### Fixed
+
+- BE-023: respect Streamlit's collapsed sidebar width, restore visible navigation toggles,
+  remove accumulated sidebar spacing and native negative heading margins, and align/stretch
+  action buttons by available width. Point the native theme at the bundled IBM Plex fonts;
+  allow map links, status labels and footer text to reflow at 200% text. Include the network
+  map in current-section navigation and close the mobile sidebar after selecting a section.
+  Add an optional seven-viewport Playwright regression check.
+
 ### Added
 - BE-013: `SENTINEL_AUDIT_SINK=chain` selects the audit owner's hash-chained log
   (`SENTINEL_AUDIT_RUN`, optional `SENTINEL_AUDIT_DIR`), verified at startup (a broken file stops
@@ -28,6 +37,20 @@ contract versions are tracked separately (`schema_version`).
   once it is exported (`docs/p4-calibration.md` §7).
 
 ### Changed
+- BE-022: align the operator workspace with the public CivicWater Figma palette and IBM Plex
+  typography, keep issued alerts first, and show the source-derived L-Town map with selected
+  alert evidence. On narrow screens the map scrolls internally at readable label size;
+  unknown regions and candidate pipes are reported. Existing alert details, history,
+  metrics and mock/replay notices remain available (ADR-012).
+- BE-021: refresh the Streamlit dashboard with a responsive operator workspace, section
+  navigation, local Geist/Phosphor assets, source-derived pipeline/buffer/sensor diagrams,
+  collapsible exact evidence and reduced-motion-aware local GSAP reveals. Add a manual
+  refresh action that clears polling back-off. Prioritise issued-alert summaries, enlarge
+  alert text to 16/14 px and move technical metrics to a disclosure while retaining all
+  loaded records. Improve heading order, explicit-action focus, contextual count semantics,
+  text/chart contrast and enlarged-text reflow following the requested UX skill review.
+  Simulation/replay notices, source contracts, automatic refresh and history filters are
+  retained (`docs/dashboard-design.md`, `docs/dashboard-ux-review.md`).
 - ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
   and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
   team (Q-TEAM-03). Detection owner's review of
@@ -53,6 +76,12 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- BE-022: `config/l-town-map.json` from the official BattLeDIM topology (attributed CC BY 4.0),
+  a pure SVG renderer, a dedicated Streamlit map page with SVG download, a Jupyter selection
+  view and a notebook. The official source hash matches the prompt; the generated map hash
+  differs from its expected digest and is documented in `docs/dashboard-design.md`.
+- Windows verification compatibility: keep the hash-pinned regions JSON at LF on checkout,
+  and normalise paths in the evaluation-boundary guard. No region data or runtime code changed.
 - Detection (BE-012j, BE-012h): calibration experiment of the CUSUM on the ML owner's 2018
   out-of-fold residuals, `python -m sentinel.detection.offline.experiment explore | sweep`
   (offline only). `offline/oof.py` reads DEP-DET-05 (hashes against `declaration.json`, registry
