@@ -9,8 +9,9 @@ from fastapi import FastAPI, Request, Response
 
 from sentinel import __version__
 from sentinel.api.errors import install_error_handlers
-from sentinel.api.routes import alerts, health, status, windows
-from sentinel.audit.sinks import AuditSink, InMemoryAuditSink, NullAuditSink
+from sentinel.api.routes import alerts, audit, health, status, windows
+from sentinel.audit.chain import HashChainAuditSink
+from sentinel.audit.sinks import AuditError, AuditSink, InMemoryAuditSink, NullAuditSink
 from sentinel.config import ConfigError, Settings
 from sentinel.detection.cusum import CusumDetector
 from sentinel.detection.interface import Detector
@@ -18,6 +19,8 @@ from sentinel.detection.mock import ThresholdMockDetector
 from sentinel.forecasting.interface import Forecaster
 from sentinel.forecasting.mock import PersistenceMockForecaster
 from sentinel.forecasting.registry import load_forecaster
+from sentinel.narrative.runtime import ExplainingAuditSink, narrator_for
+from sentinel.narrative.store import ExplanationService, ExplanationStore, explanations_path_for
 from sentinel.observability.logging import configure_logging
 from sentinel.observability.metrics import Metrics
 from sentinel.sensors import SensorRegistry
@@ -50,7 +53,7 @@ def build_pipeline(
             )
         )
     if audit_sink is None:
-        audit_sink = InMemoryAuditSink() if settings.audit_sink == "memory" else NullAuditSink()
+        audit_sink = _configured_audit_sink(settings)
     return Pipeline(
         settings=settings,
         registry=registry,
@@ -122,6 +125,40 @@ def _cusum_detector(
         raise ConfigError(f"cannot start the CUSUM detector from {files}: {exc}") from exc
 
 
+def _configured_audit_sink(settings: Settings) -> AuditSink:
+    """``chain``: the audit owner's hash chain (verified at startup, extended across restarts)
+    wrapped so that every recorded alert gets a stored explanation (BE-013). A broken or
+    unreadable log stops the process: the API never falls back to a sink that is not
+    tamper-evident."""
+    if settings.audit_sink == "memory":
+        return InMemoryAuditSink()
+    if settings.audit_sink != "chain":
+        return NullAuditSink()
+    path = settings.audit_path
+    assert path is not None and settings.audit_run is not None  # Settings enforces it
+    explanations_path = explanations_path_for(settings.audit_run, settings.audit_dir)
+    try:
+        chain = HashChainAuditSink(path)
+        store = ExplanationStore(explanations_path)
+    except (AuditError, OSError, ValueError) as exc:
+        raise ConfigError(f"cannot open the audit chain {path}: {exc}") from exc
+    service = ExplanationService(narrator_for(settings.narrator), store)
+    head = chain.head
+    log.info(
+        "audit chain opened",
+        extra={
+            "fields": {
+                "audit_path": str(path),
+                "explanations_path": str(explanations_path),
+                "narrator": service.narrator_name,
+                "head_seq": head.seq if head else None,
+                "head_hash": head.hash if head else None,
+            }
+        },
+    )
+    return ExplainingAuditSink(chain, service)
+
+
 def create_app(settings: Settings | None = None, pipeline: Pipeline | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     configure_logging(settings.log_level)
@@ -133,8 +170,10 @@ def create_app(settings: Settings | None = None, pipeline: Pipeline | None = Non
         description="Ingestion of 5-minute SCADA windows (simulated BattLeDIM L-Town data).",
     )
     app.state.pipeline = pipeline
+    sink = pipeline.audit_sink
+    app.state.explanations = sink.service if isinstance(sink, ExplainingAuditSink) else None
     install_error_handlers(app)
-    for module in (health, windows, alerts, status):
+    for module in (health, windows, alerts, audit, status):
         app.include_router(module.router)
 
     @app.middleware("http")

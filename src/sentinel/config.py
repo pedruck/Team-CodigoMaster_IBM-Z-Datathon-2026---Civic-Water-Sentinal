@@ -5,10 +5,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from sentinel.audit.chain import audit_path_for
+
 DEFAULT_REGISTRY_PATH = Path("config/sensors.provisional.json")
 FORECASTERS = {"mock", "baseline", "xgboost", "gru"}
 # Snap ML ``import_model(tree_format=...)``; "auto" picks the NNPA (zdnn_tensors) on LinuxONE.
 TREE_FORMATS = {"auto", "compress_trees", "zdnn_tensors"}
+AUDIT_SINKS = {"null", "memory", "chain"}
+# Who writes the stored explanations (P5, sentinel.narrative); "none" = deterministic text only.
+NARRATORS = {"none", "llamacpp", "local", "watsonx"}
 
 
 class ConfigError(ValueError):
@@ -108,6 +113,11 @@ class Settings:
     detector_regions_path: Path | None = None  # optional sensor -> region mapping (ADR-007 §8)
     detector_network_path: Path | None = None  # optional pipe network, candidate pipe (ADR-011)
     audit_sink: str = "null"
+    # "chain" only: the run names the logs <run>.jsonl and <run>.explanations.jsonl, in
+    # audit_dir (default ~/shared/civicwater/audit, Q-AUD-02).
+    audit_run: str | None = None
+    audit_dir: Path | None = None
+    narrator: str = "none"
     # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
     audit_pending_capacity: int = 2016
     mock_detector_sigma_m: float = 1.0
@@ -141,6 +151,7 @@ class Settings:
                 "SENTINEL_FORECASTER_TREE_FORMAT must be one of "
                 f"{sorted(TREE_FORMATS)}, got {self.forecaster_tree_format!r}"
             )
+        self._check_audit()
         if self.detector == "cusum":
             if self.detector_calibration_path is None:
                 raise ConfigError(
@@ -158,6 +169,47 @@ class Settings:
                         f"{key} is set but SENTINEL_DETECTOR={self.detector}; "
                         "it only applies to SENTINEL_DETECTOR=cusum"
                     )
+
+    def _check_audit(self) -> None:
+        if self.audit_sink not in AUDIT_SINKS:
+            raise ConfigError(
+                f"SENTINEL_AUDIT_SINK must be one of {sorted(AUDIT_SINKS)}, got {self.audit_sink!r}"
+            )
+        if self.narrator not in NARRATORS:
+            raise ConfigError(
+                f"SENTINEL_NARRATOR must be one of {sorted(NARRATORS)}, got {self.narrator!r}"
+            )
+        if self.audit_sink != "chain":
+            for key, value in (
+                ("SENTINEL_AUDIT_RUN", self.audit_run),
+                ("SENTINEL_AUDIT_DIR", self.audit_dir),
+            ):
+                if value is not None:
+                    raise ConfigError(
+                        f"{key} is set but SENTINEL_AUDIT_SINK={self.audit_sink}; "
+                        "it only applies to SENTINEL_AUDIT_SINK=chain"
+                    )
+            if self.narrator != "none":
+                raise ConfigError(
+                    f"SENTINEL_NARRATOR={self.narrator} needs SENTINEL_AUDIT_SINK=chain: "
+                    "explanations are stored next to the audit chain"
+                )
+            return
+        if self.audit_run is None:
+            raise ConfigError(
+                "SENTINEL_AUDIT_SINK=chain requires SENTINEL_AUDIT_RUN (names the audit log)"
+            )
+        try:
+            audit_path_for(self.audit_run, self.audit_dir)
+        except ValueError as exc:
+            raise ConfigError(f"SENTINEL_AUDIT_RUN: {exc}") from exc
+
+    @property
+    def audit_path(self) -> Path | None:
+        """The audit chain file, ``None`` unless ``audit_sink == "chain"``."""
+        if self.audit_sink != "chain" or self.audit_run is None:
+            return None
+        return audit_path_for(self.audit_run, self.audit_dir)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -186,7 +238,10 @@ class Settings:
             detector_calibration_path=_optional_path(e, "SENTINEL_DETECTOR_CALIBRATION"),
             detector_regions_path=_optional_path(e, "SENTINEL_DETECTOR_REGIONS"),
             detector_network_path=_optional_path(e, "SENTINEL_DETECTOR_NETWORK"),
-            audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
+            audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", AUDIT_SINKS),
+            audit_run=e.get("SENTINEL_AUDIT_RUN"),
+            audit_dir=_optional_path(e, "SENTINEL_AUDIT_DIR"),
+            narrator=_choice(e, "SENTINEL_NARRATOR", "none", NARRATORS),
             audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),
             mock_detector_z_threshold=_float(e, "SENTINEL_MOCK_DETECTOR_Z_THRESHOLD", 3.0),

@@ -15,6 +15,21 @@ contract versions are tracked separately (`schema_version`).
   Add an optional seven-viewport Playwright regression check.
 
 ### Added
+- BE-013: `SENTINEL_AUDIT_SINK=chain` selects the audit owner's hash-chained log
+  (`SENTINEL_AUDIT_RUN`, optional `SENTINEL_AUDIT_DIR`), verified at startup (a broken file stops
+  the API) and continued across restarts; every recorded alert gets a stored explanation
+  (`SENTINEL_NARRATOR`). Read endpoints `GET /v1/audit?after_seq&limit`, `GET /v1/audit/head`
+  (Q-AUD-06) and `GET /v1/alerts/{id}/explanation` (Q-AUD-07), contracts §4–5. The wrapper and
+  narrator factory moved from `sentinel.audit.devserver` (now a compatibility shim) to
+  `sentinel.narrative.runtime`. `scripts/shared_api.sh` forwards the audit, narrator and
+  `LOCAL_LLM_*` variables (not `WATSONX_*`) and `status` prints the chain head.
+
+### Fixed
+- `docs/runbook-vm.md`: the CUSUM start command lacked `SENTINEL_FORECASTER=xgboost`, so the
+  calibration for `xgboost-33@0.1.0` would have been refused against the mock forecaster;
+  README and runbook no longer say that no calibration exists for the served model.
+
+### Added
 - Final calibration v1 of the CUSUM detector for the served forecaster: `config/calibration.xgboost-33.json`
   (`provenance = battledim-2018-oof`, `xgboost-33@0.1.0` with neighbours, 1 false alarm per week,
   sha256 `fad6ec0b…` in ADR-008 §G). With it `SENTINEL_DETECTOR=cusum` starts with

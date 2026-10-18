@@ -54,6 +54,26 @@ class AlertPage(ContractModel):
     offset: int
 
 
+class AuditRecordPage(ContractModel):
+    """``GET /v1/audit``: records with ``seq > after_seq`` in ``seq`` order, exactly as stored
+    (contracts §4). Verifying them is the client's job (``python -m sentinel.audit.verify``)."""
+
+    items: tuple[dict[str, Any], ...]
+    after_seq: int
+    limit: int
+    next_after_seq: int | None = Field(
+        description="``after_seq`` of the next page; null when this page is the last one."
+    )
+
+
+class AuditHead(ContractModel):
+    """``GET /v1/audit/head``: ``seq`` and ``hash`` of the last record (null for an empty log),
+    the anchor to keep outside the VM."""
+
+    seq: int | None
+    hash: str | None
+
+
 class LatencySummary(ContractModel):
     count: int
     mean_ms: float | None

@@ -9,7 +9,8 @@
 #
 # Variáveis (todas opcionais): PORT (8000), CONTAINER (notebook), APP_DIR (cópia de
 # integração, caminho dentro do container), SENTINEL_SENSOR_REGISTRY, SENTINEL_AUDIT_SINK,
-# SENTINEL_LOG_LEVEL e os modelos (SENTINEL_FORECASTER*, SENTINEL_DETECTOR*; ver MODEL_VARS).
+# SENTINEL_LOG_LEVEL, os modelos (SENTINEL_FORECASTER*, SENTINEL_DETECTOR*; ver MODEL_VARS) e a
+# cadeia de auditoria com as explicações (SENTINEL_AUDIT_RUN/DIR, SENTINEL_NARRATOR, LOCAL_LLM_*).
 set -euo pipefail
 
 PORT="${PORT:-8000}"
@@ -24,7 +25,12 @@ LOG_LEVEL="${SENTINEL_LOG_LEVEL:-INFO}"
 MODEL_VARS=(SENTINEL_FORECASTER SENTINEL_FORECASTER_PATH SENTINEL_FORECASTER_CONTRIBUTIONS
     SENTINEL_FORECASTER_ENGINE SENTINEL_FORECASTER_TREE_FORMAT
     SENTINEL_DETECTOR SENTINEL_DETECTOR_CALIBRATION SENTINEL_DETECTOR_REGIONS
-    SENTINEL_DETECTOR_NETWORK)
+    SENTINEL_DETECTOR_NETWORK
+    SENTINEL_AUDIT_RUN SENTINEL_AUDIT_DIR SENTINEL_NARRATOR
+    LOCAL_LLM_MODEL_PATH LOCAL_LLM_THREADS LOCAL_LLM_CTX LOCAL_LLM_URL LOCAL_LLM_MODEL
+    LOCAL_LLM_TIMEOUT_S)
+# WATSONX_* fica de fora de propósito: a chave apareceria na linha de comando do tmux/docker
+# (visível em `ps` para todos na VM). Narrador watsonx só numa instância pessoal, via .env.
 START_TIMEOUT="${START_TIMEOUT:-120}"   # o forecaster real carrega os artefatos antes de responder
 PATTERN="uvicorn sentinel.main:create_app --factory --host 0.0.0.0 --port ${PORT}"
 
@@ -118,6 +124,9 @@ for k in keep:
     print(f'  {k}: {d[k]}')
 print('  forecaster:', d['forecaster'], '| detector:', d['detector'])
 print('  windows:', {k: v for k, v in d['counters'].items() if k.startswith('windows_')})"
+    if [ "$(http_get /v1/status | python3 -c 'import json,sys; print(json.load(sys.stdin)["audit_sink"])')" = hash-chain ]; then
+        echo "  audit head: $(http_get /v1/audit/head)"
+    fi
 }
 
 logs() {
