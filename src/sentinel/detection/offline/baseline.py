@@ -165,15 +165,22 @@ def _folds_bytes(oof: OofResiduals) -> bytes:
 
 def write_oof(oof: OofResiduals, out_dir: Path) -> tuple[str, str]:
     """Write ``residuals.csv.gz`` and ``folds.json`` to ``out_dir`` (created if missing) and
-    return ``(residuals_sha256, folds_sha256)``, the sha256 of the bytes written, ready for
+    return ``(residuals_sha256, folds_sha256)``, ready for
     ``calibrate(residuals_sha256=..., folds_sha256=...)``.
 
-    Byte-for-byte reproducible: gzip with ``mtime=0`` and no file name, floats as ``%.17g``
-    (always recovers the same float64; read back with ``float_precision="round_trip"``),
-    columns in table order, ``\\n`` line ends. The gzip bytes also depend on the zlib build.
+    ``residuals_sha256`` is the sha256 of the **uncompressed** CSV text (the bytes that go into
+    the gzip stream), not of the ``.gz`` file: the compressed bytes depend on the zlib build, so
+    a hash of them would not reproduce between machines (x86-64 and s390x). To check a stored
+    file, hash ``gzip.decompress(file bytes)``. ``folds_sha256`` is the sha256 of ``folds.json``.
+
+    The text is reproducible byte for byte: floats as ``%.17g`` (always recovers the same
+    float64; read back with ``float_precision="round_trip"``), columns in table order, ``\\n``
+    line ends. The gzip header carries ``mtime=0`` and no file name, so the ``.gz`` is also
+    stable on one machine.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     residuals_path = out_dir / RESIDUALS_FILE
+    content_hash = hashlib.sha256()
     with (
         residuals_path.open("wb") as raw,
         gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed,
@@ -186,7 +193,9 @@ def write_oof(oof: OofResiduals, out_dir: Path) -> tuple[str, str]:
                 date_format="%Y-%m-%d %H:%M:%S",
                 lineterminator="\n",
             )
-            compressed.write(text.encode("utf-8"))
+            data = text.encode("utf-8")
+            content_hash.update(data)
+            compressed.write(data)
     folds = _folds_bytes(oof)
     (out_dir / FOLDS_FILE).write_bytes(folds)
-    return sha256(residuals_path), hashlib.sha256(folds).hexdigest()
+    return content_hash.hexdigest(), hashlib.sha256(folds).hexdigest()

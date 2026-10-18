@@ -6,6 +6,9 @@
 # /src/sentinel/data/        @usuario-p1
 # /src/sentinel/forecasting/ @usuario-p2
 # /src/sentinel/detection/   @usuario-p4
-# /src/sentinel/audit/       @usuario-p5
+/src/sentinel/audit/         @Leo3107
+/src/sentinel/narrative/     @Leo3107
+/notebooks/p5_audit/         @Leo3107
+/docs/audit-and-narrative.md @Leo3107
 # /src/sentinel/eval/        @usuario-p6
 # /dashboard/                @usuario-p6

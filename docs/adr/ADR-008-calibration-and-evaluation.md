@@ -13,10 +13,11 @@
   fold files and returns the two hashes for `calibrate()`), `sweep.py` (`replay` of a `z` matrix
   with exact parity with the detector, `sweep` over a grid of `h` and `N`) and `layer1.py`
   (counts and delays; the matching rule between an alert and a leak is **provisional**, Q-UI-06,
-  and is an argument of every call, never a default). The development run itself is in progress.
+  and is an argument of every call, never a default).
   Final calibration tools (BE-012j): `oof.py` (reader of DEP-DET-05), `persistence.py` (§D), `selection.py`
   (selection rule, leave-one-leak-out, recovery) and `experiment.py` (the two-phase run on the protocol
   `config/calibration-protocol.xgboost-33.json`); results in `docs/p4-calibration.md`.
+  Development run (BE-012f): `devcal.py` (artefact `dev-baseline-2018`, residual structure, σ sensitivity, sweep and report; reproduced byte for byte on 2026-10-17).
 
 ## Context
 The design document fixes the models, σ, k and h on 2018 only and replays the whole of 2019
@@ -111,7 +112,7 @@ owner's prior is "without".
 
 **E. Development stage.** Until the ML owner delivers residuals (DEP-DET-05), the detection
 owner computes out-of-fold residuals of a local hour-of-week baseline in
-`src/sentinel/detection/offline/` (BE-012f; the tools exist, the development run is in progress),
+`src/sentinel/detection/offline/` (BE-012f; tools and development run done),
 with `provenance = dev-baseline-2018`. Its purpose is to learn the
 real residual structure, to test the σ estimator and to exercise the sweep. Its numbers never
 become delivered results. Synthetic residuals are used only to test mechanics (state,

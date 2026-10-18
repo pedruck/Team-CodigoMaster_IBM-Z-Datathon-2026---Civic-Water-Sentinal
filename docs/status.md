@@ -37,7 +37,7 @@ BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefac
 (startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
 BE-012g real L-Town sensor → region mapping and BE-012i candidate pipe per alert (ADR-011,
 `Alert` 1.1, `SENTINEL_DETECTOR_NETWORK`) ·
-BE-012f parts 1 and 2: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
+BE-012f: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
 exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1 counts with a
 **provisional** matching rule (`offline/layer1.py`, Q-UI-06) · BE-012j calibration experiment: OOF reader, persistence and δ, `trajectory`, selection with leave-one-leak-out, recovery, two-phase command line and protocol (`offline/{oof,persistence,selection,experiment}.py`). Details:
 `docs/implementation-plan.md`.
@@ -48,10 +48,8 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
   and layer-1 evaluation) IN_PROGRESS: the run on both XGBoost variants is done
   (`docs/p4-calibration.md`); the committed artefact waits for the team's budget (Q-TEAM-03) and the
   choice of variant (Q-ML-07; the variant without neighbours needs an exported model, ML owner).
-- BE-012f: development calibration on 2018 (out-of-fold hour-of-week baseline,
-  `provenance = dev-baseline-2018`, `is_mock = true`). Parts 1 and 2 (the tools) are done; the
-  development run that produces the artefact, the sensitivity of σ and the delay × false-alarms
-  numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
+- BE-012f: DONE. Development calibration on 2018 (out-of-fold hour-of-week baseline,
+  `provenance = dev-baseline-2018`, `is_mock = true`): tools and `offline/devcal.py`, reproduced byte for byte from data v1.
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
   process (full 2019); full `just check` waits for Q-PLAT-02 (`gcc`). The detector
   determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check). BE-012i added the `candidate_pipe` key to the alert JSON, so the literal is now `7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3` (the replay without that key gives `d9106c15e4d5…`); **its s390x run is pending**.
@@ -142,7 +140,6 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Pending for the detection owner
 
-- Finish BE-012f (the development run).
 - Pre-registration of ADR-008 §G: the region rule and the files, δ (→ `k_N`) and the persistence
   criterion are **registered** (ADR-011 §2; `config/calibration-protocol.xgboost-33.json`). Still `not yet
   registered`: false-alarm budget (Q-TEAM-03; candidates 0.5/1/2/4, proposal 1 per week), matching rule
@@ -172,6 +169,8 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 | DEP-DET-05 files copied from the VM: `zcat residuals_long.csv.gz \| sha256sum`, `sha256sum folds.json` (both variants) | `4878bb7c…` / `a7f46f42…` / `3e04574f…`, equal to `declaration.json` and to the protocol |
 | `python -m sentinel.detection.offline.experiment explore` (both variants), after commit `ae93951` | persistence PASS (median 0.957 / 0.962, minimum 0.539 / 0.434); `explore.json` `293c2a99…` / `b958461a…` |
 | `... experiment sweep --provenance battledim-2018-oof` (both variants), after commit `6c0be6c`, then again at `ca2ca8f` | 95 cells each; 1 per week: 8/14 at 0.84 (with) and 12/14 at 0.997 (without); the 16 output files identical between the two runs; candidate artefacts `fad6ec0b…` / `d289eba6…` |
+| BE-012f (2026-10-18): `uv run ruff format --check src tests`, `uv run ruff check src tests`, `uv run pytest -q` | 121 files formatted · all checks passed · **735 passed, 48 skipped**; `mypy` NOT_RUN to completion: its only errors are `import-not-found` for `streamlit` in `dashboard/` (not installed in the fresh venv) |
+| BE-012f reproduction: `python -m sentinel.detection.offline.devcal` with the report's parameters against data v1 | `sweep.csv`, `folds.json`, artefact (`7057b5c0…`) and residual-text sha256 (`489bd0bb…`) identical to the stored run; `report.md` differs only where the code now floors `diurnal_scale_ratio` (no `inf`) |
 | Jupyter view: `tests/test_dashboard_jupyter.py` (7) + run of `JupyterDashboard` inside the VM's `notebook` container (s390x, `/opt/venv`, no install) against the shared API and `fixture-cusum` | live: online, 2019-12-31 23:55, mocks, no alerts; playback: RECORDED REPLAY, alert R-SYN-A with detail. Browser rendering of the widgets not checked |
 | Merge of `main` (a63d367: CUSUM detector, XGBoost forecaster) into `feat/dashboard-mvp`; conflict markers left staged in `CHANGELOG.md`, `docs/adr/README.md`, `docs/dependencies.md` resolved | ruff OK · mypy: no issues in 112 files · **599 passed, 18 skipped** |
 | Dashboard vs real CUSUM: `fixture-cusum` (`scripts/make_playback_fixtures.py`) + `tests/test_dashboard_cusum.py`; gates | mypy: no issues in 113 files · **604 passed, 18 skipped** |
