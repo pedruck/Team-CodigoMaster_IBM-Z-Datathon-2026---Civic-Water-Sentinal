@@ -55,12 +55,13 @@ the mock detector, which raises no alerts with millimetre residuals (`docs/perfo
 The regions are the repository's `config/regions.battledim.json` (the integration copy has it). The
 pipe network is the data owner's file `~/shared/civicwater/data/network/v1/l-town.json` on the
 host, `/home/ibm-user/shared/civicwater/data/network/v1/l-town.json` inside the container (sha256
-`ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59`). With a calibration for the
-forecaster served (DEP-DET-05), the shared API would be started with:
+`ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59`). With the calibration for the
+forecaster served, `config/calibration.xgboost-33.json` (v1, sha256 `fad6ec0b…`, for `xgboost-33@0.1.0` with
+neighbours; `docs/p4-calibration.md` §7), the shared API is started with (announce before restarting it):
 
 ```bash
 SENTINEL_DETECTOR=cusum \
-SENTINEL_DETECTOR_CALIBRATION=<calibration file, path inside the container> \
+SENTINEL_DETECTOR_CALIBRATION=config/calibration.xgboost-33.json \
 SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json \
 SENTINEL_DETECTOR_NETWORK=/home/ibm-user/shared/civicwater/data/network/v1/l-town.json \
 scripts/shared_api.sh restart

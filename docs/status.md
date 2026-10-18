@@ -1,6 +1,6 @@
 # Project status — Backend & Ingestion
 
-**Last update:** 2026-10-18 — branch `feat/be-012j-calibration-experiment` (detection owner): the CUSUM calibration experiment on the ML owner's 2018 out-of-fold residuals (BE-012j tools, BE-012h run, `docs/p4-calibration.md`). Pre-registered in two commits (`ae93951` exploration rules before any residual was read, `6c0be6c` sweep rules before any replay). Both XGBoost variants pass the persistence test; at the proposed budget of 1 false alarm per week (ADR-010 operator view) the served model (with neighbours) detects 8/14 leaks (abrupt 6/6, median delay 4.4 h) and the variant without neighbours 12/14 (abrupt 6/6, 1.5 h); the incipient counts are at chance level (post-hoc placebo). Candidate artefacts `battledim-2018-oof` exist outside git; the final one waits for Q-TEAM-03 and Q-ML-07. Before: branch `feat/p2-oof-residuals` (ML owner, PR #19, merged): the out-of-fold XGBoost residual generator for DEP-DET-05 (both Q-ML-07 variants; run on the VM with the real data, files in `data/v1/oof/xgboost-33@0.1.0/`: MAE on clean windows 6.7 mm with neighbours vs 16.1 mm without, leak contrast 4.71 vs 5.62), the optional `ml` extra (DEP-ML-03) and TreeSHAP only for the sensors of an alert (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`, new default; optional `ExplainingForecaster`, proposed to P3). Before: the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
+**Last update:** 2026-10-18 — branch `feat/be-012h-final-calibration-v1` (detection owner): v1 of the final calibration is committed. `config/calibration.xgboost-33.json` (sha256 `fad6ec0b…`, `provenance = battledim-2018-oof`, forecaster `xgboost-33@0.1.0` with neighbours, budget 1 false alarm per week as adopted by the detection owner, still open to the team in Q-TEAM-03) makes `SENTINEL_DETECTOR=cusum` start with `models.detector.is_mock = false` for the model the shared API serves; the better variant without neighbours is the documented upgrade once P2 exports it (`docs/p4-calibration.md` §7). The shared API on the VM is **not** restarted by this change. Before: branch `feat/be-012j-calibration-experiment` (detection owner): the CUSUM calibration experiment on the ML owner's 2018 out-of-fold residuals (BE-012j tools, BE-012h run, `docs/p4-calibration.md`). Pre-registered in two commits (`ae93951` exploration rules before any residual was read, `6c0be6c` sweep rules before any replay). Both XGBoost variants pass the persistence test; at the proposed budget of 1 false alarm per week (ADR-010 operator view) the served model (with neighbours) detects 8/14 leaks (abrupt 6/6, median delay 4.4 h) and the variant without neighbours 12/14 (abrupt 6/6, 1.5 h); the incipient counts are at chance level (post-hoc placebo). Candidate artefacts `battledim-2018-oof` exist outside git; the final one waits for Q-TEAM-03 and Q-ML-07. Before: branch `feat/p2-oof-residuals` (ML owner, PR #19, merged): the out-of-fold XGBoost residual generator for DEP-DET-05 (both Q-ML-07 variants; run on the VM with the real data, files in `data/v1/oof/xgboost-33@0.1.0/`: MAE on clean windows 6.7 mm with neighbours vs 16.1 mm without, leak contrast 4.71 vs 5.62), the optional `ml` extra (DEP-ML-03) and TreeSHAP only for the sensors of an alert (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`, new default; optional `ExplainingForecaster`, proposed to P3). Before: the real L-Town sensor → region mapping and a candidate pipe per alert exist (BE-012g, BE-012i, ADR-011): `config/regions.battledim.json`, built by a rule fixed from the topology alone from the data owner's `network/v1/l-town.json` (the pipe network the detector reads, outside git); `Alert` is contract 1.1 (optional `candidate_pipe`). Before: branch `zanetti/be-011-forecaster-wiring` (PR #7, `main` merged in): BE-011, the API loads the real forecaster at startup (`SENTINEL_FORECASTER=xgboost`); full 2019 in process on s390x with XGBoost. Before, on `main`: the CUSUM detector (BE-012a..e) is selectable at startup (`SENTINEL_DETECTOR=cusum` + `SENTINEL_DETECTOR_CALIBRATION`, optional `SENTINEL_DETECTOR_REGIONS`) and was checked once against the real server with synthetic data; the offline tools of BE-012f exist and are tested. Nothing is calibrated on real residuals yet: every CUSUM output is `is_mock=true`, and no calibration matches `xgboost-33@0.1.0` (DEP-DET-05). `feat/p2-forecasting` delivered the real forecaster (XGBoost per sensor, Snap ML) and measured it on the VM.
 
 ## Summary
 
@@ -21,7 +21,7 @@ optional); the server refuses to start with a `ConfigError` on a missing or inva
 forecaster, other or reordered sensors or a mapping that does not cover the registry, and `mock`
 stays the default (README). A manual end-to-end run against the real `uvicorn` server with
 synthetic data found no bug (`docs/testing.md`). Nothing is calibrated on real residuals
-(DEP-DET-05) and any output of the CUSUM is `is_mock=true`. **Update 2026-10-18:** DEP-DET-05 was received and the calibration experiment ran (BE-012j/h, `docs/p4-calibration.md`); candidate calibrations with `provenance = battledim-2018-oof` exist outside git, none is committed until the team fixes the budget (Q-TEAM-03). The offline tools of BE-012f live in
+(DEP-DET-05) and any output of the CUSUM is `is_mock=true`. **Update 2026-10-18:** DEP-DET-05 was received and the calibration experiment ran (BE-012j/h, `docs/p4-calibration.md`); the calibration for the served model is committed (`config/calibration.xgboost-33.json`, v1; the one for the variant without neighbours stays outside git until that model is exported). The offline tools of BE-012f live in
 `src/sentinel/detection/offline/` (dev only, never imported by the server). All contracts are v1.0
 `Proposed` until the other owners confirm them.
 
@@ -46,8 +46,10 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 
 - BE-012 umbrella: selection, tools, regions and candidate pipe done; BE-012h (final calibration
   and layer-1 evaluation) IN_PROGRESS: the run on both XGBoost variants is done
-  (`docs/p4-calibration.md`); the committed artefact waits for the team's budget (Q-TEAM-03) and the
-  choice of variant (Q-ML-07; the variant without neighbours needs an exported model, ML owner).
+  (`docs/p4-calibration.md`) and the v1 artefact for the served model is committed
+  (`config/calibration.xgboost-33.json`). Missing: the team's confirmation of the budget
+  (Q-TEAM-03), the variant without neighbours (needs an exported model, ML owner) and the layer-1
+  evaluation with the final artefact.
 - BE-012f: DONE. Development calibration on 2018 (out-of-fold hour-of-week baseline,
   `provenance = dev-baseline-2018`, `is_mock = true`): tools and `offline/devcal.py`, reproduced byte for byte from data v1.
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
@@ -58,7 +60,7 @@ exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1
 
 | Task | Waiting for |
 |---|---|
-| BE-012h committed artefact (the run is done) | Q-TEAM-03 (team budget), Q-ML-07 (variant; export of the variant without neighbours, ML owner) |
+| BE-012h upgrade to the variant without neighbours (v1 is committed) | Q-ML-07 (export of that model, ML owner); Q-TEAM-03 (team confirms the budget) |
 | BE-013 real audit sink | DEP-AUD-01 (audit owner) |
 
 ## Pending (independent, not started)
@@ -141,9 +143,10 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 ## Pending for the detection owner
 
 - Pre-registration of ADR-008 §G: the region rule and the files, δ (→ `k_N`) and the persistence
-  criterion are **registered** (ADR-011 §2; `config/calibration-protocol.xgboost-33.json`). Still `not yet
-  registered`: false-alarm budget (Q-TEAM-03; candidates 0.5/1/2/4, proposal 1 per week), matching rule
-  (Q-UI-06), artefact hash. Must be committed before any evaluation run.
+  criterion are **registered** (ADR-011 §2; `config/calibration-protocol.xgboost-33.json`). The artefact hash is
+  **registered** (v1, `fad6ec0b…`) and the budget is adopted at 1 per week (the team can still change
+  it, Q-TEAM-03). Still `not yet registered`: the matching rule (Q-UI-06). Must be committed
+  before any evaluation run.
 - Open questions: Q-ML-07/08 (ML), Q-UI-05/06 (dashboard/evaluation), Q-TEAM-03, Q-DET-05,
   Q-DET-06 (onset inherited by a new episode). Dependencies DEP-DET-05 (and DEP-DET-06: the
   official BattLeDIM distance, evaluation owner).
@@ -154,12 +157,19 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Team decision on the budget (Q-TEAM-03) and on the XGBoost variant (Q-ML-07); then commit
-`config/calibration.<forecaster>.json` with its hash in ADR-008 §G so `SENTINEL_DETECTOR=cusum` runs with the
-real forecaster and P6 can run 2019 (EV-003); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
+Start the shared API with `SENTINEL_DETECTOR=cusum` and `config/calibration.xgboost-33.json` (runbook, announce
+first) so the integration shows a real detector; the team confirms the budget (Q-TEAM-03) and P2 exports the variant without
+neighbours (Q-ML-07), which is the planned upgrade; P6 can run 2019 (EV-003); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 ## Verification (2026-10-18 and before)
+
+| Command | Result |
+|---|---|
+| branch `feat/be-012h-final-calibration-v1` (#20 and #16 merged in; x86-64, CPython 3.14.7): `ruff format --check`, `ruff check` (src tests scripts dashboard), `uv run --group dashboard mypy`, `uv run --group dashboard pytest -q` | 167 files formatted · ruff OK · mypy: no issues in 167 files · **1027 passed, 40 skipped** |
+| same pytest with `SENTINEL_DATA_DIR=$HOME/shared/civicwater/data` | **1051 passed, 16 skipped** |
+| `tests/detection/test_committed_calibration.py` | 6 passed; `sha256sum config/calibration.xgboost-33.json` = the hash of ADR-008 §G |
+| s390x / start on the VM | NOT_RUN (the shared API was not restarted) |
 
 | Command | Result |
 |---|---|

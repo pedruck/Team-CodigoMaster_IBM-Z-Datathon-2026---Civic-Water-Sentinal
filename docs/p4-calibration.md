@@ -170,3 +170,35 @@ exports it (its artefact must name the exported `name`/`version`, or `for_pipeli
 - Data are simulated (L-Town); `is_mock = false` means a real detector, not a real network.
 - The variant without neighbours has no exported model; its candidate artefact cannot be served.
 - The run is on x86-64; the s390x run of these tools was not done (only the server needs s390x).
+
+## 7. v1 decision and the upgrade path (2026-10-18)
+
+**v1 serves the variant with neighbours.** The model on the shared API is `xgboost-33@0.1.0`
+(flows, tank level, calendar and the other 32 pressures at the same instant), so its calibration is
+the one that can be served today. `config/calibration.xgboost-33.json` is the candidate artefact of
+§5 at the primary budget (1 false alarm per week), byte for byte, sha256
+`fad6ec0bded539cd326b6e53f77d7504bdeef68d4800427fcee26acd3b874256`; `provenance = battledim-2018-oof`, so `models.detector.is_mock = false`.
+Start it as in `docs/runbook-vm.md` ("Starting the CUSUM detector").
+
+What v1 gives and does not give (2018 out-of-fold, operator view, 14 events; not a result on a real
+network): 8/14 leaks detected at 0.84 false alarms per week, abrupt 6/6 with a median delay of
+4.4 h. Incipient counts are at chance level. It misses 6 of the 14 leaks, mostly incipient.
+
+**The variant without neighbours is better on the same data, and is the planned upgrade.** At the
+same budget it detects 12/14 (abrupt 6/6) with a median delay of 1.5 h, 0.997 false alarms per
+week, and its choice is stable under leave-one-leak-out (§5). Its expected value does not follow a
+leak through the neighbouring sensors (ADR-007 §1). It is not served because it is not an exported
+model. To switch, in this order:
+
+1. P2 exports the variant as a model with its own `name` and `version` (Q-ML-07) and registers it
+   in the forecaster selection.
+2. Regenerate its artefact with those names (`sweep` of §3 with `--variant without-neighbours`; the
+   candidate of §5 names `xgboost-33-without-neighbours@candidate`, which `for_pipeline` refuses
+   against any other served model). The protocol and the budget stay those registered; nothing is
+   re-tuned.
+3. Commit `config/calibration.<name>.json`, add its hash to ADR-008 §G and start the server with
+   `SENTINEL_DETECTOR_CALIBRATION` pointing at it. The artefact of v1 stays, because it is the one
+   that matches the model the shared API serves until then.
+
+If the 2019 run (EV-003) is made with v1, the switch means a second run, reported as such; the
+variant is not chosen after seeing 2019.
