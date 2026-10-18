@@ -164,7 +164,7 @@ One run on a shared VM is not a benchmark, and no figure above is a 2019 detecti
 | Detector | **CUSUM with a committed calibration** ([`config/calibration.xgboost-33.json`](config/calibration.xgboost-33.json), out-of-fold 2018 residuals) that makes `is_mock` false for the served `xgboost-33@0.1.0`. The default is `mock`. The operating budget is still open to the team. |
 | Regions, candidate pipe | **Working.** Nine regions are committed; the pipe network is the data owner's file, kept outside git. |
 | Audit | **Hash chain selectable** (`SENTINEL_AUDIT_SINK=chain`), with stored explanations and read endpoints. The default sink is `null`. |
-| Dashboard | **Working** on the live API or a recorded run. The Explanation slot is reserved; its wiring to the backend is pending. Off-VM hosting is coded (BE-026); its VM checks are `NOT_RUN`. |
+| Dashboard | **Working** on the live API or a recorded run, public at https://civicwater-sentinel-dashboard.onrender.com (BE-028). The **Sentinel assistant** explains the network and each alert as a chat, with the audited text attached (BE-029). |
 | 2019 evaluation | **Not run yet.** Nothing in this repository is a score against the 23 official 2019 leaks. |
 | Recorded real run | **None yet.** The demo above is a synthetic fixture. |
 
@@ -242,7 +242,7 @@ hairlines rather than shadows. The network carries the colour, and each colour h
 | **Coral is an alarm** | Only deviating sensors, the candidate pipe and alert scores use it. Never for branding, links or decoration. |
 | **Amber means provenance** | SIMULATED and RECORDED REPLAY notices. It never signals severity and never disappears while the condition holds. |
 | **Green means network** | Location and interaction: the alert region, focus rings, selection. It is not a success state. |
-| **Uncertainty is visible** | "best guess" beside every candidate pipe; a dashed, empty Explanation slot instead of a hidden one; nothing is styled "verified" or "confirmed". |
+| **Uncertainty is visible** | "best guess" beside every candidate pipe; the assistant says when a source has no stored explanation and labels language-model text; nothing is styled "verified" or "confirmed". |
 | **Received values are mono** | Times, IDs, deviations and scores in IBM Plex Mono with tabular numerals; prose in IBM Plex Sans, sentence case. |
 | **Hairline, not shadow** | Flat panes with 1 px borders and 8 / 6 / 4 px radii. Only panels floating over the map earn a shadow. |
 

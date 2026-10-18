@@ -58,7 +58,9 @@ coupling the dashboard to backend internals.
 10. **Explanation slot** shows "explanation unavailable" until Q-AUD-07 exists; the detail
     view shows structured evidence only. *Since BE-027 it shows the stored text of
     `GET /v1/alerts/{id}/explanation` with one line on how it was produced; the structured
-    evidence stays the source of truth.*
+    evidence stays the source of truth. Since BE-029 it lives in its own section, the Sentinel
+    assistant: deterministic plain-words messages built from received values, with the stored
+    text attached and labelled.*
 11. **No screens for endpoints that do not exist** (residuals Q-UI-07, audit history
     Q-AUD-06, narrative Q-AUD-07, BattLeDIM score Q-DET-07): they are requested from their
     owners, not worked around.

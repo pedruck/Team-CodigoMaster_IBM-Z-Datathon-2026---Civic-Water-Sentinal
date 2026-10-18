@@ -235,9 +235,24 @@ the Impeccable decision page from three sketched structures). The sidebar starts
 |---|---|---|
 | Recent alerts (≈220 px) | Native radio queue, newest first: region, time, sensor count, largest deviation | Selecting an alert reruns the page; map and evidence follow. Identical summaries add the alert ID. The poll still runs in its fragment and only reports count and errors. |
 | Network map (rest of the width) | Live SVG of all 909 links, 33 sensors and three landmarks in an `st.iframe` | Alert/Regions tabs, Focus alert, zoom, Whole network; replay bar; legend; attribution. |
-| Evidence (≈260 px) | Region, ID, SIMULATED badge, CUSUM score against its threshold (one scale), window end, onset, candidate pipe "best guess", deviation bars, Explanation slot, link to the full record | Values as received; "explanation unavailable" until Q-AUD-07. |
+| Evidence (≈260 px) | Region, ID, SIMULATED badge, CUSUM score against its threshold (one scale), window end, onset, candidate pipe "best guess", deviation bars, a link to the assistant, link to the full record | Values as received. |
 
-Below the fold: alert detail (exact tables), all alert fields, history, system status.
+Below the fold: the **Sentinel assistant** (BE-029), alert detail (exact tables), all alert
+fields, history, system status.
+
+**Sentinel assistant (BE-029).** The explanation left the evidence corner for its own section,
+laid out like a messaging app: two conversation panels side by side (stacked on phones).
+*Overview* answers "what's the situation?": sensors watched, latest simulated window, alerts
+stored, where the recent ones concentrate, the biggest drop, which models are behind it and
+the reminder that an alert is a suspicion. *This alert* follows the queue selection, one idea
+per bubble: what happened, where to look (candidate pipe, "best guess"), since when (onset and
+the backend's hours), how strong (score vs threshold), the sensors below the forecast (largest
+first, six shown), the next step as the operator's call, and the audited text the backend
+stored (collapsed for the template, open and labelled when a language model wrote it). The
+sentences are deterministic and use only received values (`dashboard/assistant.py`); a
+language model's text is shown as such, never blended in. Bubbles carry the simulated clock,
+the panel scrolls on its own and keeps its position across polls, and screen readers hear
+"You:" / "Sentinel:" before each message.
 Mandatory notices sit above the panes in one line: RECORDED REPLAY, SIMULATED and the
 simulated-data caption. On narrow screens the panes stack as map, queue, evidence.
 

@@ -7,6 +7,7 @@ alert's key evidence side by side. The full record, history and system status fo
 import streamlit as st
 
 from dashboard.alert_detail import AlertDetail, alert_detail
+from dashboard.assistant import alert_messages, chat_html, overview_messages
 from dashboard.config import refresh_interval_s, source_from_env
 from dashboard.header import build_header
 from dashboard.history import render_history
@@ -42,8 +43,12 @@ def refresh_alerts() -> None:
     st.session_state.pop("recent_alerts_poll", None)
 
 
-def load_selected(source: AlertSource, selected: Alert | None) -> tuple[Alert, AlertDetail] | None:
-    """The selected record as the source serves it; errors are shown, never papered over."""
+Loaded = tuple[Alert, AlertDetail, ExplanationStatus | None]
+
+
+def load_selected(source: AlertSource, selected: Alert | None) -> Loaded | None:
+    """The selected record as the source serves it, with its stored explanation (if any);
+    errors are shown, never papered over."""
     if selected is None:
         return None
     try:
@@ -54,7 +59,8 @@ def load_selected(source: AlertSource, selected: Alert | None) -> tuple[Alert, A
     except SourceError as exc:
         st.error(f"Could not load alert {selected.alert_id} ({source.name}): {exc}")
         return None
-    return alert, alert_detail(alert, load_explanation(source, alert.alert_id))
+    explanation = load_explanation(source, alert.alert_id)
+    return alert, alert_detail(alert, explanation), explanation
 
 
 def load_explanation(source: AlertSource, alert_id: str) -> ExplanationStatus | None:
@@ -78,12 +84,55 @@ def render_map(alert: Alert | None) -> None:
     st.iframe(document, height=MAP_HEIGHT)
 
 
-def render_detail(loaded: tuple[Alert, AlertDetail] | None) -> None:
+def render_assistant(
+    status: StatusResponse | None, source: AlertSource, loaded: Loaded | None
+) -> None:
+    """The alerts explained as a conversation (BE-029): an overview and the selected alert."""
+    st.header("Sentinel assistant", anchor="assistant")
+    st.caption(
+        "Plain-words explanations built from the detector's own numbers. The audited text the "
+        "backend stored for each alert is attached to the conversation."
+    )
+    recording = source.recording is not None
+    live = "recording" if recording else ("online" if status is not None else "offline")
+    overview, focus = st.columns([1, 1.15], gap="medium")
+    with overview:
+        st.html(
+            chat_html(
+                overview_messages(status, shown_alerts(), recording=recording),
+                title="Overview",
+                subtitle="What the network looks like now",
+                status_label=live,
+            )
+        )
+    with focus:
+        if loaded is None:
+            st.html(
+                chat_html(
+                    [],
+                    title="This alert",
+                    subtitle="Select an alert in the queue",
+                    status_label=live,
+                )
+            )
+            return
+        alert, detail, explanation = loaded
+        st.html(
+            chat_html(
+                alert_messages(alert, explanation, detail.explanation_note),
+                title=f"Alert {alert.region or 'without region'}",
+                subtitle=alert.alert_id,
+                status_label=live,
+            )
+        )
+
+
+def render_detail(loaded: Loaded | None) -> None:
     st.header("Alert detail", anchor="alert-detail")
     if loaded is None:
         st.caption("No alert to show.")
         return
-    alert, detail = loaded
+    alert, detail, _ = loaded
     if detail.simulated:
         st.warning("SIMULATED — this alert came from a mock: not leak detection.")
     st.caption(f"{alert.alert_id} · values exactly as received from the source.")
@@ -99,16 +148,13 @@ def render_detail(loaded: tuple[Alert, AlertDetail] | None) -> None:
     with record:
         with st.expander("Full record & audit reference"):
             st.table(list(detail.facts))
-        with st.expander("Forecast contributions & explanation"):
+        with st.expander("Forecast contributions"):
             st.markdown("**Forecast contributions (deviating sensors)**")
             if detail.contributions:
                 st.table(list(detail.contributions))
             else:
                 st.caption("Forecast contributions: not provided.")
-            st.markdown("**Explanation**")
-            st.info(detail.explanation)
-            if detail.explanation_note:
-                st.caption(detail.explanation_note)
+        st.markdown("[Explanation in plain words → Sentinel assistant](#assistant)")
 
 
 st.set_page_config(
@@ -160,7 +206,7 @@ with st.container(key="sentinel-shell"):
         if source.recording is not None and source.recording.note:
             caption += f" · Recording note: {source.recording.note}"
         st.caption(caption)
-    loaded: tuple[Alert, AlertDetail] | None = None
+    loaded: Loaded | None = None
     with st.container(key="workspace"):
         queue_pane, map_pane, evidence_pane_col = st.columns([220, 760, 270], gap="small")
         with queue_pane, st.container(key="queue-pane"):
@@ -174,8 +220,7 @@ with st.container(key="sentinel-shell"):
             render_map(loaded[0] if loaded else None)
         with evidence_pane_col, st.container(key="evidence-pane"):
             if loaded is not None:
-                alert, detail = loaded
-                st.html(evidence_pane(alert, detail.explanation, detail.explanation_note))
+                st.html(evidence_pane(loaded[0]))
             elif status is None:
                 st.html(
                     '<p class="pane-empty">The alert source is not reachable, so no evidence '
@@ -186,6 +231,8 @@ with st.container(key="sentinel-shell"):
                     '<p class="pane-empty">No alert selected. When an alert is issued, its '
                     "region, sensors and candidate pipe appear here and on the map.</p>"
                 )
+    with st.container(key="assistant-panel"):
+        render_assistant(status, source, loaded)
     with st.container(key="alert-panel"):
         render_detail(loaded)
         render_all_fields()

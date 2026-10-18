@@ -76,6 +76,7 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
         links = (
             ("network-alerts", "squares-four", "Network & alerts"),
             ("alert-detail", "fingerprint", "Alert evidence"),
+            ("assistant", "chat-circle-dots", "Assistant"),
             ("history", "clock-counter-clockwise", "History"),
             ("system-status", "gauge", "System status"),
         )
@@ -314,10 +315,10 @@ def map_heading(alert: Alert | None) -> str:
     )
 
 
-def evidence_pane(alert: Alert, explanation: str, explanation_note: str | None = None) -> str:
+def evidence_pane(alert: Alert) -> str:
     """The selected alert's key evidence beside the map. Values as received, rounded only for
-    reading; the exact values stay in the full record below. ``explanation_note`` says how the
-    explanation was produced (``alert_detail.explanation_note``)."""
+    reading; the exact values stay in the full record below. The explanation has its own
+    section, the Sentinel assistant (BE-029)."""
     region = escape(alert.region or "Region not available")
     badge = '<span class="alert-badge">SIMULATED</span>' if alert.is_mock else ""
     score = reading(alert.cusum.statistic) if alert.cusum else "not provided"
@@ -326,7 +327,6 @@ def evidence_pane(alert: Alert, explanation: str, explanation_note: str | None =
     onset = escape(fmt_time(alert.suspected_onset)) + (
         f'<small class="onset-age">{escape(age)}</small>' if age and alert.suspected_onset else ""
     )
-    note = f'<p class="explanation-note">{escape(explanation_note)}</p>' if explanation_note else ""
     pipe = (
         f"<dd><code>{escape(alert.candidate_pipe)}</code> <small>best guess</small></dd>"
         if alert.candidate_pipe
@@ -357,8 +357,8 @@ def evidence_pane(alert: Alert, explanation: str, explanation_note: str | None =
         f"<div><dt>Estimated onset</dt><dd>{onset}</dd></div>"
         f"<div><dt>Candidate pipe</dt>{pipe}</div></dl>"
         f"<h3>Deviating sensors</h3>{sensors}"
-        f'<h3>Explanation</h3><p class="explanation-slot" tabindex="0">{escape(explanation)}</p>'
-        f"{note}"
+        '<a class="evidence-explain" href="#assistant" target="_self">'
+        "Explain this alert in plain words</a>"
         '<a class="evidence-more" href="#alert-detail" target="_self">'
         "Full record and audit reference</a></section>"
     )
