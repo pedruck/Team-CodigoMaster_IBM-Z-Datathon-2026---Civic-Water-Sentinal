@@ -13,7 +13,8 @@
   fold files and returns the two hashes for `calibrate()`), `sweep.py` (`replay` of a `z` matrix
   with exact parity with the detector, `sweep` over a grid of `h` and `N`) and `layer1.py`
   (counts and delays; the matching rule between an alert and a leak is **provisional**, Q-UI-06,
-  and is an argument of every call, never a default). The development run itself is in progress.
+  and is an argument of every call, never a default), and `devcal.py` (the development run: artefact `dev-baseline-2018`, residual
+  structure, σ sensitivity, sweep and report; reproduced byte for byte on 2026-10-17).
 
 ## Context
 The design document fixes the models, σ, k and h on 2018 only and replays the whole of 2019
@@ -88,7 +89,7 @@ owner's prior is "without".
 
 **E. Development stage.** Until the ML owner delivers residuals (DEP-DET-05), the detection
 owner computes out-of-fold residuals of a local hour-of-week baseline in
-`src/sentinel/detection/offline/` (BE-012f; the tools exist, the development run is in progress),
+`src/sentinel/detection/offline/` (BE-012f; tools and development run done),
 with `provenance = dev-baseline-2018`. Its purpose is to learn the
 real residual structure, to test the σ estimator and to exercise the sweep. Its numbers never
 become delivered results. Synthetic residuals are used only to test mechanics (state,
@@ -130,9 +131,9 @@ produces results labelled "exploratory" in every table.
 
 | Field | Value | Owner |
 |---|---|---|
-| δ (→ `k = δ/2`) and rationale | not yet registered | detection |
-| Persistence-test acceptance criterion | not yet registered | detection |
-| False-alarm budget (alerts per week) | not yet registered (Q-TEAM-03) | team |
+| δ (→ `k = δ/2`) and rationale | **registered 2026-10-17: δ = 1 σ, `k = 0.5`.** Rationale: the classic choice, and the one the development run (`dev-baseline-2018`) used, so the final calibration does not pick `k` after seeing the XGBoost residuals; `h`, `N`, `c`, `h_close` still come from the sweep (§C) | detection |
+| Persistence-test acceptance criterion | **registered 2026-10-17 (threshold):** a forecaster variant passes if, over the 6 abrupt leaks of 2018 with the month of the leak held out, the median fraction of the initial residual displacement still present 24 h after the start is **≥ 50 %** and no leak is below **25 %**. The operational definition of "initial displacement" and of the sensors it is measured on is written in the BE-012h test and committed before any XGBoost residual is read | detection |
+| False-alarm budget (alerts per week) | **proposed 2026-10-17 by the detection owner: ≤ 1 per week** (operating point read from the replayed cells of the 2018 out-of-fold sweep, §E); **awaiting team approval** (Q-TEAM-03), not registered until then | team |
 | Matching rule and tolerance per leak type | not yet registered (Q-UI-06) | evaluation |
 | Sensor → region mapping and pipe network (rule, D, files) | registered by ADR-011 §1–2: `config/regions.battledim.json` sha256 `ca365b7074d2bb3df2cec38d69768850ca1d37b9a717db62a9f95a71a25fe57d`, built from the data owner's `network/v1/l-town.json` sha256 `ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59` (model `L-TOWN.inp` sha256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`) | detection |
 | Pipe → region table (2019 labels) | not yet registered (Q-UI-06) | evaluation |

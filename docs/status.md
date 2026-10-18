@@ -37,19 +37,16 @@ BE-012a..e CUSUM detector: episodes, gaps, atomic rejection, calibration artefac
 (startup refusals as `ConfigError`, `mock` default; `tests/test_detector_startup.py`) ·
 BE-012g real L-Town sensor → region mapping and BE-012i candidate pipe per alert (ADR-011,
 `Alert` 1.1, `SENTINEL_DETECTOR_NETWORK`) ·
-BE-012f parts 1 and 2: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
+BE-012f: out-of-fold hour-of-week residuals (`offline/baseline.py`), replay with
 exact parity with the detector and parameter sweep (`offline/sweep.py`), layer-1 counts with a
-**provisional** matching rule (`offline/layer1.py`, Q-UI-06). Details:
+**provisional** matching rule (`offline/layer1.py`, Q-UI-06) and the development run
+(`offline/devcal.py`, artefact `dev-baseline-2018`, `is_mock`, reproduced byte for byte). Details:
 `docs/implementation-plan.md`.
 
 ## In progress
 
 - BE-012 umbrella: selection, tools, regions and candidate pipe done; the final calibration and
   the layer-1 evaluation (BE-012h) are blocked.
-- BE-012f: development calibration on 2018 (out-of-fold hour-of-week baseline,
-  `provenance = dev-baseline-2018`, `is_mock = true`). Parts 1 and 2 (the tools) are done; the
-  development run that produces the artefact, the sensitivity of σ and the delay × false-alarms
-  numbers is in progress. Unblocked (BE-010 on `main`, data v1 available locally).
 - BE-015 LinuxONE: mock baseline, parity hash and HTTP replay done; real forecaster measured in
   process (full 2019); full `just check` waits for Q-PLAT-02 (`gcc`). The detector
   determinism digest `d9106c15e4d511effe3d15dfbca9a4ce83b4dc14d89f351de962f2e9cc72c413` (`tests/detection/test_determinism.py`) is the same on x86-64 and on s390x (passed on the VM, 2026-10-17, PR #7 integration check). BE-012i added the `candidate_pipe` key to the alert JSON, so the literal is now `7c5ef97bf8ccee4e19695475142658b426be29f796298314ab054a277ad3eee3` (the replay without that key gives `d9106c15e4d5…`); **its s390x run is pending**.
@@ -137,10 +134,12 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Pending for the detection owner
 
-- Finish BE-012f (the development run).
 - Pre-registration of ADR-008 §G: the region rule and the files are **registered** (ADR-011 §2,
-  hashes in the table). Still `not yet registered`: δ (→ `k`), persistence-test criterion,
-  false-alarm budget (Q-TEAM-03), artefact hash. Must be committed before any evaluation run.
+  hashes in the table); δ = 1 σ (`k = 0.5`) and the persistence threshold (≥ 50 % median, none
+  below 25 %) are **registered** (2026-10-17). Still open: the operational definition of the
+  persistence measure (goes with the BE-012h test, before any XGBoost residual is read), the
+  false-alarm budget (≤ 1 per week **proposed**, awaiting the team, Q-TEAM-03) and the artefact
+  hash. Must be committed before any evaluation run.
 - Open questions: Q-ML-07/08 (ML), Q-UI-05/06 (dashboard/evaluation), Q-TEAM-03, Q-DET-05,
   Q-DET-06 (onset inherited by a new episode). Dependencies DEP-DET-05 (and DEP-DET-06: the
   official BattLeDIM distance, evaluation owner).
@@ -151,7 +150,7 @@ client, out-of-process model adapter if a runtime cannot be imported (ADR-005).
 
 ## Next recommended step
 
-Finish BE-012f and the calibration on the
+Calibration on the
 XGBoost out-of-fold residuals (DEP-DET-05) so `SENTINEL_DETECTOR=cusum` can run with the real
 forecaster, and register the remaining ADR-008 §G fields (the region rule is done); then the real audit sink (BE-013) and p50/p99 with real models (BE-015, incl. the
 already passed on s390x). Independent: BE-017 (keep-alive load test).
