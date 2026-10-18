@@ -109,7 +109,9 @@ alert's. Summing only evidence above `h` keeps sub-threshold noise out and keeps
 independent of claimed (older) episodes. The aggregator (sum) is chosen a priori; mean and
 max are reported only as a 2018 sensitivity analysis (ADR-008). Without a mapping `region`
 and `region_scores` are null and no new key appears; with one, `diagnostics.regions_id` is the
-sha256 of the file's bytes.
+sha256 of the file's bytes. The L-Town content (nine regions, rule and file) is ADR-011 §2; the
+same ADR adds the optional pipe network and the `candidate_pipe` of an alert (§3), which do not
+change when an alert opens or which sensors it names.
 
 **9. Atomicity.** `evaluate` has two steps. Step 1 is pure: validate the input, compute the
 new state as a new immutable object (no in-place mutation of arrays or dicts), build the

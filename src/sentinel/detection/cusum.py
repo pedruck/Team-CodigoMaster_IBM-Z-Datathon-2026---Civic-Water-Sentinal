@@ -3,7 +3,8 @@
 Per-sensor ``S`` with cap ``c*h``, alert episodes per sensor (claim, release below
 ``h_close``, no reset), onset, decay across missing windows and all-or-nothing rejection of
 bad input. ``ModelInfo`` carries the artefact hash and ``is_mock`` follows the calibration
-provenance. BE-012e adds the region ranking (``regions.py``).
+provenance. BE-012e adds the region ranking (``regions.py``). BE-012i adds the candidate pipe
+(``network.py``, ADR-011).
 """
 
 import hashlib
@@ -16,6 +17,7 @@ from pathlib import Path
 from sentinel.config import ConfigError
 from sentinel.detection.calibration import CalibrationArtefact, canonical_bytes
 from sentinel.detection.interface import DetectionError
+from sentinel.detection.network import PipeNetwork
 from sentinel.detection.regions import RegionMapping
 from sentinel.schemas.common import ModelInfo
 from sentinel.schemas.detections import (
@@ -56,13 +58,17 @@ class CusumDetector:
         interval: timedelta,
         calibration_id: str | None = None,
         regions: RegionMapping | None = None,
+        network: PipeNetwork | None = None,
     ) -> None:
         """``interval``: the window length (contract §1), used to count missing windows.
         ``calibration_id``: sha256 of the artefact file (``from_file`` sets it); by default
         the sha256 of the file ``write_artefact`` would write for ``calibration``.
         ``regions``: sensor -> region mapping (ADR-007 §8); it must cover exactly the
         calibration sensors (``ValueError`` otherwise). Without it ``region`` and
-        ``region_scores`` stay null and the output is unchanged."""
+        ``region_scores`` stay null and the output is unchanged.
+        ``network``: the pipe network (ADR-011); every calibration sensor must be one of its nodes
+        (``ValueError`` otherwise). With it each alert names a ``candidate_pipe``; without it the
+        field stays null."""
         if interval <= timedelta(0):
             raise ValueError(f"interval must be positive, got {interval}")
         self._cal = calibration
@@ -75,6 +81,12 @@ class CusumDetector:
                 f"missing={sorted(self._sensor_set - regions.sensors)} "
                 f"unexpected={sorted(regions.sensors - self._sensor_set)}"
             )
+        if network is not None and not self._sensor_set <= network.nodes:
+            raise ValueError(
+                "network must contain every calibration sensor as a node: "
+                f"missing={sorted(self._sensor_set - network.nodes)}"
+            )
+        self._network = network
         self._regions_id = None if regions is None else regions.regions_id
         index = {s: i for i, s in enumerate(self._sensors)}
         # Per region, its sensors' positions in calibration order: the order of every sum.
@@ -115,9 +127,11 @@ class CusumDetector:
         pressure_sensors: Sequence[str],
         forecaster: ModelInfo,
         regions: Path | None = None,
+        network: Path | None = None,
     ) -> "CusumDetector":
         """The detector as the server starts it: ``from_file`` plus the startup checks. With
-        ``regions`` (a mapping file), the mapping must cover exactly ``pressure_sensors``."""
+        ``regions`` (a mapping file), the mapping must cover exactly ``pressure_sensors``; with
+        ``network`` (a pipe network file), it must contain every one of them as a node."""
         detector = cls.from_file(path, interval=interval)
         registry = frozenset(pressure_sensors)
         if detector._sensor_set != registry:
@@ -143,20 +157,27 @@ class CusumDetector:
                 f"calibration was made for forecaster {calibrated.name} {calibrated.version}, "
                 f"but the pipeline serves {forecaster.name} {forecaster.version}"
             )
-        if regions is None:
+        if regions is None and network is None:
             return detector
-        mapping = RegionMapping.from_file(regions)
-        if mapping.sensors != registry:
+        mapping = None if regions is None else RegionMapping.from_file(regions)
+        if mapping is not None and mapping.sensors != registry:
             raise ConfigError(
                 "regions differ from the registry's pressure sensors: "
                 f"missing={sorted(registry - mapping.sensors)} "
                 f"unexpected={sorted(mapping.sensors - registry)}"
+            )
+        pipes = None if network is None else PipeNetwork.from_file(network)
+        if pipes is not None and not registry <= pipes.nodes:
+            raise ConfigError(
+                "the pipe network lacks nodes of the registry's pressure sensors: "
+                f"missing={sorted(registry - pipes.nodes)}"
             )
         return cls(
             detector._cal,
             interval=interval,
             calibration_id=detector._calibration_id,
             regions=mapping,
+            network=pipes,
         )
 
     @property
@@ -226,11 +247,18 @@ class CusumDetector:
             # Earliest since; unknown (None) if a sensor's S was never 0, because its onset
             # precedes the first window this detector evaluated.
             onsets = [last_zero[i] for i in above]
+            # The evidence is the S of the same sensors that open the alert (ADR-011 §3).
+            candidate = (
+                None
+                if self._network is None
+                else self._network.candidate_pipe({self._sensors[i]: cusum[i] for i in above})
+            )
             alerts = (
                 AlertCandidate(
                     # The alert's sensors are exactly the unclaimed ones above h, so the sums
                     # over them are region_scores (ADR-007 §8).
                     region=None if region_scores is None else _top_region(region_scores),
+                    candidate_pipe=candidate,
                     suspected_onset=_earliest(onsets),
                     cusum=CusumEvidence(statistic=statistic, threshold=cal.h),
                     deviating_sensors=tuple(
@@ -259,6 +287,8 @@ class CusumDetector:
         }
         if self._regions_id is not None:
             diagnostics["regions_id"] = self._regions_id
+        if self._network is not None:
+            diagnostics["network_id"] = self._network.network_id
         if emptied:
             diagnostics["reset_reason"] = "gap"  # the skip emptied every S (ADR-007 §7)
         result = DetectionResult(

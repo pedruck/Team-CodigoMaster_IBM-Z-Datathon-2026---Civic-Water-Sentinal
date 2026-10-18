@@ -20,6 +20,9 @@ Data is **not** stored in Git. It lives on the VM under `~/shared/civicwater/`
 │   │   ├── sensors.csv         metadata of the 37 sensors
 │   │   ├── leaks_2018.csv      2018 leaks (may be used for training)
 │   │   └── MANIFEST.json       rows, period, NaN and SHA-256 of each file
+│   ├── network/v1/
+│   │   └── l-town.json         pipe network of L-Town (P1), built from L-TOWN.inp; the detector
+│   │                           reads it (SENTINEL_DETECTOR_NETWORK, ADR-011)
 │   └── replay/v1/              API-ready windows (JSONL)
 │       ├── windows_2019.jsonl                         full year (105,120)
 │       └── windows_2019_2019-03-01_2019-03-07.jsonl   one week (2,016)
@@ -184,5 +187,10 @@ python -m pytest -q tests/test_p1_data.py
 - **Low-variance sensors:** `n215` (0.21 m range in 2018) and `n740` (0.87 m).
   With a small σ, the z-score inflates and may cause false alarms (P2/P4 take note).
 - **Simulated network:** results show the method with exact labels, not field performance.
-- **Topology:** the L-Town network file (needed for the sensor → region mapping) is not yet
-  in `raw/`; it is available on the BattLeDIM Zenodo record.
+- **Topology:** `network/v1/l-town.json` (schema 1.0, sha256 `ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59`) is the pipe
+  network: 785 nodes and 909 links (905 pipes, the pump and 3 PRVs) with, per node and link, the
+  zone and the nearest pressure sensor, plus the influence cell of each pressure sensor. It was
+  built from the EPANET model `L-TOWN.inp` ("L-TOWN v1.2", sha256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`, CC BY 4.0, BattLeDIM
+  Zenodo record <https://zenodo.org/records/4017659>), whose hash it records. The detector reads
+  only the nodes and the links (ADR-011); `config/regions.battledim.json` is derived from it by
+  `python -m sentinel.detection.offline.topology`. Like the rest of `data/`, it is not in git.

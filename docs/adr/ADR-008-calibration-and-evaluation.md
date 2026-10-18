@@ -134,6 +134,7 @@ produces results labelled "exploratory" in every table.
 | Persistence-test acceptance criterion | not yet registered | detection |
 | False-alarm budget (alerts per week) | not yet registered (Q-TEAM-03) | team |
 | Matching rule and tolerance per leak type | not yet registered (Q-UI-06) | evaluation |
+| Sensor → region mapping and pipe network (rule, D, files) | registered by ADR-011 §1–2: `config/regions.battledim.json` sha256 `ca365b7074d2bb3df2cec38d69768850ca1d37b9a717db62a9f95a71a25fe57d`, built from the data owner's `network/v1/l-town.json` sha256 `ff772dc1b68c59c05dc3a383fe739a624c054a7fd7c7544bc3b8c6bcbbf49b59` (model `L-TOWN.inp` sha256 `a7551b86745f4cc3433c78e60023077fa1386947d4d35372ffd3a0405622b436`) | detection |
 | Pipe → region table (2019 labels) | not yet registered (Q-UI-06) | evaluation |
 | Calibration artefact hash | not yet registered | detection |
 | Commit of the run | not yet registered | evaluation |

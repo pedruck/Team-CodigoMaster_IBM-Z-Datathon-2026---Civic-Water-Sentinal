@@ -93,6 +93,7 @@ the CUSUM detector (ADR-007, ADR-008) set:
 | `SENTINEL_DETECTOR` | `mock` (default) or `cusum` |
 | `SENTINEL_DETECTOR_CALIBRATION` | path to the calibration artefact (JSON). **Required** with `cusum`; no default path, no number of the detector has a default in code |
 | `SENTINEL_DETECTOR_REGIONS` | optional path to a sensor → region mapping (JSON); only with `cusum` |
+| `SENTINEL_DETECTOR_NETWORK` | optional path to the pipe network (JSON, ADR-011): each alert then names a `candidate_pipe`; only with `cusum` |
 
 ```bash
 SENTINEL_DETECTOR=cusum \
@@ -127,7 +128,14 @@ the regions in the file breaks ties:
 {"regions": {"R-north": ["P01", "P02", ...], "R-south": ["P12", "P13", ...]}}
 ```
 
-Without it `region` and `region_scores` stay null. `GET /v1/status` then reports
+Without it `region` and `region_scores` stay null; without the network `candidate_pipe` stays null.
+For the L-Town data use `SENTINEL_SENSOR_REGISTRY=config/sensors.battledim.json`,
+`SENTINEL_DETECTOR_REGIONS=config/regions.battledim.json` and
+`SENTINEL_DETECTOR_NETWORK=$SENTINEL_DATA_DIR/network/v1/l-town.json` (ADR-011): the pipe network
+is the data owner's file, kept with the other data outside git (`docs/data.md`). The regions file is
+the one in `config/`; `python -m sentinel.detection.offline.topology --check` verifies that it is
+what the rule gives for the network file you have (on the VM too), and never overwrites a different
+file. `GET /v1/status` then reports
 `detector: {"name": "cusum", "version": "0.1.0+<first 8 hex of the artefact's sha256>",
 "is_mock": true}`.
 
@@ -136,7 +144,8 @@ without `SENTINEL_DETECTOR_CALIBRATION`; either path is set while `SENTINEL_DETE
 (it would be silently ignored) or is empty; a file is missing, unreadable or invalid (the message
 names it); the calibration was made for another forecaster name or version than the one served;
 its sensors differ from the registry's pressure sensors or are in another order; the region
-mapping does not cover exactly the registry's pressure sensors or puts a sensor in two regions.
+mapping does not cover exactly the registry's pressure sensors or puts a sensor in two regions;
+the pipe network does not contain every pressure sensor of the registry as a node.
 
 **What to expect.** With the mock persistence forecaster (expected = previous reading) a *step*
 in the readings is a residual in one window only, so `S` does not accumulate; a *ramp* (pressure

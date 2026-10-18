@@ -92,6 +92,7 @@ class Settings:
     detector: str = "mock"
     detector_calibration_path: Path | None = None
     detector_regions_path: Path | None = None  # optional sensor -> region mapping (ADR-007 §8)
+    detector_network_path: Path | None = None  # optional pipe network, candidate pipe (ADR-011)
     audit_sink: str = "null"
     # Audit events waiting for the sink (fail-closed, ADR-006); beyond this, windows get 503.
     audit_pending_capacity: int = 2016
@@ -131,6 +132,7 @@ class Settings:
             for key, path in (
                 ("SENTINEL_DETECTOR_CALIBRATION", self.detector_calibration_path),
                 ("SENTINEL_DETECTOR_REGIONS", self.detector_regions_path),
+                ("SENTINEL_DETECTOR_NETWORK", self.detector_network_path),
             ):
                 if path is not None:
                     raise ConfigError(
@@ -164,6 +166,7 @@ class Settings:
             detector=_choice(e, "SENTINEL_DETECTOR", "mock", {"mock", "cusum"}),
             detector_calibration_path=_optional_path(e, "SENTINEL_DETECTOR_CALIBRATION"),
             detector_regions_path=_optional_path(e, "SENTINEL_DETECTOR_REGIONS"),
+            detector_network_path=_optional_path(e, "SENTINEL_DETECTOR_NETWORK"),
             audit_sink=_choice(e, "SENTINEL_AUDIT_SINK", "null", {"null", "memory"}),
             audit_pending_capacity=_int(e, "SENTINEL_AUDIT_PENDING_CAPACITY", 2016),
             mock_detector_sigma_m=_float(e, "SENTINEL_MOCK_DETECTOR_SIGMA_M", 1.0),
