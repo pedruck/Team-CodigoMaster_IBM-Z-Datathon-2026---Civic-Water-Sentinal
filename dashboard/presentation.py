@@ -2,13 +2,14 @@
 
 import base64
 import math
+from datetime import datetime
 from functools import lru_cache
 from html import escape
 from pathlib import Path
 
 import streamlit as st
 
-from dashboard.alert_list import fmt_time
+from dashboard.alert_list import fmt_age, fmt_time
 from dashboard.header import Header
 from dashboard.source import AlertSource
 from sentinel.schemas.alerts import Alert
@@ -69,8 +70,7 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
             "<div><strong>L-Town network</strong><small>Simulation workspace</small></div></div>"
         )
         links = (
-            ("overview", "squares-four", "Overview"),
-            ("recent-alerts", "pulse", "Recent alerts"),
+            ("recent-alerts", "pulse", "Issued alerts"),
             ("alert-detail", "fingerprint", "Alert evidence"),
             ("history", "clock-counter-clockwise", "History"),
         )
@@ -116,15 +116,35 @@ def render_sidebar(source: AlertSource, header: Header, refresh_s: float) -> Non
 def render_topbar(source: AlertSource, header: Header) -> None:
     mode = "RECORDED REPLAY" if source.recording else "CONNECTED" if header.online else "OFFLINE"
     st.html(
-        '<div id="overview" class="topbar"><span>WORKSPACE'
-        '<span class="breadcrumb-slash">/</span>L-TOWN NETWORK</span>'
+        '<div class="topbar"><span>L-Town network</span>'
         f'<span class="mode-label">{icon("broadcast")}{mode}</span></div>'
     )
-    st.title("Network overview")
+    st.title("Issued alerts")
     st.html(
-        '<div class="overview-subtitle">A clear view of every window. Evidence behind every alert.'
-        f"<span>{icon('clock-counter-clockwise')} Simulated clock · "
-        f"{escape(header.simulated_time)}</span></div>"
+        '<div class="overview-subtitle">'
+        f"<span>Last simulated window: {escape(header.simulated_time)}</span></div>"
+    )
+
+
+def alert_preview(alert: Alert, now: datetime | None) -> str:
+    """Readable alert summary; the complete received record remains in the table/detail."""
+    strongest = max(alert.deviating_sensors, key=lambda item: abs(item.deviation_m), default=None)
+    count = len(alert.deviating_sensors)
+    difference = (
+        f"Largest difference: <strong>{strongest.deviation_m:+.3f} m</strong> "
+        f"at {escape(strongest.sensor)}"
+        if strongest
+        else "No deviating sensor reported."
+    )
+    badge = '<span class="alert-badge">SIMULATED</span>' if alert.is_mock else ""
+    return (
+        '<article class="alert-preview"><div class="alert-preview-heading">'
+        f"<h3>{escape(alert.region or 'Region not available')}</h3>{badge}</div>"
+        f'<p class="issued-at">Issued {escape(fmt_time(alert.window_end))}</p>'
+        f"<p><strong>{count}</strong> deviating {'sensor' if count == 1 else 'sensors'}"
+        f' <span class="fact-divider">·</span> {difference}</p>'
+        f'<p class="alert-age">Age on simulated clock: {escape(fmt_age(alert.window_end, now))}</p>'
+        "</article>"
     )
 
 
@@ -257,7 +277,7 @@ def render_alert_snapshot(alert: Alert) -> None:
     st.html(
         '<div class="alert-snapshot"><span class="eyebrow">SELECTED RECORD</span>'
         f"<h3>{region}</h3><code>{escape(alert.alert_id)}</code>"
-        '<div class="evidence-numbers"><div><span>CUSUM statistic</span>'
+        '<div class="evidence-numbers"><div><span>Detection score (CUSUM)</span>'
         f"<strong>{escape(score)}</strong></div><div><span>Threshold</span>"
         f"<strong>{escape(threshold)}</strong></div></div>"
         '<dl class="evidence-facts"><div><dt>Estimated onset</dt>'
@@ -293,7 +313,7 @@ def sensor_plot(alert: Alert) -> str:
     )
 
 
-def render_motion() -> None:
+def render_motion(*, scroll_to_detail: bool = False) -> None:
     """Only trusted, static local scripts execute; source values never enter JavaScript."""
     vendor = base64.b64encode((ASSETS / "vendor" / "gsap.min.js").read_bytes()).decode("ascii")
     motion = (ASSETS / "motion.js").read_text("utf-8")
@@ -304,7 +324,14 @@ def render_motion() -> None:
         f"library.textContent = atob('{vendor}');"
         "document.head.appendChild(library); library.remove(); }"
     )
+    navigation = (
+        "requestAnimationFrame(() => { const heading = document.getElementById('alert-detail');"
+        "if (heading) { heading.setAttribute('tabindex', '-1');"
+        "heading.focus({preventScroll:true}); heading.scrollIntoView({block:'start'}); } });"
+        if scroll_to_detail
+        else ""
+    )
     st.html(
-        f'<span hidden aria-hidden="true"></span><script>{loader}\n{motion}</script>',
+        f'<span hidden aria-hidden="true"></span><script>{loader}\n{motion}\n{navigation}</script>',
         unsafe_allow_javascript=True,
     )

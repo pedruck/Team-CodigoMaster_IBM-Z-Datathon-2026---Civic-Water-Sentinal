@@ -120,7 +120,7 @@ def captions(at: Any) -> list[str]:
 
 
 def test_history_lists_everything_newest_first(app: Any) -> None:
-    assert any("History" in h.value for h in app.subheader)
+    assert any("History" in h.value for h in app.header)
     assert history_ids(app) == [
         "A-20190314T1220Z-1",
         "A-20190314T1215Z-1",

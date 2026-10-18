@@ -37,7 +37,7 @@
 
   // Navigation is real in-page navigation, with the current section exposed to AT.
   const links = sidebar?.querySelectorAll('.workspace-nav a') || [];
-  const headings = ['overview', 'recent-alerts', 'alert-detail', 'history']
+  const headings = ['recent-alerts', 'alert-detail', 'history']
     .map(id => document.getElementById(id)).filter(Boolean);
   navObserver = new IntersectionObserver(entries => {
     const current = entries.find(entry => entry.isIntersecting)?.target.id;

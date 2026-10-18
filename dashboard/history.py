@@ -47,9 +47,9 @@ def page_count(total: int, page_size: int) -> int:
 
 def render_history(source: AlertSource, now: datetime | None) -> None:
     """Filter widgets and one page of alerts. ``now`` is the simulated clock (for ages)."""
-    st.subheader("History", anchor="history")
+    st.header("History", anchor="history")
     st.caption("All stored alerts, newest first. Times are UTC and inclusive, on window end.")
-    cols = st.columns(5)
+    cols = st.columns(3)
     since_text = cols[0].text_input(
         "Since (UTC)", key="history_since", placeholder="YYYY-MM-DD HH:MM"
     )
@@ -57,8 +57,9 @@ def render_history(source: AlertSource, now: datetime | None) -> None:
         "Until (UTC)", key="history_until", placeholder="YYYY-MM-DD HH:MM"
     )
     region = cols[2].text_input("Region", key="history_region", placeholder="any")
+    pagination = st.columns(2)
     size = int(
-        cols[3].number_input(
+        pagination[0].number_input(
             "Page size",
             min_value=1,
             max_value=MAX_LIMIT,
@@ -67,7 +68,7 @@ def render_history(source: AlertSource, now: datetime | None) -> None:
             key="history_page_size",
         )
     )
-    page = int(cols[4].number_input("Page", min_value=1, step=1, key="history_page"))
+    page = int(pagination[1].number_input("Page", min_value=1, step=1, key="history_page"))
     try:
         query = history_query(page, size, parse_utc(since_text), parse_utc(until_text), region)
     except ValueError as exc:
@@ -87,7 +88,12 @@ def render_history(source: AlertSource, now: datetime | None) -> None:
     elif not result.items:
         st.info(f"No alerts on page {page}: the last page is {pages}.")
     else:
-        st.dataframe([alert_row(a, now) for a in result.items], hide_index=True, width="stretch")
+        st.dataframe(
+            [alert_row(a, now) for a in result.items],
+            hide_index=True,
+            width="stretch",
+            row_height=48,
+        )
         first = query.offset + 1
         st.caption(
             f"Page {page} of {pages} — alerts {first} to {query.offset + len(result.items)} "

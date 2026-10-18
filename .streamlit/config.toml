@@ -5,6 +5,7 @@ backgroundColor = "#f6f8f7"
 secondaryBackgroundColor = "#f0f4f1"
 textColor = "#20332f"
 font = "Geist"
+baseFontSize = 16
 codeFont = "Geist Mono"
 baseRadius = "medium"
 showWidgetBorder = true

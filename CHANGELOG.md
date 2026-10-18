@@ -9,8 +9,12 @@ contract versions are tracked separately (`schema_version`).
 - BE-021: refresh the Streamlit dashboard with a responsive operator workspace, section
   navigation, local Geist/Phosphor assets, source-derived pipeline/buffer/sensor diagrams,
   collapsible exact evidence and reduced-motion-aware local GSAP reveals. Add a manual
-  refresh action that clears polling back-off. Simulation/replay notices, source contracts,
-  automatic refresh and history filters are retained (`docs/dashboard-design.md`).
+  refresh action that clears polling back-off. Prioritise issued-alert summaries, enlarge
+  alert text to 16/14 px and move technical metrics to a disclosure while retaining all
+  loaded records. Improve heading order, explicit-action focus, contextual count semantics,
+  text/chart contrast and enlarged-text reflow following the requested UX skill review.
+  Simulation/replay notices, source contracts, automatic refresh and history filters are
+  retained (`docs/dashboard-design.md`, `docs/dashboard-ux-review.md`).
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
   `null` without a pipe network; new alerts carry `schema_version: "1.1"`, 1.0 payloads are still
   accepted. `docs/examples/alert.mock.json` updated. The alert JSON gained a key, so the

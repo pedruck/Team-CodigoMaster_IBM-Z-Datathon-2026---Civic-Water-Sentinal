@@ -33,7 +33,7 @@ def refresh_alerts() -> None:
 
 
 def render_detail(source: AlertSource, status: StatusResponse | None) -> None:
-    st.subheader("Alert detail", anchor="alert-detail")
+    st.header("Alert detail", anchor="alert-detail")
     st.caption("Inspect the evidence behind a record. Values come directly from the source.")
     if status is None:
         return
@@ -109,34 +109,36 @@ with st.container(key="sentinel-shell"):
     with st.container(key="data-notices"):
         if source.recording is not None:
             rec = source.recording
-            st.warning(f"RECORDED REPLAY — run {rec.run_id}, {rec.recorded_at}. Not live data.")
+            notices = [f"RECORDED REPLAY — run {rec.run_id}, {rec.recorded_at}. Not live data."]
+        else:
+            notices = []
         if header.simulated:
-            st.warning(
+            notices.append(
                 "SIMULATED — a mock model or a non-final calibration is active (is_mock): "
                 "not leak detection."
             )
         if header.provisional_sensors and status is not None:
-            st.warning("Provisional sensor IDs in use.")
+            notices.append("Provisional sensor IDs in use.")
+        if notices:
+            st.warning("\n\n".join(notices))
         st.caption("Simulated data (BattLeDIM L-Town). Not validated on a real network.")
-    render_metrics(status)
-    render_profiles(status)
     with st.container(key="recent-panel"):
         heading, controls = st.columns([3, 1], vertical_alignment="center")
-        heading.subheader("Recent alerts", anchor="recent-alerts")
+        heading.header("Recent alerts", anchor="recent-alerts")
         with controls, st.container(key="refresh-controls", horizontal=True):
             st.button("Refresh data", on_click=refresh_alerts, key="refresh_alerts")
-        st.caption(
-            "Newest first. Alerts are never closed by the detector yet: "
-            "this is not an 'active' list."
-        )
         render_recent_alerts(source, refresh_s)
     with st.container(key="alert-panel"):
         render_detail(source, status)
     if status is not None:
         with st.container(key="history-panel"):
             render_history(source, status.last_timestamp)
+    with st.expander("System status · sensors, processing and history buffer"):
+        st.header("System status", anchor="system-status")
+        render_metrics(status)
+        render_profiles(status)
     st.html(
         '<footer class="page-footer"><span>CivicWater Sentinel · Team CodigoMaster</span>'
         f"<span>{icon('database')}In-memory state · read-only workspace</span></footer>"
     )
-render_motion()
+render_motion(scroll_to_detail=bool(st.session_state.pop("scroll_to_alert_detail", False)))

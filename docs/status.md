@@ -5,11 +5,13 @@
 ## Summary
 
 **Dashboard presentation (BE-021, 2026-10-17):** the primary Streamlit page now has a
-responsive operator workspace, local typography/icons/GSAP, source-derived diagrams and a
-manual refresh action. Exact evidence, mandatory simulation/replay notices and history
-filters remain available. Full gates: **736 passed, 34 skipped**, ruff and strict mypy
-green; Chrome/Playwright checks at five viewport widths, reduced motion and interactions
-passed with no external asset requests or browser errors. See `docs/dashboard-design.md`.
+responsive workspace with issued alerts first, 16/14 px alert text, full records on demand
+and expandable technical status. Local assets, source-derived diagrams and manual refresh
+remain; exact evidence, mandatory notices and history filters are retained. Full gates:
+**741 passed, 34 skipped**, ruff and strict mypy green. Five Chrome viewport sizes,
+reduced motion, interactions, keyboard focus, primary-feed contrast and 200% text checks
+passed; no external requests or browser errors. See `docs/dashboard-design.md` and the
+requested skill review in `docs/dashboard-ux-review.md`. Owner visual validation pending.
 
 The backend runs end to end **with mocks**: windows are validated, ordered, buffered,
 passed to a mock forecaster and a mock detector, alerts are stored and served, audit events
@@ -35,7 +37,8 @@ synthetic data found no bug (`docs/testing.md`). Nothing is calibrated on real r
 ## Done (tests green)
 
 BE-021 Streamlit operator workspace redesign (2026-10-17): presentation-only diagrams,
-manual refresh, eight new presentation/interaction tests and desktop/mobile captures.
+manual refresh, alerts-first readability refinement, thirteen new presentation/interaction
+tests, UX review and desktop/mobile captures.
 
 BE-001 structure/tooling · BE-002 contracts + examples · BE-003 validation · BE-004 history ·
 BE-005 ports + mocks · BE-006 pipeline · BE-007 HTTP API · BE-008 synthetic replay ·
@@ -170,8 +173,9 @@ already passed on s390x). Independent: BE-017 (keep-alive load test).
 
 | Command | Result |
 |---|---|
-| BE-021, Windows x86-64 / Python 3.12.14: `python -m ruff format --check src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q` (cache/temp redirected to E; exact environment in `docs/dashboard-design.md`) | **138 files formatted**, lint OK, **137 files** with no mypy issues; **736 passed, 34 skipped in 38.32s** (optional data/ML dependencies absent). Fixed two existing Windows-only guard failures: pinned JSON checkout line endings and POSIX-normalised path exclusion |
+| BE-021, Windows x86-64 / Python 3.12.14: `python -m ruff format --check src tests scripts dashboard`, `python -m ruff check src tests scripts dashboard`, `python -m mypy`, `python -m pytest -q` (cache/temp redirected to E; exact environment in `docs/dashboard-design.md`) | **138 files formatted**, lint OK, **137 files** with no mypy issues; **741 passed, 34 skipped in 42.36s** (optional data/ML dependencies absent). Includes thirteen new presentation/interaction tests. Fixed two existing Windows-only guard failures: pinned JSON checkout line endings and POSIX-normalised path exclusion |
 | BE-021, Playwright + installed Chrome: 1536×1080, 390×844, 360×800, 768×1024, 1440×900 with reduced motion; evidence navigation, raw audit/sensor disclosures, history filter/reset and manual refresh | Passed; no page errors, no horizontal page overflow, all local font/icon assets loaded, **0 external requests**, **0 GSAP tweens** with reduced motion. Captures: `docs/images/dashboard-*.png` |
+| BE-021 UX review: primary-feed contrast including opacity, evidence activation/focus, focus retained through polling, heading order, button height and 200% root text at 1536/390 px | Passed focused browser checks: warning 8.12:1, sampled feed text ≥5.03:1, caption 5.90:1; evidence button 44 px high; no horizontal page overflow with enlarged text. Full WCAG conformance and spoken screen-reader output not assessed |
 | Jupyter view: `tests/test_dashboard_jupyter.py` (7) + run of `JupyterDashboard` inside the VM's `notebook` container (s390x, `/opt/venv`, no install) against the shared API and `fixture-cusum` | live: online, 2019-12-31 23:55, mocks, no alerts; playback: RECORDED REPLAY, alert R-SYN-A with detail. Browser rendering of the widgets not checked |
 | Merge of `main` (a63d367: CUSUM detector, XGBoost forecaster) into `feat/dashboard-mvp`; conflict markers left staged in `CHANGELOG.md`, `docs/adr/README.md`, `docs/dependencies.md` resolved | ruff OK · mypy: no issues in 112 files · **599 passed, 18 skipped** |
 | Dashboard vs real CUSUM: `fixture-cusum` (`scripts/make_playback_fixtures.py`) + `tests/test_dashboard_cusum.py`; gates | mypy: no issues in 113 files · **604 passed, 18 skipped** |

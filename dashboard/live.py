@@ -7,11 +7,13 @@ from datetime import UTC, datetime
 import streamlit as st
 
 from dashboard.alert_list import alert_row
+from dashboard.presentation import alert_preview
 from dashboard.refresh import PollState, backoff_s, needs_full_rerun, poll
 from dashboard.source import AlertSource
 from sentinel.schemas.alerts import Alert
 
 STATE_KEY = "recent_alerts_poll"
+PREVIEW_LIMIT = 5
 
 
 def shown_alerts() -> tuple[Alert, ...]:
@@ -49,11 +51,36 @@ def _recent_alerts(source: AlertSource, refresh_s: float) -> None:
         return
     if state.alerts:
         now = state.status.last_timestamp if state.status else None
-        st.dataframe([alert_row(a, now) for a in state.alerts], hide_index=True, width="stretch")
-        st.caption(
-            f"{len(state.alerts)} most recent alerts, refreshed every {refresh_s:g} s. "
-            "Older alerts: see the history below."
+        count = len(state.alerts)
+        st.html(
+            '<div class="feed-summary">'
+            f'<strong role="status" aria-atomic="true">'
+            f"{count} recent {'alert' if count == 1 else 'alerts'}</strong>"
+            "<span>Newest first · Times are UTC</span></div>"
         )
+        for index, alert in enumerate(state.alerts[:PREVIEW_LIMIT]):
+            with st.container(key=f"issued-{index}"):
+                summary, action = st.columns([4, 1.25], vertical_alignment="center")
+                with summary:
+                    st.html(alert_preview(alert, now))
+                if action.button("View evidence", key=f"inspect_alert_{alert.alert_id}"):
+                    st.session_state["alert_detail_id"] = alert.alert_id
+                    st.session_state["scroll_to_alert_detail"] = True
+                    st.rerun()
+        if count > PREVIEW_LIMIT:
+            st.caption(
+                f"Showing {PREVIEW_LIMIT} of {count} recent records. "
+                "Expand 'All alert fields' to see every loaded record."
+            )
+        with st.expander("All alert fields"):
+            st.caption("Issued records do not have an open or closed status.")
+            st.dataframe(
+                [alert_row(a, now) for a in state.alerts],
+                hide_index=True,
+                width="stretch",
+                row_height=48,
+            )
+        st.caption(f"Updates every {refresh_s:g} seconds. More records in History.")
         if state.truncated:
             st.warning("More new alerts arrived than one request returns: see the history below.")
     else:

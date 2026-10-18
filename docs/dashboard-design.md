@@ -4,6 +4,11 @@ The primary dashboard remains Streamlit. This refresh changes presentation and a
 explicit **Refresh data** action; it does not replace the source adapters, polling logic,
 schemas or the Jupyter renderer.
 
+Issued alerts are the first operational section. The owner-requested readability pass
+keeps the approved visual identity and changes the task order to **alerts → evidence →
+history → system status**. The accompanying [UX review](dashboard-ux-review.md) records
+the findings, application of UI/UX Pro Max and measured checks.
+
 ## Visual direction
 
 A light monitoring workspace with a restrained water-green accent, local Geist typography,
@@ -17,6 +22,15 @@ References: [Codrops](https://tympanus.net/codrops/hub/), [GSAP](https://gsap.co
 [Rare UI](https://www.rareui.com/components) and [Flaticon](https://www.flaticon.com/).
 These inform the composition, rather than adding component dependencies. The local
 `minimalist-ui` and `gsap-core` skills informed the layout and motion.
+
+Main alert text and controls use 16 px, supporting text at least 14 px, and native main
+buttons at least 44 px height. Recent alerts show five readable summaries with issued time,
+region, deviating-sensor count, strongest signed difference and simulated age. Every loaded
+record and column remains in **All alert fields**; history keeps its filters and pagination.
+**View evidence** selects that record and moves keyboard focus to the detail heading after
+an explicit action. Polling does not request that focus. Technical metrics and diagrams
+remain in the initially collapsed **System status** section. Notices are grouped without
+removing their required content. Controls and labels reflow with enlarged text.
 
 ## What the visualisations mean
 
@@ -107,26 +121,37 @@ $taskPython = 'E:\Codex\civicwater-sentinel\venv\Scripts\python.exe'
 & $taskPython -m pytest -q -o cache_dir=E:/Codex/civicwater-sentinel/pytest-cache --basetemp=E:/Codex/civicwater-sentinel/pytest-tmp
 ```
 
-Results: **138 files formatted**, lint passed, mypy **137 files** with no issues,
-**736 passed, 34 skipped in 38.32s**. The skips require external data or optional ML
-dependencies. Eight new tests cover source-derived chart values, unknown/empty states,
-signed deviations and exact precision, HTML escaping, manual refresh and offline metrics.
+Results after the readability/UX refinement: **138 files formatted**, lint passed, mypy
+**137 files** with no issues, **741 passed, 34 skipped in 42.36s**. The skips require external
+data or optional ML dependencies. Thirteen new tests cover source-derived charts,
+unknown/empty states, signed/exact values, escaping, refresh/offline metrics, alert-first
+ordering, selecting a specific record and retaining records beyond the five summaries.
 The existing 116 dashboard tests passed as well.
 
 The first full Windows run exposed two pre-existing guard failures. `.gitattributes` now
 keeps the hash-pinned regions file at LF on checkout (the committed JSON is unchanged),
 and the evaluation guard normalises path separators before excluding its own package.
 
-Browser command: `node E:\Codex\civicwater-sentinel\browser\validate.cjs` (scratch
-Playwright script, installed Chrome). It checked 1536×1080, 390×844, 360×800, 768×1024 and
-1440×900; the last used reduced motion. All layouts stayed within the available page
-width. Evidence navigation, raw audit/sensor disclosures, history filtering/reset and
-manual refresh passed. All local assets loaded; **0 page errors**, **0 external asset
-requests**, and **0 GSAP tweens** with reduced motion. A further check of **Source & models**
-confirmed that full model names and versions wrap without ellipses. No performance score is claimed.
+Browser commands: `node E:\Codex\civicwater-sentinel\browser\validate-alerts.cjs` and
+`node E:\Codex\civicwater-sentinel\browser\audit-accessibility.cjs` (local scratch Playwright
+scripts, installed Chrome; `TEMP`/`TMP` on E). The first checked 1536×1080, 390×844, 360×800,
+768×1024 and 1440×900; the last used reduced motion. The first alert summary was visible
+at every size, with measured 16/14 px alert text and system metrics initially collapsed.
+All layouts stayed within the available page width. Evidence navigation, raw audit
+disclosure, history filtering/reset and refresh passed. All local assets loaded;
+**0 page errors**, **0 external requests**, **0 GSAP tweens** with reduced motion.
+Earlier checks of **Source & models** confirmed that full model names/versions wrap.
+
+The second script checked primary-feed contrast (including inherited opacity), keyboard
+activation, focus after evidence selection and after polling, ordered headings and 44 px
+evidence-button height at 1536 and 390 px. Main text enlarged to 200% at both widths without
+horizontal page overflow; wide tables retain their own scrolling. Warning text measured
+8.12:1, the sampled feed text at least 5.03:1 and caption text 5.90:1. Chart bars measure
+3.85:1 / 4.00:1 against white, with direct value labels. These are focused checks, not a
+full WCAG audit, screen-reader rehearsal or a performance score.
 
 Review captures from `fixture-cusum`:
 
-- [Desktop overview](images/dashboard-desktop.png)
+- [Desktop issued alerts](images/dashboard-desktop.png)
 - [Alert evidence and history](images/dashboard-evidence.png)
-- [Mobile overview](images/dashboard-mobile.png)
+- [Mobile issued alerts](images/dashboard-mobile.png)
