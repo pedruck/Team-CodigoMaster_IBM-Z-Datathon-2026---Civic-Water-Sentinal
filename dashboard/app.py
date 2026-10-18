@@ -136,6 +136,9 @@ with st.container(key="sentinel-shell"):
             notices.append("SIMULATED — mock model or non-final calibration: not leak detection.")
         if header.provisional_sensors and status is not None:
             notices.append("Provisional sensor IDs in use.")
+        # A snapshot's age, or why a recorded run replaced the live source (BE-026).
+        if notice := getattr(source, "notice", None):
+            notices.insert(0, notice)
         if notices:
             st.warning("  ·  ".join(notices))
         # The fixed caption leads; a recording's own description (e.g. "SYNTHETIC, hand-authored
