@@ -29,9 +29,16 @@ prereq() {
            https://storage.googleapis.com https://s3.amazonaws.com; do
     echo "outbound $h: $(code "$h")   (000 = blocked)"
   done
-  local rc=0
-  ssh -o ConnectTimeout=8 -o BatchMode=yes -T nokey@localhost.run exit >/dev/null 2>&1 || rc=$?
-  echo "outbound ssh (port 22): exit $rc   (255 = blocked)"
+  # localhost.run answers any session with a banner and rejects extra arguments (exit 255), so
+  # the banner, not the exit code, tells whether outbound ssh works.
+  local banner
+  banner="$(ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+      -T nokey@localhost.run --help 2>&1 || true)"
+  if grep -q "your connection id is" <<<"$banner"; then
+    echo "outbound ssh (port 22): open (localhost.run answered)"
+  else
+    echo "outbound ssh (port 22): blocked or refused: $(head -n1 <<<"$banner")"
+  fi
 }
 
 tunnel_test() {

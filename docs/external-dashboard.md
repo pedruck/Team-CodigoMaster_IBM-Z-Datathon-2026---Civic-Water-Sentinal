@@ -6,8 +6,11 @@ Streamlit Community Cloud), while the forecaster, detector and audit stay on the
 document covers how the dashboard reaches the data, the checks that decide the option, and the
 rules for using it. Decision record: [ADR-013](adr/ADR-013-external-dashboard-access.md).
 
-**Status:** code and tests on branch `feat/be-026-external-dashboard`. The VM checks below have
-**not been run yet** (NOT_RUN). Nothing is exposed until they pass and the team agrees.
+**Status:** code and tests on branch `feat/be-026-external-dashboard`. VM checks from the
+Jupyter terminal (container, 2026-10-18): s390x, Python 3.12.15, API `/health` 200, outbound
+HTTPS open (GitHub, localhost.run, Cloudflare, Google Storage, S3), outbound TCP 22 open and
+localhost.run answering, `snapshot-read` JSON ok. Tunnel (1a) and snapshot upload (3b/3c):
+NOT_RUN. Nothing is exposed until they pass and the team agrees.
 
 ## The two options
 
@@ -52,7 +55,7 @@ scripts/external_dashboard_checks.sh snapshot-loop   # option 3c: 15 PUTs, one a
 
 | Step | Pass when |
 |---|---|
-| prereq | `s390x`; Python ≥ 3.8; API `/health` 200; at least one outbound HTTPS code other than `000`; outbound ssh exit other than 255. All `000` and 255 means the VM has no way out: use the recorded run and the demo video. |
+| prereq | `s390x`; Python ≥ 3.8; API `/health` 200; at least one outbound HTTPS code other than `000`; outbound ssh "open (localhost.run answered)". localhost.run rejects any command with exit 255 even when the connection works, so the script reads its banner instead. All `000` and ssh blocked means the VM has no way out: use the recorded run and the demo video. |
 | tunnel-test | The printed `https://….lhr.life` URL shows `ok` on a phone **off the Wi-Fi** and stays up for 30 minutes. It serves a test page, never the API. |
 | cloudflared | `200` means an official s390x binary exists; `404` means it would have to be built with Go off the VM. |
 | snapshot-read | `JSON ok`. |
