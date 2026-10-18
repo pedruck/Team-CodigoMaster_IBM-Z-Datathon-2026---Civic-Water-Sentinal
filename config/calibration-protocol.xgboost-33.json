@@ -1,0 +1,122 @@
+{
+  "protocol": "cusum-calibration/1",
+  "exploration": {
+    "registered": "2026-10-17",
+    "sigma": {
+      "mask_policy": "none",
+      "floor": "quantization step / sqrt(12) of the coarsest sensor",
+      "rationale": "ADR-008 §C: sigma is the robust scale (1.4826 MAD) of every 2018 out-of-fold window, documented as conservative; the leak masks (reparados, reparados+crescimento recommended by P1, todos) are reported as sensitivity only, because they keep only 2-43 % of the year, concentrated in a few months. The floor is the rounding noise of the measurement (step/sqrt(12)) of the coarsest sensor: below it sigma would measure the display resolution, not the forecaster."
+    },
+    "persistence": {
+      "baseline_hours": 24,
+      "initial_hours": 1,
+      "remaining_after_hours": 24,
+      "n_top": 3,
+      "median_at_least": 0.5,
+      "minimum_at_least": 0.25,
+      "rationale": "Operational definition of ADR-008 §D (sentinel.detection.offline.persistence), fixed before any XGBoost residual is read. Displacement = mean z over a span minus the sensor's mean over the 24 h before the start (removes the offset of the other active leaks; a full day, so no diurnal bias). Initial span (start, start+1h]; remaining span (start+24h, start+25h], the same hours of the day. Affected sensors = the 3 with the largest initial displacement (the middle of the N grid 1..5). Persistence = sum of remaining / sum of initial. Thresholds as proposed on 2026-10-17 (PR #16): median >= 50 % and no leak < 25 % over the 6 abrupt leaks of 2018; an undefined ratio counts as 0."
+    },
+    "delta": {
+      "sustained_hours": 24,
+      "max_rank": 5,
+      "k_decimals": 2,
+      "rationale": "Amends the PR #16 proposal (delta = 1 sigma). delta_N = the smallest, over the 6 abrupt leaks of 2018, of the N-th largest sustained displacement (mean z over (start, start+24h] minus the 24 h before): the shift the CUSUM must see on N sensors to detect the weakest abrupt leak. k_N = delta_N / 2 rounded to 2 decimals, for the cells with that N (the CUSUM is tuned to the shift it must find on the N sensors that open the alert). An N with k_N <= 0 leaves the grid. Fixed before any detection result; the sweep never chooses k."
+    }
+  },
+  "inputs": {
+    "with-neighbours": {
+      "forecaster": {
+        "name": "xgboost-33",
+        "version": "0.1.0"
+      },
+      "residuals_sha256": "4878bb7cf43590a0a6d30317d43f7635264ed1d98819af7c59bdb2092a464a1a",
+      "folds_sha256": "3e04574f8ab22de9804c7ffe123e428e83b780ffa7487f837855555366c2ba9d"
+    },
+    "without-neighbours": {
+      "forecaster": {
+        "name": "xgboost-33-without-neighbours",
+        "version": "candidate"
+      },
+      "residuals_sha256": "a7f46f421ab0629242d33ba45bbf52fe85f619ab9b220cec4ddcfb06c33d85f6",
+      "folds_sha256": "3e04574f8ab22de9804c7ffe123e428e83b780ffa7487f837855555366c2ba9d"
+    }
+  },
+  "sweep": {
+    "registered": "2026-10-17",
+    "explore_sha256": {
+      "with-neighbours": "293c2a99611fa18b6c02b0ba322f1d406b7310043752d3c9ed0867c1f6c57a5d",
+      "without-neighbours": "b958461a7e274ee6d95ab4e8a9d52e4866530df6301e7a0b83209023c8d85392"
+    },
+    "k_by_n": {
+      "with-neighbours": {
+        "1": 6.34,
+        "2": 1.72,
+        "3": 1.08,
+        "4": 0.45,
+        "5": 0.27
+      },
+      "without-neighbours": {
+        "1": 4.21,
+        "2": 1.58,
+        "3": 1.49,
+        "4": 0.96,
+        "5": 0.6
+      }
+    },
+    "k_sensitivity": [
+      0.5,
+      2.0
+    ],
+    "h_values": [
+      2.0,
+      2.83,
+      4.0,
+      5.66,
+      8.0,
+      11.3,
+      16.0,
+      22.6,
+      32.0,
+      45.3,
+      64.0,
+      90.5,
+      128.0,
+      181.0,
+      256.0,
+      362.0,
+      512.0,
+      724.0,
+      1020.0
+    ],
+    "base_c": 2.0,
+    "base_h_close_ratio": 0.5,
+    "c_values": [
+      1.5,
+      2.0,
+      3.0
+    ],
+    "h_close_ratios": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "max_delay_hours": {
+      "abrupt": 168,
+      "incipient": 168
+    },
+    "budgets_per_week": [
+      0.5,
+      1.0,
+      2.0,
+      4.0
+    ],
+    "primary_budget_per_week": 1.0,
+    "recovery_target_hours": 24,
+    "extra_floors_m": [
+      0.005,
+      0.01,
+      0.02
+    ],
+    "rationale": "Registered after phase A (explore.json hashes above, no replay yet) and before any detection result. k_by_n copies k_N = delta_N / 2 of each variant's exploration. k_sensitivity: delta/4 and delta, reported only. h grid: 2·sqrt(2)^i for i = 0..18 rounded to 3 significant digits (2 to 1020); for an AR(1) z the CUSUM excursions scale with the variance inflation F = (1+phi)/(1-phi) over k, and the measured F (median 10-16, max 52-117) with k_N between 0.27 and 6.34 puts the useful h between a few units and several hundred. N = 1..5 (every N with a positive k_N). c and h_close: base c = 2, h_close = h/2 for the (h, N) sweep, then the grid c in {1.5, 2, 3} x h_close/h in {0.25, 0.5, 0.75} at the chosen (k, h, N), chosen on the recovery after the 10 repairs of 2018 (target: all sensors of the detecting alert below h_close within 24 h of the repair). Matching: the operator view of ADR-010 (max_delay 7 days for both types), so the 2018 false alarms compare with the 2019 ones. Budgets: candidates 0.5, 1, 2, 4 false alarms per week; primary 1 per week as proposed on 2026-10-17 (PR #16), until the team fixes it (Q-TEAM-03). Extra sigma floors for the per-sensor table: 5, 10, 20 mm."
+  }
+}

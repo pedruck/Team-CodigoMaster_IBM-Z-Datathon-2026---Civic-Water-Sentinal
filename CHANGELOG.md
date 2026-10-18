@@ -6,8 +6,9 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
-- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`) and the persistence-test threshold registered;
-  false-alarm budget ≤ 1 per week proposed to the team (Q-TEAM-03). Detection owner's review of
+- ADR-008 §G pre-registration: δ = 1 σ (`k = 0.5`, later amended by BE-012j to a per-rank `δ_N`)
+  and the persistence-test threshold registered; false-alarm budget ≤ 1 per week proposed to the
+  team (Q-TEAM-03). Detection owner's review of
   ADR-010 appended to it (stale `eval/v1`, regions and candidate pipe now exist, delays and
   false alarms of the 4 inherited leaks, manifest ids); Q-DET-08 status recorded.
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
@@ -30,6 +31,17 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- Detection (BE-012j, BE-012h): calibration experiment of the CUSUM on the ML owner's 2018
+  out-of-fold residuals, `python -m sentinel.detection.offline.experiment explore | sweep`
+  (offline only). `offline/oof.py` reads DEP-DET-05 (hashes against `declaration.json`, registry
+  order, regular 5-minute 2018 grid, folds; any path naming 2019 refused); `offline/persistence.py`
+  defines the persistence test and `δ_N` (ADR-008 §D); `offline/selection.py` holds the Pareto
+  front, the budget rule, leave-one-leak-out and the recovery after a repair; `sweep.trajectory`
+  returns the `S` matrix bit for bit with the detector; `calibration.robust_sigma` is shared by
+  `calibrate()` and the tools. The protocol `config/calibration-protocol.xgboost-33.json`
+  (pydantic, no defaults) was committed in two steps: exploration rules before any residual was
+  read, sweep rules after phase A and before any replay (ADR-008 §G). Method and results:
+  `docs/p4-calibration.md`.
 - Forecasting (ML owner, DEP-DET-05): `python -m sentinel.forecasting.oof` writes out-of-fold
   2018 residuals of XGBoost for the detector calibration — calendar-month folds, each month
   predicted by models trained on the clean windows of the other 11, trees per sensor of the
