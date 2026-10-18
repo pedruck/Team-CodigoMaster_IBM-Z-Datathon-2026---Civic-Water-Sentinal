@@ -432,7 +432,8 @@ def _commit() -> str:
             ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         ).stdout.strip()
         dirty = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
+            # Only what the run depends on: a documentation edit does not change a result.
+            ["git", "status", "--porcelain", "--untracked-files=no", "--", "src", "config"],
             capture_output=True,
             text=True,
             check=True,
