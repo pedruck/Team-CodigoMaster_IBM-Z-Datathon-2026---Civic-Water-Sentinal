@@ -6,6 +6,7 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- README redesigned as a landing page (banner and logo, demo, status table, dashboard design summary); the configuration reference moved unchanged to `docs/configuration.md`; brand assets in `docs/images/brand/` and demo captures in `docs/images/demo/`.
 - BE-026: dashboard hosted off the VM (ADR-013, `docs/external-dashboard.md`). A read-only,
   token-protected gateway for an outbound tunnel (`scripts/readonly_gateway.py`: GET on health,
   status and alerts only), a snapshot push to pre-signed URLs (`scripts/push_snapshot.py`,
