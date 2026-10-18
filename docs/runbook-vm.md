@@ -56,7 +56,7 @@ and prints the log: the API never falls back to the mock. `status` shows `foreca
 
 The script also forwards `SENTINEL_DETECTOR`, `SENTINEL_DETECTOR_CALIBRATION`,
 `SENTINEL_DETECTOR_REGIONS` and `SENTINEL_DETECTOR_NETWORK` (only the variables that are set). The CUSUM detector refuses to start
-with a calibration made for another forecaster ([README](../README.md#running-with-the-cusum-detector),
+with a calibration made for another forecaster ([configuration](configuration.md#running-with-the-cusum-detector),
 ADR-008): `config/calibration.xgboost-33.json` is for `xgboost-33@0.1.0`, so it needs
 `SENTINEL_FORECASTER=xgboost` in the **same** command. The mock detector raises no alerts with
 the millimetre residuals of XGBoost (`docs/performance.md`).
