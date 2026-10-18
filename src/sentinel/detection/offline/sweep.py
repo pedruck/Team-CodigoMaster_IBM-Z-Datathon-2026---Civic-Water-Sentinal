@@ -2,7 +2,8 @@
 
 ``replay`` is the ``CusumDetector`` (ADR-007) without the contract around it, for sweeping
 ``h`` and ``N`` over a year of out-of-fold ``z`` (ADR-008 §C); ``sweep`` replays one grid of
-``(h, N)`` and scores each configuration with the layer-1 metrics (``layer1``). Offline only: it
+``(h, N)`` and scores each configuration with the layer-1 metrics (``layer1``). ``trajectory``
+(BE-012j) returns the ``S`` matrix itself, for the recovery after a repair. Offline only: it
 needs numpy and pandas (dev dependencies) and the server never imports it.
 """
 
@@ -107,6 +108,40 @@ def replay(
         claimed[idx] = True
         any_claimed = True
     return openings
+
+
+def trajectory(
+    z: npt.NDArray[np.float64], *, k: float, h: float, c: float
+) -> npt.NDArray[np.float64]:
+    """``S`` of every window and sensor (T x n float64), the ``cusum`` the detector reports.
+
+    The same arithmetic, in the same order, as ``replay`` and the detector, so every value is
+    the same float64. ``S`` depends on ``h`` only through the cap ``c*h`` and not at all on
+    ``n_min`` or ``h_close``: one trajectory serves every ``N`` and every release threshold (the
+    recovery after a repair, ``selection.recovery_times``). No gaps (as ``replay``). ``z`` is
+    T x n float64 and finite; ``k``, ``h`` positive and ``c`` above 1. ``ValueError`` otherwise.
+    """
+    if z.ndim != 2 or z.shape[1] < 1:
+        raise ValueError(f"z must be a 2-D (windows x sensors) matrix with a sensor, got {z.shape}")
+    if z.dtype != np.float64:
+        raise ValueError(f"z must be float64 to match the detector bit for bit, got {z.dtype}")
+    if not np.isfinite(z).all():
+        raise ValueError("z must be finite: the detector refuses non-finite values")
+    for name, value in (("k", k), ("h", h)):
+        if not (math.isfinite(value) and value > 0):
+            raise ValueError(f"{name} must be positive and finite, got {value}")
+    if not (math.isfinite(c) and c > 1):
+        raise ValueError(f"c must be finite and above 1, got {c}")
+    cap = c * h
+    out = np.empty_like(z)
+    s = np.zeros(z.shape[1])
+    for t in range(len(z)):
+        np.add(s, z[t], out=s)
+        np.subtract(s, k, out=s)
+        np.maximum(s, 0.0, out=s)
+        np.minimum(s, cap, out=s)
+        out[t] = s
+    return out
 
 
 def _check_input(
@@ -242,12 +277,12 @@ def _row(h: float, n_min: int, result: Layer1Result) -> dict[str, object]:
         row[f"detected_{kind}"] = count.detected
         row[f"total_{kind}"] = count.total
         row[f"missed_{kind}"] = count.missed
-        row[f"median_delay_start_{kind}"] = _median([leak.delay_from_start for leak in found])
-        row[f"median_delay_peak_{kind}"] = _median([leak.delay_from_peak for leak in found])
+        row[f"median_delay_start_{kind}"] = median_delay([leak.delay_from_start for leak in found])
+        row[f"median_delay_peak_{kind}"] = median_delay([leak.delay_from_peak for leak in found])
     return row
 
 
-def _median(delays: Sequence[timedelta | None]) -> timedelta | None:
+def median_delay(delays: Sequence[timedelta | None]) -> timedelta | None:
     """The median of the known delays (the mean of the two middle ones if even), else ``None``."""
     known = sorted(delay for delay in delays if delay is not None)
     if not known:

@@ -325,6 +325,23 @@ another year). Each configuration of a `sweep` is a full replay, so its cost sho
 linearly with the number of configurations (18 configurations measured; larger grids not
 measured).
 
+## Calibration experiment of BE-012j/h on the XGBoost out-of-fold residuals (x86-64) — 2026-10-18
+
+Same machine (Intel Core Ultra 7 155H, CPython 3.14.7). Real inputs: the ML owner's out-of-fold
+residuals of both XGBoost variants (105 120 windows × 33 sensors each). Offline only.
+
+| Operation | Measured | Command / source |
+|---|---|---|
+| `explore` (read and check the residual file, σ for 4 masks, Δ, φ, persistence, δ), per variant | 13.4 s and 13.7 s wall, peak RSS 1.10–1.14 GB | `/usr/bin/time python -m sentinel.detection.offline.experiment explore ...` |
+| `sweep`, with neighbours | 458 s (first run), 259 s (second run, same results byte for byte) | `/usr/bin/time ... sweep ...`; peak RSS 1.10–1.15 GB |
+| `sweep`, without neighbours | 231 s and 244 s | same |
+| inside one sweep (with neighbours, separate timing): load + checks 3.1 s, phase A again 2.0 s, replay of the 95 main cells 69.1 s (76 076 openings), their evaluation 0.2 s, leave-one-leak-out for 4 budgets 2.6 s | single run | timing script with `time.perf_counter` (not committed) |
+
+A sweep is about 326 replays (95 main cells, 190 for the `k` sensitivity, up to 36 for the cap
+and release stage, 5 for the floors) at about 0.7 s each: the replay is the whole cost. The
+458 s of the first run was not reproduced (259 s for the same work); it ran while other jobs
+used the machine — not investigated.
+
 ## Observed bottlenecks / optimisation log
 
 | # | Observation | Measurement | Hypothesis | Proposed change | Result |
@@ -337,6 +354,7 @@ measured).
 | 5 | One spike: `detection` max 141.6 ms, client max 144 ms, during the full-year replay | full-year HTTP run | GC pause or contention with other members' kernels on 3 shared vCPUs — **not investigated** | none; watch p99 on real-model runs | — |
 | 6 | TreeSHAP dominates the real forecaster: p50 134 ms per window vs 0.64 ms without it | `xgboost-33@0.1.0` on the VM, above | 33 `pred_contribs` calls on the native booster, one row each | `SENTINEL_FORECASTER_CONTRIBUTIONS=false` for long replays; keep contributions for the live demo | wired (BE-011); confirmed in the pipeline: 0.65 vs 136 ms per window; `on_alert` (default since `feat/p2-oof-residuals`): TreeSHAP only for the deviating sensors of an alert, after detection, so windows without an alert pay nothing — estimated ≈ 3.9 ms per explained sensor (127 ms / 33), **NOT_RUN on the VM** |
 | 7 | Snap ML on the NNPA is slower than on CPU for this model (1.35 vs 0.64 ms per window; 5.4 vs 1.2 ms per 1000 rows) | same | transfer/setup cost dominates for small trees and few rows — **not profiled** | serve with `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees` (full-year replay 98.8 s vs 177.1 s with `auto`), or keep `auto` to show the accelerator; test larger batches before deciding for bulk replays | option wired (BE-011); default still `auto` (ML owner's choice) |
+| 8 | The calibration `sweep` takes 4–8 min per variant | section above: replay of the 95 main cells 69.1 s, leave-one-leak-out 2.6 s | one Python loop per window in `replay` (0.7 s per cell), cells replayed one after the other | replay the cells in parallel processes (independent), or derive the openings of every `N` and `h_close` from one `trajectory` per `(k, h, c)` | not applied (minutes, offline) |
 
 No Rust/C++ optimisation is justified: there is no measured backend bottleneck relative to
 the 300 s interval. Revisit only with LinuxONE measurements of the real models.

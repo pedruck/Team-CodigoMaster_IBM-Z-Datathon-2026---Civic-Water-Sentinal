@@ -80,6 +80,14 @@ def write_artefact(artefact: CalibrationArtefact, path: Path) -> None:
     path.write_bytes(canonical_bytes(artefact))
 
 
+def robust_sigma(series: Sequence[float]) -> float:
+    """``1.4826 * MAD`` of ``series`` (median absolute deviation from the median), without the
+    floor: the estimate ``calibrate`` floors. Offline tools use it so their sigma is the
+    artefact's, float for float."""
+    centre = statistics.median(series)
+    return MAD_TO_SIGMA * statistics.median(abs(r - centre) for r in series)
+
+
 def calibrate(
     residuals: Mapping[str, Sequence[float]],
     *,
@@ -114,9 +122,7 @@ def calibrate(
             raise ValueError(f"empty residual series for sensor {sensor!r}")
         if not all(math.isfinite(r) for r in series):
             raise ValueError(f"non-finite residual for sensor {sensor!r}")
-        centre = statistics.median(series)
-        mad = statistics.median(abs(r - centre) for r in series)
-        sigma[sensor] = max(sigma_floor_m, MAD_TO_SIGMA * mad)
+        sigma[sensor] = max(sigma_floor_m, robust_sigma(series))
     return CalibrationArtefact(
         provenance=provenance,
         forecaster=forecaster,
