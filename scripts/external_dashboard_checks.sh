@@ -29,11 +29,12 @@ prereq() {
            https://storage.googleapis.com https://s3.amazonaws.com; do
     echo "outbound $h: $(code "$h")   (000 = blocked)"
   done
-  # localhost.run answers any session with a banner and rejects extra arguments (exit 255), so
-  # the banner, not the exit code, tells whether outbound ssh works.
+  # localhost.run answers any session with a banner and then rejects the command ("exit") with
+  # status 255, so the banner, not the exit code, tells whether outbound ssh works. The command
+  # must not start with "-": ssh would read it as one of its own options.
   local banner
-  banner="$(ssh -o ConnectTimeout=8 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      -T nokey@localhost.run --help 2>&1 || true)"
+  banner="$(timeout 20 ssh -o ConnectTimeout=8 -o BatchMode=yes \
+      -o StrictHostKeyChecking=accept-new -T nokey@localhost.run exit 2>&1 || true)"
   if grep -q "your connection id is" <<<"$banner"; then
     echo "outbound ssh (port 22): open (localhost.run answered)"
   else
