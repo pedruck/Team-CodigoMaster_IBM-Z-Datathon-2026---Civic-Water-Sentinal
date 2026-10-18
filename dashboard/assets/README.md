@@ -21,7 +21,7 @@ and Flaticon were reviewed as references; their assets are not redistributed her
 enhances existing content only: content remains visible with scripts disabled, motion
 respects the OS setting, and observers/tweens are disposed on reinitialisation.
 
-Interactive network map (BE-024): `network_map.html` (document template), `network_map.css`
+Interactive network map (BE-025): `network_map.html` (document template), `network_map.css`
 and `network_map.js` (plain JavaScript, no library). `dashboard.map_embed.map_document` fills
 the template with the CSS, the script, the IBM Plex faces as data URIs and the map/alert JSON,
 so the iframe needs no network. The map's icons (focus, zoom, whole network, play/pause,

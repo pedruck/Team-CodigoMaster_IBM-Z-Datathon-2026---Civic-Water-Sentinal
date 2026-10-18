@@ -1,4 +1,4 @@
-# Operator workspace — BE-021 / BE-022 / BE-023 / BE-024
+# Operator workspace — BE-021 / BE-022 / BE-023 / BE-025
 
 The primary dashboard remains Streamlit. BE-022 aligns the page with the public preview
 of the [CivicWater Figma design](https://www.figma.com/design/vvZqt0ypTmooZpYLn93u9h/CivicWater-Sentinel-%E2%80%94-Painel-operacional?node-id=5-1518),
@@ -226,7 +226,7 @@ Additional review captures: [mobile sidebar](images/dashboard-sidebar-mobile.png
 [mobile alert controls](images/dashboard-responsive-mobile.png) and
 [sidebar with 200% text](images/dashboard-sidebar-text-200.png).
 
-## Interactive network map — BE-024 (2026-10-18)
+## Interactive network map — BE-025 (2026-10-18)
 
 The first viewport is now **queue | map | evidence** (ADR-012 addendum, chosen by the owner on
 the Impeccable decision page from three sketched structures). The sidebar starts collapsed.
@@ -287,9 +287,9 @@ SENTINEL_DASHBOARD_PLAYBACK_DIR=dashboard/playback/fixture-synthetic-ltown-demo 
 **NOT_RUN** in the VM's JupyterLab: check with `view = NetworkMapView(source); view.refresh();
 view.widget` and switch to `Static SVG` if the iframe stays blank.
 
-### Verification — BE-024
+### Verification — BE-025
 
-See `docs/dashboard-ux-review.md` (BE-024) for the Impeccable critique, audit and detector
+See `docs/dashboard-ux-review.md` (BE-025) for the Impeccable critique, audit and detector
 results, and `docs/status.md` for the gates. Captures: [1440 × 900](images/dashboard-map.png),
 [1280 × 720](images/dashboard-map-1280.png), [390 × 844](images/dashboard-map-mobile.png),
 [replay](images/dashboard-map-replay.png), [Regions](images/dashboard-map-regions.png),

@@ -1,5 +1,5 @@
 """Source-derived diagrams, safe markup, the operator's manual refresh (BE-021) and the
-queue | map | evidence workspace (BE-024)."""
+queue | map | evidence workspace (BE-025)."""
 
 import base64
 import math

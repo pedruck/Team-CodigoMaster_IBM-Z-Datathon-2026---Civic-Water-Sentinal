@@ -1,4 +1,4 @@
-"""Interactive network map (BE-024): the pure payload (``map_payload``), the self-contained
+"""Interactive network map (BE-025): the pure payload (``map_payload``), the self-contained
 document (``map_document``), the synthetic demo playback, and both Streamlit pages headless.
 The small invented map gives exact answers; the real ``config/l-town-map.json`` only smoke
 tests and the demo fixture's IDs."""

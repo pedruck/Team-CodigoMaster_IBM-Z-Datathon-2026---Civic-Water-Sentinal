@@ -1,6 +1,6 @@
-# Dashboard UX review — BE-021 / BE-023 / BE-024
+# Dashboard UX review — BE-021 / BE-023 / BE-025
 
-## Interactive map — BE-024 (2026-10-18), reviewed with Impeccable
+## Interactive map — BE-025 (2026-10-18), reviewed with Impeccable
 
 Process: `init` (PRODUCT.md), `shape` (three structures on the decision page; the owner chose
 the three-pane command view), build, then `critique` as two isolated assessments (design review;

@@ -53,7 +53,7 @@ the alert contract gains verified location or lifecycle status, if the official 
 changes, or if operator testing shows that the map needs keyboard-addressable individual
 network elements.
 
-## Addendum (2026-10-18, BE-024) — interactive map as the first viewport
+## Addendum (2026-10-18, BE-025) — interactive map as the first viewport
 
 **Status of this addendum:** Proposed, with the dashboard owner's approval of the plan.
 

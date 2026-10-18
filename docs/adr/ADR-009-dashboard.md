@@ -122,7 +122,7 @@ alerts arrive (anchoring on `until` is technical debt).
 - Tunnel address changes when the container is recreated; the runbook command to find it is
   broken (Q-DOC-02).
 
-**Interactive map addendum (2026-10-18, BE-024).** The first viewport becomes queue | map |
+**Interactive map addendum (2026-10-18, BE-025).** The first viewport becomes queue | map |
 evidence (ADR-012 addendum). The map is one more trusted, static local document, loaded with
 `st.iframe` (the replacement for the deprecated `components.v1.html`), which runs scripts
 in a same-origin frame. Contract values enter it only as escaped JSON data and are written

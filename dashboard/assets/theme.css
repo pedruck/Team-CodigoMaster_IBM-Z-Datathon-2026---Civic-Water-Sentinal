@@ -311,7 +311,7 @@
   .st-key-recent-heading [data-testid="stColumn"]:last-child { flex: 0 0 9rem; width: 9rem; min-width: 0; }
 }
 
-/* ---- BE-024: network & alerts workspace (queue | interactive map | evidence) ---- */
+/* ---- BE-025: network & alerts workspace (queue | interactive map | evidence) ---- */
 :root { --cw-alert-ink: #8f3832; }
 [data-testid="stMainBlockContainer"] { padding: 3rem 1.25rem 2.5rem; max-width: 1760px; }
 .st-key-sentinel-shell { gap: .75rem; }
@@ -445,7 +445,7 @@
 .st-key-alert-panel [data-testid="stAlert"] { background: transparent !important; border: 0 !important; padding: 0 !important; }
 .st-key-alert-panel [data-testid="stAlert"] p { font-weight: 600; color: #6b5013; }
 
-/* Final review (BE-024): one compact header beside the sidebar toggle, more height for the map. */
+/* Final review (BE-025): one compact header beside the sidebar toggle, more height for the map. */
 [data-testid="stMainBlockContainer"] { padding-top: .5rem; }
 .st-key-title-row { padding-left: 2.75rem; min-height: 3rem; }
 .st-key-data-notices [data-testid="stCaptionContainer"] p {
