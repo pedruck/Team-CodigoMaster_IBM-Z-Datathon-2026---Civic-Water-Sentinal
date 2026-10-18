@@ -66,8 +66,8 @@ _REGIONAL: list[Example] = [
             "hours_since_onset": 3.33,
             "cusum": {"statistic": 9.7, "threshold": 8.0},
             "deviating_sensors": [
-                {"sensor": "P05", "deviation_m": -0.74, "z": -3.9},
-                {"sensor": "P11", "deviation_m": -0.52, "z": -3.1},
+                {"sensor": "P05", "deviation_m": -0.74, "z": 3.9},
+                {"sensor": "P11", "deviation_m": -0.52, "z": 3.1},
             ],
         },
         {
@@ -87,7 +87,7 @@ _REGIONAL: list[Example] = [
             "suspected_onset": "2018-03-20T09:05:00Z",
             "hours_since_onset": 8.67,
             "cusum": {"statistic": 15.2, "threshold": 10.0},
-            "deviating_sensors": [{"sensor": "P30", "deviation_m": -1.08, "z": -4.6}],
+            "deviating_sensors": [{"sensor": "P30", "deviation_m": -1.08, "z": 4.6}],
         },
         {
             "en": "Alert A-20180320T1745Z-2 reports a suspected leak in region R7. "
@@ -106,8 +106,8 @@ _UNLOCATED: list[Example] = [
             "window_end": "2018-02-12T10:15:00Z",
             "suspected_onset": "2018-02-12T10:15:00Z",
             "deviating_sensors": [
-                {"sensor": "P27", "deviation_m": -1.31, "z": -5.2},
-                {"sensor": "P26", "deviation_m": -1.12, "z": -4.4},
+                {"sensor": "P27", "deviation_m": -1.31, "z": 5.2},
+                {"sensor": "P26", "deviation_m": -1.12, "z": 4.4},
             ],
         },
         {
@@ -124,9 +124,9 @@ _UNLOCATED: list[Example] = [
             "alert_id": "A-20180409T0630Z-1",
             "window_end": "2018-04-09T06:30:00Z",
             "deviating_sensors": [
-                {"sensor": "P18", "deviation_m": -0.95, "z": -3.8},
-                {"sensor": "P19", "deviation_m": -0.88, "z": -3.5},
-                {"sensor": "P33", "deviation_m": -0.61, "z": -3.1},
+                {"sensor": "P18", "deviation_m": -0.95, "z": 3.8},
+                {"sensor": "P19", "deviation_m": -0.88, "z": 3.5},
+                {"sensor": "P33", "deviation_m": -0.61, "z": 3.1},
             ],
         },
         {

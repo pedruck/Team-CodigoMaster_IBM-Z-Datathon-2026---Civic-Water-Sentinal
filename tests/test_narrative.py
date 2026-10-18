@@ -68,7 +68,7 @@ def test_template_content_pt() -> None:
     assert text.startswith("[SIMULAÇÃO]")
     assert "região R4" in text
     assert "2019-03-14 02:10 UTC, 10,33 h antes" in text
-    assert "P14 -0,91 m (z -4,10)" in text
+    assert "P14 -0,91 m (z 4,10)" in text
     assert "CUSUM 12,40 para limiar 8,00" in text
     assert "P14: hour_of_week +0,21 m, F01_inflow -0,12 m, P14_lag_1 +0,08 m" in text
     assert "T01" not in text  # only the top 3 contributions
@@ -82,7 +82,7 @@ def test_english_is_the_default_language() -> None:
     assert text.startswith("[SIMULATION]")
     assert "Alert A-20190314T1230Z-1: suspected leak in region R4." in text
     assert "2019-03-14 02:10 UTC, 10.33 h before" in text
-    assert "P14 -0.91 m (z -4.10)" in text
+    assert "P14 -0.91 m (z 4.10)" in text
     assert "CUSUM 12.40 against threshold 8.00" in text
     e = explain(alert)
     assert e.language == "en" and e.text == text
@@ -102,7 +102,7 @@ def test_facts_contain_only_alert_data() -> None:
     assert facts["deviating_sensors"][0] == {
         "sensor": "P14",
         "deviation_m": -0.91,
-        "z": -4.1,
+        "z": 4.1,
         "since": "2019-03-14T02:10:00Z",
     }
     assert facts["top_contributions_m"]["P14"][0] == {"feature": "hour_of_week", "value_m": 0.21}

@@ -234,6 +234,13 @@ class HashChainAuditSink:
     appended as one JSON line and flushed (+ fsync) before ``append`` returns; an existing
     file is verified on start-up and extended, so ``seq`` continues across restarts. A
     broken file is never extended: start-up raises ``AuditError``.
+
+    The backend is fail-closed (contract §4, ADR-006): an event whose ``append`` raised is
+    retried later, so ``AuditError`` must mean "not stored". If the file no longer has the
+    size this sink left it with (another process wrote to it, or a failed write could not
+    be undone), ``append`` refuses with ``AuditError`` instead of writing a second record
+    with the same ``seq``. The pipeline then holds the alerts and the problem becomes
+    visible; restarting re-verifies the file.
     """
 
     name = "hash-chain"
@@ -253,6 +260,7 @@ class HashChainAuditSink:
         self._memory: list[dict[str, Any]] | None = [] if self._path is None else None
         self._next_seq = 0
         self._prev_hash = GENESIS_HASH
+        self._size = 0  # bytes this sink expects in the file
         if self._path is not None and self._path.exists():
             check = verify_file(self._path)
             if not check.ok:
@@ -263,6 +271,7 @@ class HashChainAuditSink:
             if check.head is not None and check.head.hash is not None:
                 self._next_seq = check.head.seq + 1
                 self._prev_hash = check.head.hash
+            self._size = self._path.stat().st_size
 
     @property
     def path(self) -> Path | None:
@@ -303,6 +312,27 @@ class HashChainAuditSink:
     def get(self, seq: int) -> dict[str, Any] | None:
         return next((r for r in self.records() if r["seq"] == seq), None)
 
+    def records_after(self, after_seq: int = -1, limit: int = 100) -> list[dict[str, Any]]:
+        """Up to ``limit`` records with ``seq > after_seq``, in ``seq`` order and exactly as
+        stored: the page of the read endpoint proposed in Q-AUD-06 (``GET /v1/audit``).
+        Streams the file, so a year-long log is not loaded."""
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        with self._lock:
+            if self._memory is not None:
+                rows = [r for r in self._memory if r["seq"] > after_seq][:limit]
+                return [json.loads(canonical_json(r)) for r in rows]
+        assert self._path is not None
+        if not self._path.exists():
+            return []
+        page: list[dict[str, Any]] = []
+        for record in iter_records(self._path):
+            if record.get("seq", -1) > after_seq:
+                page.append(record)
+                if len(page) == limit:
+                    break
+        return page
+
     def verify(self, anchor: AuditRef | None = None) -> ChainVerification:
         if self._path is None:
             return verify_records(self.records(), anchor)
@@ -334,6 +364,12 @@ class HashChainAuditSink:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             with self._path.open("ab") as f:
                 start = f.tell()
+                if start != self._size:
+                    raise AuditError(
+                        f"audit file {self._path} changed outside this sink (expected "
+                        f"{self._size} bytes, found {start}); refusing to append, restart "
+                        "to re-verify it"
+                    )
                 try:
                     f.write(line)
                     f.flush()
@@ -342,5 +378,6 @@ class HashChainAuditSink:
                 except OSError:
                     f.truncate(start)  # never leave half a record behind
                     raise
+                self._size = start + len(line)
         except OSError as exc:
             raise AuditError(f"could not append to {self._path}: {exc}") from exc

@@ -24,10 +24,11 @@ def mock_alert(**overrides: Any) -> Alert:
         "suspected_onset": onset,
         "hours_since_onset": round((window_end - onset).total_seconds() / 3600, 2),
         "cusum": CusumEvidence(statistic=12.4, threshold=8.0),
+        # Q-DET-02: deviation_m = observed - expected (< 0 on a drop), z > 0 on a drop.
         "deviating_sensors": (
-            DeviatingSensor(sensor="P14", deviation_m=-0.91, z=-4.1, since=onset),
-            DeviatingSensor(sensor="P21", deviation_m=-0.62, z=-3.2, since=onset),
-            DeviatingSensor(sensor="P09", deviation_m=-0.48, z=-2.7, since=None),
+            DeviatingSensor(sensor="P14", deviation_m=-0.91, z=4.1, since=onset),
+            DeviatingSensor(sensor="P21", deviation_m=-0.62, z=3.2, since=onset),
+            DeviatingSensor(sensor="P09", deviation_m=-0.48, z=2.7, since=None),
         ),
         "forecast_contributions_m": {
             "P14": {"hour_of_week": 0.21, "F01_inflow": -0.12, "P14_lag_1": 0.08, "T01": 0.01},

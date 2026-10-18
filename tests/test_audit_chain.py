@@ -327,3 +327,30 @@ def test_cli_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     assert verify_main([str(path)]) == 1
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is False and out["broken_at"] == 1
+
+
+def test_file_changed_outside_the_sink_is_refused(tmp_path: Path) -> None:
+    """Fail-closed retries depend on AuditError meaning "not stored": never write a second
+    record with a seq that another writer may already have used."""
+    path = tmp_path / "chain.jsonl"
+    sink = sink_at(path)
+    fill(sink, 2)
+    other = sink_at(path)  # a second process on the same file
+    other.append(event(2))
+    size = path.stat().st_size
+    with pytest.raises(AuditError, match="changed outside this sink"):
+        sink.append(event(3))
+    assert path.stat().st_size == size
+    assert verify_file(path).ok  # nothing was corrupted
+
+
+def test_records_after_pages_in_seq_order(tmp_path: Path) -> None:
+    for sink in (sink_at(), sink_at(tmp_path / "chain.jsonl")):
+        fill(sink, 5)
+        assert [r["seq"] for r in sink.records_after(limit=2)] == [0, 1]
+        assert [r["seq"] for r in sink.records_after(after_seq=1, limit=2)] == [2, 3]
+        assert [r["seq"] for r in sink.records_after(after_seq=3)] == [4]
+        assert sink.records_after(after_seq=4) == []
+        assert sink.records_after(after_seq=1, limit=1)[0] == sink.records()[2]  # as stored
+        with pytest.raises(ValueError):
+            sink.records_after(limit=0)

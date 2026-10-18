@@ -28,12 +28,13 @@ arquivos do backend não foram alterados.
 | Tema | Decisão |
 |---|---|
 | LLM da narrativa | watsonx.ai com modelo Granite (`WatsonxNarrator`) |
-| Q-AUD-03 falha ao gravar auditoria | **fail-open**, como o pipeline já faz: o alerta é mantido, `audit="failed"` e `audit_failures` aparecem no resultado e em `/v1/status` |
+| Q-AUD-03 falha ao gravar auditoria | **fail-closed** (decisão da equipe em `team-workflow`, implementada pelo P3 na `main`, ADR-006). O alerta só é servido depois que o `alert.raised` foi gravado; eventos que falham esperam numa fila ordenada e são reenviados antes de cada janela nova; com a fila cheia (`SENTINEL_AUDIT_PENDING_CAPACITY`), a resposta é 503 `audit_backlog_full`. Status da janela: `recorded`, `pending` ou `disabled`. |
 | Q-AUD-02 onde fica o log | `~/shared/civicwater/audit/<run>.jsonl` na VM, fora dos clones do Git (`audit_path_for(run)`) |
 | Idioma da explicação | **inglês** por padrão (`DEFAULT_LANGUAGE = "en"`); `language="pt"` continua disponível |
+| Q-DET-02 sinal do z | `deviation_m = observado − esperado` (negativo numa queda) e `z = (esperado − observado)/σ` (positivo numa queda). O alerta inventado e os exemplos do prompt da P5 seguem essa convenção; a validação compara valores absolutos. |
 
-A decisão de fail-open ainda precisa ser registrada pelo backend no ADR-006 e em
-`docs/questions-for-team.md` (arquivos do P3).
+Uma versão anterior deste documento registrava fail-open, porque era o que o backend fazia na
+época. A `main` apontou a contradição (Q-DOC-01); este documento agora segue a `main`.
 
 ## Contrato D — registro de auditoria v1.0
 
@@ -67,6 +68,13 @@ registro)` ou `alert_payload_sha256(alerta)`; testado inclusive com o JSON vindo
 `append` retornar; falha de escrita levanta `AuditError` sem consumir `seq` e sem deixar linha
 pela metade; ao iniciar, o arquivo existente é verificado e um arquivo quebrado **nunca** é
 estendido (o início falha com `AuditError`).
+
+Com o fail-closed, o pipeline reenvia o evento que falhou, então `AuditError` precisa
+significar "não gravado". Por isso o sink confere, antes de cada gravação, se o arquivo ainda
+tem o tamanho que ele mesmo deixou. Se outro processo escreveu no arquivo, ou se uma gravação
+falha não pôde ser desfeita, o sink recusa com `AuditError` em vez de gravar um segundo
+registro com o mesmo `seq`. O pipeline segura os alertas e o problema fica visível; reiniciar
+o processo faz a verificação de novo. Use **um arquivo por processo**.
 
 **Limitação:** quem pode reescrever o arquivo inteiro consegue recalcular uma cadeia
 consistente. A defesa é a âncora: ao fim de cada replay, anotar `sink.head` (`seq` + `hash`)
@@ -201,14 +209,48 @@ feitas depois dessa rodada:
 - `Explanation.model_text` guarda o texto bruto do modelo, mesmo quando recusado;
 - `LlamaCppNarrator.last_usage` guarda os tokens lidos e escritos.
 
-O efeito dessas correções na VM ainda não foi medido.
+**3ª rodada:** aviso colocado pelo código, exemplos do mesmo formato e texto bruto guardado.
+
+| Alerta | Tempo | Tokens (prompt + resposta) | Resultado |
+|---|---|---|---|
+| Inventado (en) | 33,6 s | 677 + 87 | **aceito e correto**: R4; P14/P21/P09 a 0,91/0,62/0,48 m; CUSUM 12,4/8,0 |
+| Pipeline (en) | 26,0 s | 548 + 68 | **aceito e correto**: sem região; P03/P02/P01 a 5,06/4,96/4,95 m às 16:40 UTC |
+| Pipeline (pt) | 28,9 s | 586 + 79 | **aceito e correto**: o mesmo, em português |
+
+Conferi os três textos contra os alertas: valores, ordem dos sensores, região, horários e CUSUM
+batem.
+
+Uma imprecisão que a validação não pega: no alerta inventado o texto diz que os três sensores
+estão abaixo "since 02:10", mas o P09 não tem `since`. O 02:10 é o início estimado do alerta.
+
+**Para onde vai o tempo** (estimativa feita com as 3 medidas, só indicativa): ~0,026 s por
+token de prompt (~38 tokens/s) e ~0,17 s por token gerado (~6 tokens/s). Ou seja, ~15–17 s
+lendo o prompt e ~12–15 s escrevendo, com 1 thread.
+
+Formas de reduzir:
+- menos tokens de prompt (por exemplo, 1 exemplo em vez de 2; mudaria a qualidade, então teria
+  de ser medido);
+- 2 threads quando a VM estiver livre;
+- reaproveitar o prefixo do prompt entre alertas do mesmo formato (não verificado para o
+  modelo híbrido).
+
+Mesmo com ~30 s, a explicação cabe folgada no intervalo de 300 s entre janelas, desde que seja
+gerada em segundo plano e guardada.
+
+Limites da amostra: 3 alertas, todos mock, e com `temperature=0` a mesma entrada dá o mesmo
+texto. Para estimar a taxa de aceitação é preciso uma avaliação com mais alertas e formatos
+variados.
 
 **Conclusão e recomendação:**
 - **A infraestrutura funciona no LinuxONE:** o modelo carrega, gera, a validação recusa o que
   está errado e o fallback entra.
-- **A qualidade do Granite 350M *base* não basta para texto ao operador:** em 3 tentativas houve
-  1 recusa, 1 texto errado e 1 texto trivial. O texto padrão deve ser a exibição principal; o
-  texto do Granite fica como complemento, e só quando aprovado.
+- **A qualidade do Granite 350M *base* depende do prompt e da validação.**
+  - 1ª rodada: 1 recusa, 1 texto errado aceito e 1 texto trivial.
+  - Depois de prender os números ao sensor certo, colocar o aviso pelo código e usar exemplos
+    do mesmo formato (3ª rodada): 3/3 aceitos e corretos.
+
+  Ainda é uma amostra pequena e mock. O texto padrão continua sendo o fallback garantido; o texto
+  do Granite é mostrado só quando aprovado pela validação.
 - **Para texto melhor:** um Granite *instruct* em GGUF big-endian (por exemplo, 350M ou 1B
   instruct convertido com `convert_hf_to_gguf.py --bigendian`) ou o `ibm/granite-4-h-small` no
   watsonx.
@@ -307,18 +349,22 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 | Pergunta | Proposta da P5 |
 |---|---|
 | Q-AUD-01 porta e tipos de evento | Aceitos como estão. |
-| Q-AUD-04 `GET /v1/audit` | Útil para o dashboard (P6). Proposta: `GET /v1/audit?offset&limit` (registros) e `GET /v1/audit/verify` (`ChainVerification`), só leitura. |
 | Q-AUD-05 circularidade | Resolvida como no ADR-006: hash do alerta sem `audit`. |
-| DEP-AUD-04 onde fica a narrativa | Gerada sob demanda a partir do alerta; proposta `GET /v1/alerts/{id}/explanation` → `Explanation`. Opcional: evento `explanation.generated` na cadeia (exige mudar `AuditEventType`). |
+| Q-AUD-06 leitura da cadeia por HTTP (substitui Q-AUD-04) | **De acordo com a proposta da `main`.** `GET /v1/audit?after_seq&limit` devolve os registros em ordem de `seq`, exatamente como gravados; `GET /v1/audit/head` devolve `{seq, hash}`; só leitura; o backend **não** devolve um booleano "verified", porque verificar é trabalho do cliente (`python -m sentinel.audit.verify`, `verify_records`). A P5 já fornece `HashChainAuditSink.records_after(after_seq, limit)` (lê o arquivo aos poucos) e `HashChainAuditSink.head`. As regras que o contrato deve citar estão no Contrato D acima: JSON canônico, `prev_hash` inicial com 64 zeros e a fórmula do `hash`. |
+| Q-AUD-07 explicação por HTTP | **De acordo com o formato proposto** `{status, text, generator, alert_payload_sha256, generated_at}`. Correspondência com `Explanation`: `text` → `text`; `alert_payload_sha256` → `alert_payload_sha256`; `generator` → nome do narrador (hoje string; vira `ModelInfo` no endpoint); `status = ready` quando há explicação guardada, `pending` enquanto o Granite gera, `unavailable` se o modelo falhou e não há template, `disabled` sem narrador. Como o Granite leva ~30 s, a explicação precisa ser gerada em segundo plano e guardada (tarefa pendente da P5: guardar e auditar explicações). |
+| Q-DOC-01 vocabulário de `audit` e fail-open no doc da P5 | Resolvido do lado da P5: a branch trouxe a `main` (merge, sem rebase, porque a branch já está publicada e o `AGENTS.md` proíbe `push --force`). `AuditStatus` agora é o da `main` (`recorded`, `pending`, `disabled`), e este doc registra fail-closed. |
 
 ## O que depende de outras pessoas
 
 - **P3 (backend), BE-013:** aceitar `SENTINEL_AUDIT_SINK=chain` e um caminho/execução
   (`SENTINEL_AUDIT_PATH` ou `SENTINEL_AUDIT_RUN`) em `config.py` e criar o sink em
-  `main.build_pipeline`, por exemplo `HashChainAuditSink(audit_path_for(run))`. Endpoints de
-  leitura acima. Registrar as variáveis `WATSONX_*` (sem valores) em `.env.example`.
-- **P4 (detecção):** região, `suspected_onset`, `cusum` e `since` reais no `AlertCandidate`; a
-  explicação já os usa quando existem.
+  `main.build_pipeline`, por exemplo `HashChainAuditSink(audit_path_for(run))`. Na `main`
+  (depois do merge) isso ainda não existe: só `null`/`memory`. Endpoints de Q-AUD-06/07.
+  Registrar as variáveis `WATSONX_*` e `LOCAL_LLM_*` (sem valores) em `.env.example`.
+- **P4 (detecção):** o detector CUSUM com regiões já está na `main`. A explicação usa
+  `region`, `suspected_onset`, `cusum` e `since` quando eles vêm preenchidos.
+- **P1 (dados):** os IDs reais do BattLeDIM (`config/sensors.battledim.json`: `n1`, `n54`,
+  `n105`…) estão na `main`; a validação os reconhece (padrão letra+número).
 - **P2 (ML):** `contributions` (TreeSHAP) no `ForecastResult`; o backend já as restringe aos
   sensores do alerta.
 - **P6 (dashboard):** exibir `explanation.text`, `source`/`fallback_reason`, `audit.seq` e o
@@ -328,15 +374,19 @@ Código de saída: 0 = texto do Granite aceito; 1 = Granite chamado mas texto re
 
 | Comando | Resultado |
 |---|---|
-| `ruff format --check` + `ruff check` (`src tests scripts`) | ok |
-| `mypy` (configuração do projeto, 69 arquivos) | sem problemas |
-| `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
+| **Depois do merge da `main` (2026-10-18)**, `uv sync --locked --group dashboard` (como a CI) | — |
+| `ruff format --check` + `ruff check` (`src tests scripts dashboard`) | ok, 140 arquivos |
+| `mypy` | sem problemas em 140 arquivos |
+| `pytest` (suíte inteira) | **757 passed, 20 skipped, 3 failed**. As 3 falhas são de `tests/test_eval_run.py` (P6) e só acontecem no Windows: `write_text` sem `encoding="utf-8"` e um caminho comparado com `/`. Nenhuma toca código da P5. |
+| testes da P5 (`test_audit_chain`, `test_narrative`, `test_local_granite`, `test_watsonx`) | 107 passed |
+| Antes do merge: `pytest` (suíte inteira) | 194 passed (89 do backend + 105 da P5) |
 | `p5_linuxone_granite.ipynb` executado (Windows) contra um servidor de completions falso | 0 erros; texto aceito no alerta inventado, exemplo copiado recusado no alerta do pipeline |
 | `python -m sentinel.narrative --local` contra o mesmo servidor falso (HTTP real) | `source: llm` |
 | `p5_linuxone_granite.ipynb` (versão `llama_cpp` no kernel) executado no Windows com um `llama_cpp` falso | 0 erros; carrega, aceita o texto válido, recusa o exemplo copiado (en/pt), descarrega |
 | Granite GGUF real na VM, `p5_linuxone_granite.ipynb` | carregou (11,1 s); 3 explicações em 34–44 s; ver "Resultado na VM" acima |
 | Granite na VM, 2ª rodada (prompt enxuto + regra de números no lugar errado) | 3 recusas em 26,9–34,1 s; ver "2ª rodada" acima |
-| Granite na VM com aviso pelo código e exemplos do mesmo formato | **NOT_RUN** |
+| Granite na VM, 3ª rodada (aviso pelo código + exemplos do mesmo formato) | **3/3 aceitos e corretos** em 26,0–33,6 s; ver "3ª rodada" acima |
+| Avaliação do Granite com muitos alertas variados (taxa de aceitação) | **NOT_RUN** |
 | LinuxONE VM (s390x), branch `leo/local-version` @ `033959d`: `python -m pytest -q tests/test_audit_chain.py tests/test_narrative.py tests/test_local_granite.py tests/test_watsonx.py` | **93 passed** in 0.27 s |
 | `jupyter nbconvert --execute` do notebook (kernel real, sem `WATSONX_*`) | 19 células, 0 erros; Granite pulado |
 | Ponta a ponta local: `devserver` + `make_synthetic` + `replay` + `verify --alert` + `sentinel.narrative --alert` | 1 alerta mock; cadeia 289 registros ok; alerta ok; template |
