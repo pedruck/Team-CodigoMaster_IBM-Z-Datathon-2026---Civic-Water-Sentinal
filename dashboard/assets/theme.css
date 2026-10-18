@@ -385,7 +385,10 @@
 .evidence-sensors output { font-family: 'IBM Plex Mono', monospace; text-align: right; font-variant-numeric: tabular-nums; }
 .bar-track { height: 8px; background: #f1f5f3; border-radius: 4px; overflow: hidden; }
 .bar { display: block; height: 100%; background: var(--cw-alert); border-radius: 4px; transform-origin: left center; }
-.explanation-slot { margin: 0; padding: .5rem .65rem; font-size: .8125rem; color: var(--cw-muted); background: #f6f9f7; border: 1px dashed #c9dbd3; border-radius: 6px; }
+.explanation-slot { margin: 0; padding: .5rem .65rem; font-size: .8125rem; color: var(--cw-muted); background: #f6f9f7; border: 1px dashed #c9dbd3; border-radius: 6px; white-space: pre-line; overflow-wrap: anywhere; max-height: 10rem; overflow-y: auto; }
+.explanation-note { margin: .35rem 0 0; font-size: .75rem; color: var(--cw-muted); }
+.evidence-facts dd small.onset-age { display: block; margin-top: .15rem; }
+.evidence-facts dd:has(.onset-age) { flex-basis: 100%; }
 .evidence-more { margin-top: .9rem; font-size: .875rem; font-weight: 500; color: var(--cw-accent); text-underline-offset: 3px; }
 .muted, .pane-empty { color: var(--cw-muted); font-size: .875rem; margin: 0; }
 

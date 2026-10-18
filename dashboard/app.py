@@ -32,7 +32,7 @@ from dashboard.source import (
     SourceUnavailableError,
 )
 from sentinel.schemas.alerts import Alert
-from sentinel.schemas.api import StatusResponse
+from sentinel.schemas.api import ExplanationStatus, StatusResponse
 
 MAP_HEIGHT = 560  # the stylesheet resizes the frame to the viewport
 
@@ -48,12 +48,23 @@ def load_selected(source: AlertSource, selected: Alert | None) -> tuple[Alert, A
         return None
     try:
         alert = source.get_alert(selected.alert_id)
-        return alert, alert_detail(alert)
     except ContractMismatchError as exc:
         st.error(f"Contract mismatch: alert {selected.alert_id} does not match the contract. {exc}")
+        return None
     except SourceError as exc:
         st.error(f"Could not load alert {selected.alert_id} ({source.name}): {exc}")
-    return None
+        return None
+    return alert, alert_detail(alert, load_explanation(source, alert.alert_id))
+
+
+def load_explanation(source: AlertSource, alert_id: str) -> ExplanationStatus | None:
+    """The stored explanation (Q-AUD-07). It is optional: a failure is reported, and the
+    structured evidence is still shown."""
+    try:
+        return source.get_explanation(alert_id)
+    except SourceError as exc:
+        st.caption(f"Explanation of {alert_id} could not be loaded ({source.name}): {exc}")
+        return None
 
 
 def render_map(alert: Alert | None) -> None:
@@ -96,6 +107,8 @@ def render_detail(loaded: tuple[Alert, AlertDetail] | None) -> None:
                 st.caption("Forecast contributions: not provided.")
             st.markdown("**Explanation**")
             st.info(detail.explanation)
+            if detail.explanation_note:
+                st.caption(detail.explanation_note)
 
 
 st.set_page_config(
@@ -161,7 +174,8 @@ with st.container(key="sentinel-shell"):
             render_map(loaded[0] if loaded else None)
         with evidence_pane_col, st.container(key="evidence-pane"):
             if loaded is not None:
-                st.html(evidence_pane(loaded[0], loaded[1].explanation))
+                alert, detail = loaded
+                st.html(evidence_pane(alert, detail.explanation, detail.explanation_note))
             elif status is None:
                 st.html(
                     '<p class="pane-empty">The alert source is not reachable, so no evidence '

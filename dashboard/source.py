@@ -7,6 +7,11 @@ and ``FallbackAlertSource`` (a live source that falls back to a recording while 
 A source may carry a ``notice`` the page shows next to the mandatory banners (BE-026).
 Every response body is parsed with the contract models, so a backend that drifts from the
 contract raises ``ContractMismatchError`` instead of reaching the screen.
+
+``get_explanation`` returns the audit owner's stored explanation of an alert (Q-AUD-07,
+``GET /v1/alerts/{id}/explanation``), or ``None`` when the source has none: the API runs
+without the audit chain (404), or the source is a recording or a snapshot, which carry no
+explanations.
 """
 
 import json
@@ -23,7 +28,7 @@ from typing import Protocol
 from pydantic import BaseModel, ValidationError
 
 from sentinel.schemas.alerts import Alert
-from sentinel.schemas.api import AlertPage, HealthResponse, StatusResponse
+from sentinel.schemas.api import AlertPage, ExplanationStatus, HealthResponse, StatusResponse
 
 MAX_LIMIT = 500
 
@@ -79,6 +84,7 @@ class AlertSource(Protocol):
     def status(self) -> StatusResponse: ...
     def list_alerts(self, query: AlertQuery) -> AlertPage: ...
     def get_alert(self, alert_id: str) -> Alert: ...
+    def get_explanation(self, alert_id: str) -> ExplanationStatus | None: ...
 
 
 def parse[M: BaseModel](model: type[M], body: bytes, what: str) -> M:
@@ -145,6 +151,13 @@ class HttpAlertSource:
         path = f"/v1/alerts/{urllib.parse.quote(alert_id, safe='')}"
         return parse(Alert, self._get(path), path)
 
+    def get_explanation(self, alert_id: str) -> ExplanationStatus | None:
+        path = f"/v1/alerts/{urllib.parse.quote(alert_id, safe='')}/explanation"
+        try:
+            return parse(ExplanationStatus, self._get(path), path)
+        except AlertNotFoundError:
+            return None
+
 
 class PlaybackAlertSource:
     """Serves a recorded run from a directory: ``alerts.jsonl`` (one ``Alert`` per line, **in
@@ -199,6 +212,9 @@ class PlaybackAlertSource:
             if alert.alert_id == alert_id:
                 return alert
         raise AlertNotFoundError(f"alert {alert_id} not in run {self.run_dir.name}")
+
+    def get_explanation(self, alert_id: str) -> ExplanationStatus | None:
+        return None
 
     def list_alerts(self, query: AlertQuery) -> AlertPage:
         return page_of(list(reversed(self._alerts())), query)
@@ -328,6 +344,9 @@ class SnapshotAlertSource:
                 return alert
         raise AlertNotFoundError(f"alert {alert_id} not in the snapshot")
 
+    def get_explanation(self, alert_id: str) -> ExplanationStatus | None:
+        return None
+
 
 class FallbackAlertSource:
     """A live source that shows a recorded run while the live one does not answer, and goes
@@ -380,6 +399,9 @@ class FallbackAlertSource:
 
     def get_alert(self, alert_id: str) -> Alert:
         return self._active.get_alert(alert_id)
+
+    def get_explanation(self, alert_id: str) -> ExplanationStatus | None:
+        return self._active.get_explanation(alert_id)
 
 
 def _without_query(location: str) -> str:

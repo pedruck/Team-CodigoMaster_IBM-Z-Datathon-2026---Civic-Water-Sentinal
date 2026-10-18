@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from sentinel.api.deps import ExplanationsDep, PipelineDep
-from sentinel.narrative.store import ExplanationStatus
 from sentinel.schemas.alerts import Alert
-from sentinel.schemas.api import AlertPage, ErrorResponse
+from sentinel.schemas.api import AlertPage, ErrorResponse, ExplanationStatus
 from sentinel.schemas.common import UtcDatetime
 from sentinel.services.errors import NotFoundError
 

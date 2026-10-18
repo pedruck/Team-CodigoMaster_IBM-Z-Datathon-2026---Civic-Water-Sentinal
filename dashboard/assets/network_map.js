@@ -677,7 +677,7 @@
     if (alert.strongest) rows.push(['Largest deviation', `${fmtM(alert.strongest.deviation_m)} at ${alert.strongest.sensor}`]);
     else rows.push(['Largest deviation', 'no deviating sensor']);
     rows.push(['Sensors', String(alert.sensors.length)]);
-    if (alert.onset_label) rows.push(['Estimated onset', alert.onset_label.slice(11)]);
+    if (alert.onset_label) rows.push(['Estimated onset', alert.onset_label]);
     if (alert.cusum) rows.push(['CUSUM', `${fmtNum(alert.cusum.statistic)} vs ${fmtNum(alert.cusum.threshold)}`]);
     facts($('card-facts'), rows);
     $('card-pipe').classList.toggle('none', !alert.candidate_pipe);
@@ -699,7 +699,7 @@
     note.hidden = !r.active || !selected;
     if (!note.hidden) {
       note.textContent = other || !state.shown
-        ? `Replay view. The panels beside the map still show the selected alert: ${selected.region ?? 'region not available'}, ${selected.time_label.slice(11, 16)} UTC.`
+        ? `Replay view. The panels beside the map still show the selected alert: ${selected.region ?? 'region not available'}, ${selected.time_label}.`
         : 'Replay view. This is also the selected alert.';
     }
   }

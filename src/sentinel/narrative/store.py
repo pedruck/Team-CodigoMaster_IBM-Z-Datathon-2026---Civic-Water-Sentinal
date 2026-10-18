@@ -26,7 +26,7 @@ import threading
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from sentinel.audit.chain import (
     ChainVerification,
@@ -38,7 +38,7 @@ from sentinel.audit.chain import (
 from sentinel.narrative.explain import Explanation, Narrator, explain
 from sentinel.narrative.facts import DEFAULT_LANGUAGE, Language, render_text
 from sentinel.schemas.alerts import Alert, AuditRef
-from sentinel.schemas.common import ContractModel, UtcDatetime
+from sentinel.schemas.api import ExplanationStatus  # contract model; still importable here
 
 log = logging.getLogger("sentinel.narrative")
 
@@ -55,21 +55,6 @@ def explanations_path_for(run_id: str, root: Path | str | None = None) -> Path:
 
 def _is_error(fallback_reason: str | None) -> bool:
     return fallback_reason is not None and fallback_reason.startswith(_ERRORS)
-
-
-class ExplanationStatus(ContractModel):
-    """What a read endpoint returns (proposal for Q-AUD-07)."""
-
-    status: Literal["ready", "pending"]
-    alert_id: str
-    language: Language
-    alert_payload_sha256: str
-    source: Literal["template", "llm"]
-    text: str  # pending: the deterministic text, shown until the generated one is ready
-    generator: str | None
-    generated_at: UtcDatetime | None
-    fallback_reason: str | None
-    record: AuditRef | None  # the explanation's record in the explanations log
 
 
 class ExplanationStore:

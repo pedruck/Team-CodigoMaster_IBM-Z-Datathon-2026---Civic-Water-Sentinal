@@ -6,6 +6,21 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- BE-027: the dashboard shows the stored explanation of an alert (Q-AUD-07,
+  `GET /v1/alerts/{id}/explanation`) beside the map, in the detail and in the Jupyter view,
+  with one line on how it was produced (template, language model, fallback reason, pending).
+  Sources without explanations (recording, snapshot, API without the audit chain) keep
+  "explanation unavailable". `ExplanationStatus` moved to `sentinel.schemas.api` (same fields;
+  still importable from `sentinel.narrative.store`) so the dashboard keeps depending only on
+  the contract models.
+
+### Fixed
+- BE-027, dashboard: the alert queue showed only the time (`08:15`) although a replayed year
+  lists weeks of alerts; it now shows `Dec 31 08:15`. The evidence pane printed the CUSUM
+  score unrounded (`170.00974498028148`, overflowing the pane); it is rounded for reading like
+  the map card (`170.01`), exact value in the full record. The onset shows the backend's
+  `hours_since_onset` (`404 h (16.8 days) before this window`). The map card dropped the
+  onset's date (`12:20`) and the replay note the selected alert's date.
 - BE-026: dashboard hosted off the VM (ADR-013, `docs/external-dashboard.md`). A read-only,
   token-protected gateway for an outbound tunnel (`scripts/readonly_gateway.py`: GET on health,
   status and alerts only), a snapshot push to pre-signed URLs (`scripts/push_snapshot.py`,

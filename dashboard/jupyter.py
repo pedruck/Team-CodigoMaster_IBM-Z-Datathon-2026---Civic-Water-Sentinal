@@ -179,10 +179,15 @@ class JupyterDashboard:
             self.detail.value = "<p>No alert to show.</p>"
             return
         try:
-            detail = alert_detail(self.source.get_alert(selected))
+            alert = self.source.get_alert(selected)
         except SourceError as exc:
             self.detail.value = _box(f"Could not load alert {selected}: {exc}", ERROR)
             return
+        try:
+            explanation = self.source.get_explanation(selected)
+        except SourceError:
+            explanation = None  # optional: the structured evidence below is still shown
+        detail = alert_detail(alert, explanation)
         parts = []
         if detail.simulated:
             parts.append(_box("SIMULATED — this alert came from a mock: not leak detection.", WARN))
@@ -194,4 +199,6 @@ class JupyterDashboard:
             _table(detail.contributions or ()) or "<p>Forecast contributions: not provided.</p>"
         )
         parts.append(f"<b>Explanation</b><p>{escape(detail.explanation)}</p>")
+        if detail.explanation_note:
+            parts.append(f"<p><small>{escape(detail.explanation_note)}</small></p>")
         self.detail.value = "".join(parts)

@@ -510,9 +510,9 @@ failed (see `fallback_reason` and `check`); 2 = missing configuration.
 - **P2 (ML): done.** `contributions` (TreeSHAP) only for the sensors of an alert
   (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`), which the explanation lists.
 - **P6 (dashboard): pending.**
-  - The detail still shows a fixed "explanation unavailable", although
-    `GET /v1/alerts/{id}/explanation` exists since BE-013. It should show `explanation.text`,
-    `source`/`fallback_reason`, `audit.seq` and the verification result.
+  - Partly done in BE-027: the evidence pane, the detail and the Jupyter view show
+    `explanation.text` and a note from `status`/`source`/`generator`/`fallback_reason`.
+    Still missing: the explanation's `record` (`seq`) and the verification result.
   - Two Windows-only failures remain in `tests/test_eval_run.py` (`write_text` without
     `encoding="utf-8"`).
 
