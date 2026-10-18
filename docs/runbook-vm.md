@@ -35,8 +35,10 @@ SENTINEL_FORECASTER_PATH=/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.
 scripts/shared_api.sh restart
 ```
 
-Paths are the ones **inside the container**. Add `SENTINEL_FORECASTER_CONTRIBUTIONS=false`
-for long replays (TreeSHAP dominates the latency, `docs/performance.md`) and
+Paths are the ones **inside the container**. `SENTINEL_FORECASTER_CONTRIBUTIONS` defaults to
+`on_alert` (TreeSHAP only for the deviating sensors of an alert, so windows without an alert pay
+nothing); `all` restores TreeSHAP on every window (~127 ms, `docs/performance.md`) and `false`
+turns it off. Add
 `SENTINEL_FORECASTER_TREE_FORMAT=compress_trees` to keep Snap ML on the CPU. If the model does
 not load (missing artefact, `snapml` absent after the container was recreated), `start` fails
 and prints the log: the API never falls back to the mock. `status` shows `forecaster` with

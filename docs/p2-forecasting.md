@@ -144,7 +144,7 @@ settings = Settings.from_env()
 forecaster = load_forecaster(
     "xgboost",
     "/home/ibm-user/shared/civicwater/models/xgboost-33@0.1.0",
-    with_contributions=True,  # False for long replays (TreeSHAP ~127 ms per window)
+    with_contributions="on_alert",  # TreeSHAP only for an alert's sensors; "all" | "off"
 )
 app = create_app(settings, build_pipeline(settings, forecaster=forecaster))
 ```
@@ -153,7 +153,56 @@ Wired by P3 in BE-011: `SENTINEL_FORECASTER=baseline | xgboost | gru` plus
 `SENTINEL_FORECASTER_PATH`, `SENTINEL_FORECASTER_CONTRIBUTIONS`, `SENTINEL_FORECASTER_ENGINE`
 and `SENTINEL_FORECASTER_TREE_FORMAT`; `build_pipeline` calls `load_forecaster` at startup
 (fail fast, `.env.example`, `docs/runbook-vm.md`). The API process must use the VM image's Python (`/opt/venv`), where
-numpy, xgboost, snapml and tensorflow are installed.
+numpy, xgboost, snapml and tensorflow are installed. Off the VM, `uv sync --extra ml` (or
+`pip install -e ".[ml]"`) installs numpy, xgboost and snapml (DEP-ML-03); on s390x only snapml
+has a PyPI wheel, so keep the image's `/opt/venv` there.
+
+**TreeSHAP on demand** (`SENTINEL_FORECASTER_CONTRIBUTIONS=on_alert`, the default): the forecast
+carries no contributions; after detection the pipeline calls `XGBoostForecaster.explain` with
+the same request and the alert's deviating sensors (optional `ExplainingForecaster`, contract
+§2, proposed to P3). Same numbers as `all`, paid only when an alert opens and only for its
+sensors (≈ 3.9 ms per sensor estimated from the VM measurement, not measured). `all` keeps
+TreeSHAP for every sensor of every window; `off` (or `false`) turns it off.
+
+## Out-of-fold residuals for the detector (DEP-DET-05)
+
+The CUSUM calibration needs residuals of the served model on windows it did not train on.
+`sentinel.forecasting.oof` produces them for 2018:
+
+- **Folds = the 12 calendar months.** For each month, one XGBoost per sensor is trained on the
+  clean windows (P1 mask, the delivered model's policy `reparados`) of the other 11 months and
+  predicts every window of the held-out month, leak periods included. Each labelled leak is
+  predicted by models that never saw its month (`tests/test_forecasting_oof.py` checks it).
+- **No early stopping in the folds:** trees per sensor = the delivered model's
+  `best_iteration`, same parameters, so the predicted month never tunes its own model.
+- **Two variants (Q-ML-07):** `with-neighbours` = `xgboost-33@0.1.0` as delivered;
+  `without-neighbours` = flows, tank level and calendar only (its trees come from the
+  notebook 02 protocol: fit Jan–Oct, early-stop Nov–Dec). If the detector owner finds
+  "without" better on the delay × false-alarm curve, it is exported as a new model and needs
+  its own calibration.
+- **Output** per variant in `$SENTINEL_DATA_DIR/v1/oof/xgboost-33@0.1.0/<variant>/` (outside
+  git): `residuals_long.csv.gz` (`timestamp, sensor, observed, expected, fold`; residual =
+  observed − expected; values with 6 decimals), `folds.json` (month → first/last window) and
+  `declaration.json` (inputs the expected value depends on, training mask, trees, hashes,
+  sha256 of the uncompressed CSV text, and MAE / σ / leak contrast under the `reparados` and
+  `reparados+crescimento` masks, informative only). Finished folds are cached in `.folds/`,
+  so an interrupted run resumes.
+
+Run on the VM (≈ 30–60 min with 3 cores; a fit with 600 trees took ≈ 4 s per sensor on 2 x86
+cores, 33 sensors × 12 folds for the first variant, ≈ 1 s for the second):
+
+```bash
+# JupyterLab terminal, inside your clone of the repository (the image's python, /opt/venv)
+PYTHONPATH=src python -m sentinel.forecasting.oof --fast \
+    --model-dir ~/shared/civicwater/models/xgboost-33@0.1.0     # smoke test, writes oof/fast/
+PYTHONPATH=src nohup python -m sentinel.forecasting.oof \
+    --model-dir ~/shared/civicwater/models/xgboost-33@0.1.0 > ~/oof.log 2>&1 &
+tail -f ~/oof.log
+```
+
+The calibration mask is the detector owner's choice (the P1 handoff recommends
+`reparados+crescimento` for σ and h); the out-of-fold models keep the delivered model's
+training mask, so the forecaster does not need retraining.
 
 ## Answers to the ML questions (`docs/questions-for-team.md`)
 
