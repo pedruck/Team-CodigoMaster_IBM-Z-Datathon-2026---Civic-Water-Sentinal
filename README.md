@@ -175,6 +175,8 @@ docs/             architecture, contracts, ADRs, plan, status, testing, performa
 
 ## Documentation
 
+Operator workspace: [design, diagrams and local preview](docs/dashboard-design.md).
+
 [Architecture](docs/architecture.md) · [Contracts](docs/integration-contracts.md) ·
 [ADRs](docs/adr/README.md) · [Plan](docs/implementation-plan.md) ·
 [Status](docs/status.md) · [Dependencies](docs/dependencies.md) ·

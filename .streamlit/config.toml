@@ -1,0 +1,13 @@
+[theme]
+base = "light"
+primaryColor = "#117765"
+backgroundColor = "#f6f8f7"
+secondaryBackgroundColor = "#f0f4f1"
+textColor = "#20332f"
+font = "Geist"
+codeFont = "Geist Mono"
+baseRadius = "medium"
+showWidgetBorder = true
+
+[browser]
+gatherUsageStats = false

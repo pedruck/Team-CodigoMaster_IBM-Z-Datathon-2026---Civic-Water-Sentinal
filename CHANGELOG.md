@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Changed
+- BE-021: refresh the Streamlit dashboard with a responsive operator workspace, section
+  navigation, local Geist/Phosphor assets, source-derived pipeline/buffer/sensor diagrams,
+  collapsible exact evidence and reduced-motion-aware local GSAP reveals. Add a manual
+  refresh action that clears polling back-off. Simulation/replay notices, source contracts,
+  automatic refresh and history filters are retained (`docs/dashboard-design.md`).
 - `Alert` contract 1.1 (additive, Q-DET-07): optional `candidate_pipe` (also on `AlertCandidate`),
   `null` without a pipe network; new alerts carry `schema_version: "1.1"`, 1.0 payloads are still
   accepted. `docs/examples/alert.mock.json` updated. The alert JSON gained a key, so the
@@ -26,6 +31,8 @@ contract versions are tracked separately (`schema_version`).
   The HTTP input model is now `SensorWindowIn`; `SensorWindow` stays timezone-aware.
 
 ### Added
+- Windows verification compatibility: keep the hash-pinned regions JSON at LF on checkout,
+  and normalise paths in the evaluation-boundary guard. No region data or runtime code changed.
 - BE-011: the API loads the real forecaster at startup. `SENTINEL_FORECASTER` accepts
   `mock | baseline | xgboost | gru` with `SENTINEL_FORECASTER_PATH`; XGBoost options
   `SENTINEL_FORECASTER_CONTRIBUTIONS` (TreeSHAP on/off), `_ENGINE`, `_TREE_FORMAT`

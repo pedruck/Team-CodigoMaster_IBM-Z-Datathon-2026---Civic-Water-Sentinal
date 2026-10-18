@@ -47,7 +47,7 @@ def page_count(total: int, page_size: int) -> int:
 
 def render_history(source: AlertSource, now: datetime | None) -> None:
     """Filter widgets and one page of alerts. ``now`` is the simulated clock (for ages)."""
-    st.subheader("History")
+    st.subheader("History", anchor="history")
     st.caption("All stored alerts, newest first. Times are UTC and inclusive, on window end.")
     cols = st.columns(5)
     since_text = cols[0].text_input(

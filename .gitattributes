@@ -1,2 +1,5 @@
 # This artefact has a byte-level SHA-256 guard; keep checkouts reproducible on Windows.
 /config/regions.battledim.json text eol=lf
+
+# Preserve upstream distributions, including whitespace in their licence headers.
+/dashboard/assets/vendor/* -whitespace
