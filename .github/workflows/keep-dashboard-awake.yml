@@ -1,0 +1,30 @@
+name: keep-dashboard-awake
+
+# The dashboard runs on Render's free plan, which sleeps after 15 minutes without requests and
+# takes about a minute to wake (BE-028, docs/external-dashboard.md). This pings its health
+# endpoint every 5 minutes so the demo URL answers at once. It only reaches Streamlit's own
+# health check: no API call, no data. Disable the workflow after the event.
+
+on:
+  schedule:
+    - cron: "3-58/5 * * * *" # off the top of the hour, when GitHub delays scheduled runs most
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-dashboard-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Ping the hosted dashboard
+        env:
+          # Repository variable DASHBOARD_URL overrides the default (Settings → Variables).
+          URL: ${{ vars.DASHBOARD_URL || 'https://civicwater-sentinel-dashboard.onrender.com' }}
+        run: >-
+          curl -fsS -m 90 --retry 3 --retry-delay 10 -o /dev/null
+          -w "%{http_code} in %{time_total}s\n" "$URL/_stcore/health"

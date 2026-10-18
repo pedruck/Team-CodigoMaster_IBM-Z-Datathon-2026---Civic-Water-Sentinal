@@ -6,6 +6,11 @@ contract versions are tracked separately (`schema_version`).
 ## [Unreleased]
 
 ### Added
+- BE-028 deployed: the dashboard is public at https://civicwater-sentinel-dashboard.onrender.com,
+  live through the read-only gateway and a Cloudflare quick tunnel (`cloudflared` built from the
+  official source for s390x; localhost.run's free domain rotated within minutes).
+  `.github/workflows/keep-dashboard-awake.yml` pings `/_stcore/health` every 5 minutes so the free
+  instance stays awake.
 - BE-028: `render.yaml`, a Render Blueprint for the dashboard (free Python web service,
   `uv sync --locked --no-dev --group dashboard`, Streamlit on `$PORT`, health check
   `/_stcore/health`, `autoDeploy: false`). It reads the shared API through the read-only gateway
